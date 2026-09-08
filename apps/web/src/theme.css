@@ -1,0 +1,110 @@
+/*
+ * Дизайн-токены. Значения сняты пипеткой и обмером с трёх утверждённых
+ * макетов в docs/ (mockup-screener.png и др.), а не подобраны на глаз.
+ *
+ * Калибровка: макет 853px шириной = 390 CSS px (масштаб 2.19).
+ * Отсюда все размеры ниже — реальные CSS-пиксели макета.
+ */
+
+:root {
+  /* --- Поверхности --- */
+  --bg: #010408; /* фон страницы, замер #010408 */
+  --surface: #0e1418; /* карточка,        замер #0e1418 */
+  --surface-2: #131a1f; /* вложенный блок / нажатое состояние */
+  --surface-3: #1a2228; /* сегмент-контрол, инпут */
+  --border: #1b2329;
+  --border-strong: #273239;
+
+  /* --- Текст --- */
+  --text: #e9eef2;
+  --text-dim: #8b98a4;
+  --text-mute: #5b6772;
+
+  /* --- Акценты (замер по пиковой насыщенности в макетах) --- */
+  --green: #4ecb5c;
+  --green-soft: rgba(78, 203, 92, 0.12);
+  --green-line: rgba(78, 203, 92, 0.45);
+  --red: #f0454b;
+  --red-soft: rgba(240, 69, 75, 0.12);
+  --red-line: rgba(240, 69, 75, 0.45);
+  --yellow: #f0b90b;
+  --blue: #2f9bff;
+  --blue-soft: rgba(47, 155, 255, 0.1);
+  --blue-line: rgba(47, 155, 255, 0.45);
+
+  /* --- Геометрия (обмер макета) --- */
+  --gutter: 13px; /* боковой отступ: край карточки на x=29/2.19 */
+  --gap: 14px; /* вертикальный зазор между блоками */
+  --gap-row: 5px; /* зазор между строками таблицы монет */
+  --radius-card: 12px;
+  --radius-control: 10px;
+  --radius-pill: 999px;
+
+  /* --- Высоты блоков (обмер) --- */
+  --h-header: 62px;
+  --h-bot-card: 53px;
+  --h-stat-card: 57px;
+  --h-filter: 33px;
+  --h-coin-row: 68px;
+  --h-footer-card: 49px;
+  --h-nav: 58px;
+
+  /* --- Типографика --- */
+  --font:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, Inter, 'Helvetica Neue',
+    Arial, sans-serif;
+  --font-num: 'SF Mono', ui-monospace, 'Segoe UI Mono', 'Roboto Mono', Menlo, monospace;
+
+  --fs-title: 17px;
+  --fs-subtitle: 11px;
+  --fs-section: 15px;
+  --fs-body: 13px;
+  --fs-label: 11px;
+  --fs-value: 20px;
+  --fs-ticker: 15px;
+  --fs-nav: 11px;
+
+  /* Ширина «телефона» — на ПК приложение центрируется, в Telegram растягивается. */
+  --app-max-width: 420px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--fs-body);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+/* Числа не должны «прыгать» при обновлении цен раз в секунду. */
+.num {
+  font-variant-numeric: tabular-nums;
+}

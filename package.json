@@ -1,0 +1,28 @@
+{
+  "name": "cryptospread",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm run dev -w @cs/api",
+    "dev:web": "npm run dev -w @cs/web",
+    "build": "npm run build -w @cs/shared && npm run build -w @cs/web && npm run build -w @cs/api",
+    "typecheck": "tsc -p packages/shared/tsconfig.json && tsc -p apps/api/tsconfig.json --noEmit && tsc -p apps/web/tsconfig.json --noEmit",
+    "format": "prettier --write \"**/*.{ts,tsx,json,css,md}\"",
+    "start": "node apps/api/dist/index.js"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "concurrently": "^9.1.2",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3"
+  }
+}
