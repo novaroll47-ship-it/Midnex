@@ -42,7 +42,10 @@ declare module 'fastify' {
 
 // PORT задают почти все хостинги (Fly, Render, Railway); API_PORT — наш локальный.
 const PORT = Number(process.env.PORT ?? process.env.API_PORT ?? 8787);
-const WEB_ORIGIN = process.env.WEB_ORIGIN ?? 'http://localhost:5173';
+// В проде фронт лежит на том же происхождении, что и API, поэтому правильный
+// origin — публичный адрес приложения. Значение по умолчанию с localhost имеет
+// смысл только для локальной разработки.
+const WEB_ORIGIN = process.env.WEB_ORIGIN ?? process.env.PUBLIC_URL ?? 'http://localhost:5173';
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 const DEV_FAKE_USER = process.env.DEV_FAKE_USER === '1';
 const IS_PROD = process.env.NODE_ENV === 'production';
