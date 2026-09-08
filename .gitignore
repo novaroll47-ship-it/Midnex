@@ -5,3 +5,6 @@ dist/
 *.log
 .pglite/
 .DS_Store
+
+# Скачанный бинарник cloudflared для локального туннеля
+.tools/

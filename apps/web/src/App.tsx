@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 
 import { AppHeader } from './components/AppHeader';
 import { BottomNav, type Tab } from './components/BottomNav';
+import { api } from './lib/api';
 import { backButton, initTelegram, isBrowserFallback } from './lib/telegram';
 import { useSettings } from './lib/useSettings';
 import { PositionDetailScreen, type PositionView } from './screens/PositionDetail';
@@ -30,8 +31,17 @@ export function App() {
   const scrollRef = useRef<HTMLElement>(null);
   const settings = useSettings();
 
+  // Обход авторизации включается на сервере, а не в браузере, поэтому
+  // спрашиваем сервер: иначе плашка врёт про то, чего нет. /api/health —
+  // единственный маршрут без авторизации, он для этого и открыт.
+  const [devBypass, setDevBypass] = useState<boolean | null>(null);
+
   useEffect(() => {
     initTelegram();
+    api
+      .health()
+      .then((h) => setDevBypass(h.devFakeUser))
+      .catch(() => setDevBypass(null));
   }, []);
 
   const goBack = useCallback(() => setRoute({ kind: 'tab' }), []);
@@ -74,8 +84,10 @@ export function App() {
         ref={scrollRef}
         key={`${tab}:${route.kind}`}
       >
-        {isBrowserFallback && route.kind === 'tab' && (
-          <div className="dev-banner">{t('app.devBanner')}</div>
+        {isBrowserFallback && route.kind === 'tab' && devBypass !== null && (
+          <div className="dev-banner">
+            {devBypass ? t('app.devBanner') : t('app.needTelegram')}
+          </div>
         )}
 
         {route.kind === 'settings' && <SettingsDetail view={route.view} settings={settings} />}

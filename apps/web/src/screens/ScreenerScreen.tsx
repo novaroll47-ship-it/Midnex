@@ -28,7 +28,7 @@ import {
   PlusIcon,
   SlidersIcon,
 } from '../icons';
-import { api } from '../lib/api';
+import { ApiError, api } from '../lib/api';
 import { haptic } from '../lib/telegram';
 import { usePolling } from '../lib/usePolling';
 
@@ -93,6 +93,11 @@ export function ScreenerScreen({ onOpenSettings, plan, minSpreadPct, refreshMs }
   }
 
   const refreshSeconds = Math.max(1, Math.round(refreshMs / 1000));
+  const errorText = !error
+    ? null
+    : error instanceof ApiError && error.status === 401
+      ? t('app.unauthorized')
+      : t('app.loadError');
 
   return (
     <div className="screener">
@@ -215,7 +220,9 @@ export function ScreenerScreen({ onOpenSettings, plan, minSpreadPct, refreshMs }
             onToggle={() => toggle(row.symbol)}
           />
         ))}
-        {visible.length === 0 && <div className="card empty">{t('screener.empty')}</div>}
+        {visible.length === 0 && (
+          <div className="card empty">{errorText ?? t('screener.empty')}</div>
+        )}
         {watchlistLimit !== null && (
           <div className="watchlist-note">
             {t('screener.watchlistLimit', { count: watchlistLimit })} — {selected.size}/
@@ -231,9 +238,8 @@ export function ScreenerScreen({ onOpenSettings, plan, minSpreadPct, refreshMs }
             {t('screener.autoRefresh', { count: refreshSeconds })}
           </div>
           <div className="autorefresh__sub">
-            {error
-              ? t('app.loadError')
-              : t('screener.lastUpdate', { time: formatClock(data?.updatedAt ?? Date.now()) })}
+            {errorText ??
+              t('screener.lastUpdate', { time: formatClock(data?.updatedAt ?? Date.now()) })}
           </div>
         </div>
         <button className="btn-ghost btn-ghost--green" type="button" onClick={refresh}>

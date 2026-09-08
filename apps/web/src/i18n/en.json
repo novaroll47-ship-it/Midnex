@@ -4,12 +4,14 @@
     "subtitle": "mini app",
     "usdt": "USDT",
     "devBanner": "dev mode: opened outside Telegram, auth stubbed (DEV_FAKE_USER=1).",
-    "loadError": "Could not reach the server. Make sure the API is running on port 8787.",
+    "loadError": "The server is not responding. Check that the app is running.",
     "brand": "MIDNEX",
     "back": "Back",
     "loading": "Loading…",
     "cancel": "Cancel",
-    "working": "Working…"
+    "working": "Working…",
+    "needTelegram": "This is a Telegram mini app. Open it with the MIDNEX button in the @midnexbot chat — outside Telegram the data is unavailable.",
+    "unauthorized": "No access: the app only opens from inside Telegram."
   },
   "nav": {
     "screener": "Screener",
