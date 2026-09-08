@@ -23,6 +23,7 @@ dotenv.config({ path: join(here, '../../../.env') });
 import { APP_VERSION, EXCHANGES, type ExchangeId } from '@cs/shared';
 
 import { AuthError, DEV_USER, verifyInitData, type TelegramUser } from './auth.js';
+import { startBot } from './bot.js';
 import { apiKeyStatuses, screenerSnapshot } from './mock.js';
 import {
   closePosition,
@@ -264,3 +265,11 @@ await app.listen({ port: PORT, host: '0.0.0.0' });
 app.log.info(
   `API на http://localhost:${PORT} | dev-байпас авторизации: ${DEV_FAKE_USER ? 'ВКЛ' : 'выкл'}`,
 );
+
+// Бот живёт в этом же процессе: пока нагрузка — одно long-polling соединение,
+// отдельный сервис только добавил бы точку отказа.
+if (BOT_TOKEN) {
+  startBot({ token: BOT_TOKEN, publicUrl: process.env.PUBLIC_URL, log: app.log });
+} else {
+  app.log.warn('TELEGRAM_BOT_TOKEN не задан — бот не запущен');
+}

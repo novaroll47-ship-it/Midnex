@@ -2,9 +2,9 @@
 #
 #   powershell -ExecutionPolicy Bypass -File deploy\run-local.ps1
 #
-# Собирает приложение, поднимает его одним процессом, открывает туннель и
-# сразу привязывает адрес к кнопке меню бота. Оба процесса — отдельные от
-# терминала, закрытие окна их не убивает.
+# Собирает приложение, открывает туннель и запускает всё одним процессом,
+# передав ему публичный адрес: приложение само привяжет кнопку меню бота.
+# Процессы отвязаны от терминала — закрытие окна их не убивает.
 #
 # Это временный режим: приложение живёт, только пока включён ПК.
 # Постоянный вариант — deploy/README.md.
@@ -19,7 +19,8 @@ $ApiLog = Join-Path $Tools 'api.log'
 
 Set-Location $Root
 
-# Токен нужен и серверу (проверка подписи), и для привязки кнопки меню.
+# Токен читает само приложение из .env; здесь проверяем, что он вообще есть,
+# иначе бот молча не запустится и это выяснится только в Telegram.
 $BotToken = $env:TELEGRAM_BOT_TOKEN
 if (-not $BotToken -and (Test-Path (Join-Path $Root '.env'))) {
     $line = Select-String -Path (Join-Path $Root '.env') -Pattern '^TELEGRAM_BOT_TOKEN=(.+)$'
@@ -42,20 +43,6 @@ Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" |
 Write-Host '==> Собираю'
 npm run build | Out-Null
 
-Write-Host '==> Запускаю приложение'
-# NODE_ENV=production включает настоящую проверку подписи Telegram:
-# открыть приложение можно будет только из клиента Telegram.
-$env:NODE_ENV = 'production'
-$env:DEV_FAKE_USER = '0'
-$env:PORT = '8787'
-Start-Process -FilePath 'node' -ArgumentList 'apps/api/dist/index.js' `
-    -WorkingDirectory $Root -WindowStyle Hidden `
-    -RedirectStandardOutput $ApiLog -RedirectStandardError "$ApiLog.err"
-
-Start-Sleep -Seconds 4
-$health = Invoke-RestMethod -Uri 'http://localhost:8787/api/health' -TimeoutSec 10
-if (-not $health.ok) { throw 'Приложение не поднялось, смотри .tools/api.log' }
-
 Write-Host '==> Открываю туннель'
 Remove-Item "$TunnelLog*" -Force -ErrorAction SilentlyContinue
 Start-Process -FilePath $Cloudflared `
@@ -72,21 +59,25 @@ foreach ($i in 1..30) {
 }
 if (-not $url) { throw 'Туннель не поднялся, смотри .tools/tunnel.log.err' }
 
-Write-Host "==> Привязываю кнопку бота"
-$body = @{
-    menu_button = @{
-        type    = 'web_app'
-        text    = 'MIDNEX'
-        web_app = @{ url = $url }
-    }
-} | ConvertTo-Json -Depth 5
+Write-Host '==> Запускаю приложение и бота'
+# NODE_ENV=production включает настоящую проверку подписи Telegram:
+# открыть приложение можно будет только из клиента Telegram.
+# PUBLIC_URL нужен боту, чтобы показать кнопку и привязать меню чата.
+$env:NODE_ENV = 'production'
+$env:DEV_FAKE_USER = '0'
+$env:PORT = '8787'
+$env:PUBLIC_URL = $url
+Start-Process -FilePath 'node' -ArgumentList 'apps/api/dist/index.js' `
+    -WorkingDirectory $Root -WindowStyle Hidden `
+    -RedirectStandardOutput $ApiLog -RedirectStandardError "$ApiLog.err"
 
-Invoke-RestMethod -Method Post -Uri "https://api.telegram.org/bot$BotToken/setChatMenuButton" `
-    -ContentType 'application/json; charset=utf-8' -Body $body | Out-Null
+Start-Sleep -Seconds 5
+$health = Invoke-RestMethod -Uri 'http://localhost:8787/api/health' -TimeoutSec 10
+if (-not $health.ok) { throw 'Приложение не поднялось, смотри .tools/api.log' }
 
 Write-Host ''
 Write-Host "Готово: $url"
-Write-Host 'Открывай бота в Telegram и жми кнопку MIDNEX.'
+Write-Host 'Напиши боту /start — он пришлёт кнопку «Открыть MIDNEX».'
 Write-Host ''
 Write-Host 'Вне Telegram приложение отдаёт 401 — так и задумано.'
 Write-Host 'Логи: .tools\api.log и .tools\tunnel.log.err'
