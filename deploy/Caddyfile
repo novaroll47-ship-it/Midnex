@@ -1,0 +1,14 @@
+# Caddy сам выпускает сертификат для {$DOMAIN} и перенаправляет http -> https.
+{$DOMAIN} {
+	encode gzip zstd
+
+	reverse_proxy app:8787 {
+		# Fastify пишет их в логи и использует для CORS-проверок.
+		header_up X-Real-IP {remote_host}
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

@@ -1,0 +1,46 @@
+# Два контейнера: приложение и Caddy перед ним.
+#
+# Caddy сам получает и продлевает сертификат Let's Encrypt — поэтому HTTPS
+# работает без покупки домена и без ручной возни с certbot. Telegram открывает
+# Mini App только по HTTPS, так что это не украшение, а обязательное звено.
+#
+# restart: unless-stopped — сервис поднимается сам после перезагрузки сервера.
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: midnex-app
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: '8787'
+      # Обход авторизации допустим только локально. На сервере — жёстко выкл.
+      DEV_FAKE_USER: '0'
+    # Порт наружу не публикуем: до приложения можно достучаться только
+    # через Caddy, то есть только по HTTPS.
+    expose:
+      - '8787'
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      DOMAIN: ${DOMAIN:?в deploy/.env не задан DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  # Здесь лежат выданные сертификаты. Том обязателен: без него после каждого
+  # перезапуска Caddy заново просит сертификат и упирается в лимиты Let's Encrypt.
+  caddy_data:
+  caddy_config:
