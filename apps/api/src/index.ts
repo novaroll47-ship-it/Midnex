@@ -63,16 +63,28 @@ app.addHook('preHandler', async (req: FastifyRequest, reply: FastifyReply) => {
   if (!req.url.startsWith('/api/') || req.url.startsWith('/api/health')) return;
 
   const initData = req.headers['x-telegram-init-data'];
+
   if (typeof initData === 'string' && initData.length > 0 && BOT_TOKEN) {
     try {
       req.tgUser = verifyInitData(initData, BOT_TOKEN);
       return;
     } catch (err) {
       if (!DEV_FAKE_USER) {
-        req.log.warn({ err: String(err) }, 'initData rejected');
+        req.log.warn({ reason: String(err) }, 'авторизация: initData отклонена');
         return reply.code(401).send({ error: 'unauthorized' });
       }
     }
+  } else if (!DEV_FAKE_USER) {
+    // Различаем «клиент не прислал подпись» и «подпись не сошлась»: снаружи это
+    // одинаковый 401, а причины и лечение у них совершенно разные.
+    req.log.warn(
+      {
+        headerPresent: initData !== undefined,
+        headerLength: typeof initData === 'string' ? initData.length : 0,
+        botTokenConfigured: Boolean(BOT_TOKEN),
+      },
+      'авторизация: подписи Telegram в запросе нет',
+    );
   }
 
   if (DEV_FAKE_USER) {

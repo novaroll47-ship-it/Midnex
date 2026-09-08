@@ -41,22 +41,35 @@ export function verifyInitData(initData: string, botToken: string): TelegramUser
   const hash = params.get('hash');
   if (!hash) throw new AuthError('initData has no hash');
 
-  // В проверочную строку не входят ни hash, ни signature (поле Telegram
-  // добавил для сторонней верификации по Ed25519 — к нашей проверке не относится).
-  const pairs: string[] = [];
-  for (const [key, value] of params.entries()) {
-    if (key === 'hash' || key === 'signature') continue;
-    pairs.push(`${key}=${value}`);
-  }
-  pairs.sort();
+  // Проверочная строка — все полученные поля, кроме hash, отсортированные по ключу.
+  //
+  // Отдельная история с полем signature: его новые клиенты Telegram присылают
+  // для независимой проверки по Ed25519. Часть клиентов считает HMAC вместе с
+  // ним, часть — без него, и ошибка в этом месте выглядит как «приложение не
+  // грузится». Поэтому принимаем оба варианта: подделать любой из них без
+  // токена бота всё равно нельзя.
+  const build = (skipSignature: boolean): string => {
+    const pairs: string[] = [];
+    for (const [key, value] of params.entries()) {
+      if (key === 'hash') continue;
+      if (skipSignature && key === 'signature') continue;
+      pairs.push(`${key}=${value}`);
+    }
+    return pairs.sort().join('\n');
+  };
 
   const secret = createHmac('sha256', 'WebAppData').update(botToken).digest();
-  const expected = createHmac('sha256', secret).update(pairs.join('\n')).digest('hex');
+  const given = Buffer.from(hash, 'hex');
 
-  const a = Buffer.from(expected, 'hex');
-  const b = Buffer.from(hash, 'hex');
-  if (a.length !== b.length || !timingSafeEqual(a, b)) {
-    throw new AuthError('initData signature mismatch');
+  const matches = [build(false), build(true)].some((dataCheckString) => {
+    const expected = createHmac('sha256', secret).update(dataCheckString).digest();
+    return expected.length === given.length && timingSafeEqual(expected, given);
+  });
+
+  if (!matches) {
+    throw new AuthError(
+      `initData signature mismatch (поля: ${[...params.keys()].sort().join(',')})`,
+    );
   }
 
   const authDate = Number(params.get('auth_date') ?? 0);
