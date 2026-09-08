@@ -79,18 +79,36 @@ export function startBot({ token, publicUrl, log }: BotOptions): () => void {
 
   async function handle(update: TgUpdate): Promise<void> {
     const msg = update.message;
-    if (!msg?.text || msg.chat.type !== 'private') return;
+    if (!msg?.text) return;
+
+    log.info(
+      { chatId: msg.chat.id, from: msg.from?.username, text: msg.text.slice(0, 64) },
+      'бот: входящее сообщение',
+    );
+
+    if (msg.chat.type !== 'private') return;
 
     const appUrl = await resolveAppUrl(token, publicUrl);
     const name = msg.from?.first_name ?? 'друг';
 
-    await call(token, 'sendMessage', {
+    const res = await call(token, 'sendMessage', {
       chat_id: msg.chat.id,
       text: greeting(appUrl, name),
       reply_markup: appUrl
         ? { inline_keyboard: [[{ text: 'Открыть MIDNEX', web_app: { url: appUrl } }]] }
         : undefined,
     });
+
+    // Без этой проверки провал отправки выглядит как успех: Telegram отвечает
+    // HTTP 200 с ok:false, и молчание бота становится необъяснимым.
+    if (!res.ok) {
+      log.error(
+        { chatId: msg.chat.id, code: res.error_code, description: res.description },
+        'бот: НЕ СМОГ отправить ответ',
+      );
+      return;
+    }
+    log.info({ chatId: msg.chat.id, appUrl }, 'бот: ответ с кнопкой отправлен');
   }
 
   async function poll(): Promise<void> {
