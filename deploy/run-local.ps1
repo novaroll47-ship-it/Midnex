@@ -1,4 +1,4 @@
-# Запуск на своём ПК с внешним доступом через туннель.
+﻿# Запуск на своём ПК с внешним доступом через туннель.
 #
 #   powershell -ExecutionPolicy Bypass -File deploy\run-local.ps1
 #
