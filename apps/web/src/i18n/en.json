@@ -11,7 +11,8 @@
     "cancel": "Cancel",
     "working": "Working…",
     "needTelegram": "This is a Telegram mini app. Open it with the MIDNEX button in the @midnexbot chat — outside Telegram the data is unavailable.",
-    "unauthorized": "No access: the app only opens from inside Telegram."
+    "unauthorized": "No access: the app only opens from inside Telegram.",
+    "apply": "Apply"
   },
   "nav": {
     "screener": "Screener",
@@ -46,7 +47,22 @@
     "lastUpdate": "Last update: {{time}}",
     "refreshNow": "Refresh",
     "empty": "No pair matches the filters",
-    "watchlistLimit": "Plan limit: up to {{count}} coins for trading"
+    "watchlistLimit": "Plan limit: up to {{count}} coins for trading",
+    "searchCoin": "Search coin",
+    "nothingFound": "No coin matching “{{query}}”",
+    "venuePairTitle": "Exchange pair",
+    "venuePairHint": "Pick two exchanges — the spread is measured between them instead of the best of all eight. Order does not matter: the cheaper side is the long.",
+    "onlyPositiveNet": "Profitable only",
+    "onlyPositiveNetSub": "Hide rows that end up negative after fees",
+    "onlyProfitableFundingSub": "Hide rows where funding works against us",
+    "maxSpread": "Maximum spread",
+    "maxSpreadSub": "Cuts off anomalies: a spread of tens of percent is almost always illiquidity, not an opportunity",
+    "sortBy": "Sort by",
+    "sortSpread": "Spread",
+    "sortNet": "Net profit",
+    "sortName": "Name",
+    "sortPrice": "Price",
+    "resetFilters": "Reset"
   },
   "positions": {
     "title": "Positions",
@@ -77,7 +93,12 @@
     "modeLive": "Live",
     "closeConfirmTitle": "Close this position?",
     "closeConfirmText": "{{symbol}} will be closed with market orders on both exchanges at once. Current result: {{pnl}} USDT.",
-    "closeFailed": "Could not close the position. Try again."
+    "closeFailed": "Could not close the position. Try again.",
+    "sortTime": "Opening time",
+    "sortPnl": "Result",
+    "sortCoin": "Coin",
+    "filterCoin": "Coin",
+    "filterVenue": "Exchange"
   },
   "settings": {
     "botSection": "Bot settings",
@@ -259,6 +280,31 @@
     "unrealized": "Unrealized PnL",
     "saveFailed": "Could not save the change.",
     "editNotAvailable": "While the bot is in paper mode these conditions are applied by the simulator. At M5 the exchange will enforce them.",
-    "unitHour": "h"
+    "unitHour": "h",
+    "fundingTitle": "Funding",
+    "fundingHint": "The long leg pays funding and the short leg receives it, so what matters for a paired position is the difference between the rates. It can wipe out the profit from spread convergence.",
+    "fundingResult": "Accrued while held",
+    "fundingPerPeriod": "Rate per period",
+    "fundingLong": "Rate on the long exchange",
+    "fundingShort": "Rate on the short exchange",
+    "fundingPeriods": "Payments elapsed",
+    "fundingNext": "Next payment",
+    "fundingShortLabel": "Funding"
+  },
+  "coin": {
+    "openTitle": "Open {{base}}",
+    "bestPair": "Best pair right now",
+    "bestPairHint": "Buy where it is cheaper, sell where it is dearer. Below is what survives fees and funding.",
+    "buyOn": "Buy on",
+    "sellOn": "Sell on",
+    "grossSpread": "Gross spread",
+    "fundingDiff": "Funding difference",
+    "netProfit": "Net profit",
+    "pricesByVenue": "Prices by exchange",
+    "cheapest": "cheapest",
+    "dearest": "dearest",
+    "funding": "funding",
+    "updatedAt": "Updated at {{time}}",
+    "fundingNote": "funding is shown per payment period, usually 8 hours"
   }
 }

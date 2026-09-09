@@ -6,6 +6,7 @@ import { BottomNav, type Tab } from './components/BottomNav';
 import { api } from './lib/api';
 import { backButton, initTelegram, isBrowserFallback } from './lib/telegram';
 import { useSettings } from './lib/useSettings';
+import { CoinDetailScreen } from './screens/CoinDetailScreen';
 import { PositionDetailScreen, type PositionView } from './screens/PositionDetail';
 import { PositionsScreen } from './screens/PositionsScreen';
 import { ScreenerScreen } from './screens/ScreenerScreen';
@@ -22,7 +23,8 @@ import { SettingsScreen } from './screens/SettingsScreen';
 type Route =
   | { kind: 'tab' }
   | { kind: 'settings'; view: SettingsView }
-  | { kind: 'position'; id: string; view: PositionView };
+  | { kind: 'position'; id: string; view: PositionView }
+  | { kind: 'coin'; base: string };
 
 export function App() {
   const { t } = useTranslation();
@@ -68,6 +70,7 @@ export function App() {
     if (route.kind === 'position') {
       return t(route.view === 'details' ? 'positions.details' : 'positions.edit');
     }
+    if (route.kind === 'coin') return route.base;
     return undefined;
   }, [route, t]);
 
@@ -85,22 +88,21 @@ export function App() {
         key={`${tab}:${route.kind}`}
       >
         {isBrowserFallback && route.kind === 'tab' && devBypass !== null && (
-          <div className="dev-banner">
-            {devBypass ? t('app.devBanner') : t('app.needTelegram')}
-          </div>
+          <div className="dev-banner">{devBypass ? t('app.devBanner') : t('app.needTelegram')}</div>
         )}
 
         {route.kind === 'settings' && <SettingsDetail view={route.view} settings={settings} />}
 
-        {route.kind === 'position' && (
-          <PositionDetailScreen id={route.id} view={route.view} />
-        )}
+        {route.kind === 'position' && <PositionDetailScreen id={route.id} view={route.view} />}
+
+        {route.kind === 'coin' && <CoinDetailScreen base={route.base} />}
 
         {route.kind === 'tab' && tab === 'screener' && (
           <ScreenerScreen
             plan={settings.data?.plan ?? 'unlimited'}
             minSpreadPct={settings.data?.bot.minSpreadPct}
             refreshMs={settings.data?.bot.refreshMs ?? 1000}
+            onOpenCoin={(base) => setRoute({ kind: 'coin', base })}
             onOpenSettings={() => {
               setTab('settings');
               setRoute({ kind: 'settings', view: 'general' });

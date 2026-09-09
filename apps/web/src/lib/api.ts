@@ -2,9 +2,11 @@
 import type {
   ApiKeyStatus,
   BotSettings,
+  CoinDetail,
   NotificationSettings,
   PlanId,
   Position,
+  PositionFunding,
   PositionsSummary,
   RiskSettings,
   ScreenerSnapshot,
@@ -61,6 +63,7 @@ export interface PositionDetail {
   targetSpreadPct: number | null;
   stopSpreadPct: number | null;
   feesUsdt: number;
+  funding: PositionFunding;
   closeReason: string | null;
   holdTimeoutMinutes: number;
 }
@@ -80,7 +83,9 @@ export const api = {
       '/api/health',
     ),
 
-  screener: (minSpread?: number) => get<ScreenerSnapshot>('/api/screener', { minSpread }),
+  screener: (minSpread?: number, venues?: string) =>
+    get<ScreenerSnapshot>('/api/screener', { minSpread, venues }),
+  coin: (base: string) => get<CoinDetail>(`/api/coin/${encodeURIComponent(base)}`),
 
   settings: () => get<SettingsResponse>('/api/settings'),
   patchBot: (body: Partial<BotSettings>) =>
@@ -93,9 +98,12 @@ export const api = {
 
   positions: (tab: string) => get<PositionsResponse>('/api/positions', { tab }),
   position: (id: string) => get<PositionDetail>(`/api/positions/${id}`),
-  adjustPosition: (id: string, body: { targetSpreadPct?: number | null; stopSpreadPct?: number | null }) =>
-    request<PositionDetail>('PATCH', `/api/positions/${id}`, body),
-  closePosition: (id: string) => request<{ position: Position }>('POST', `/api/positions/${id}/close`),
+  adjustPosition: (
+    id: string,
+    body: { targetSpreadPct?: number | null; stopSpreadPct?: number | null },
+  ) => request<PositionDetail>('PATCH', `/api/positions/${id}`, body),
+  closePosition: (id: string) =>
+    request<{ position: Position }>('POST', `/api/positions/${id}/close`),
 
   sessions: () => get<{ sessions: SessionInfo[] }>('/api/sessions'),
 };

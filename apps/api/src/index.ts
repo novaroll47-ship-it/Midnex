@@ -24,10 +24,12 @@ import { APP_VERSION, EXCHANGES, type ExchangeId } from '@cs/shared';
 
 import { AuthError, DEV_USER, verifyInitData, type TelegramUser } from './auth.js';
 import { startBot } from './bot.js';
-import { apiKeyStatuses, screenerSnapshot } from './mock.js';
+import { coinIcon } from './icons.js';
+import { apiKeyStatuses, coinDetail, screenerSnapshot } from './mock.js';
 import {
   closePosition,
   findPosition,
+  positionFunding,
   roundTripFeesUsdt,
   store,
   summary,
@@ -63,7 +65,10 @@ await app.register(cors, {
 
 /** Авторизация на всех /api/* кроме health. */
 app.addHook('preHandler', async (req: FastifyRequest, reply: FastifyReply) => {
-  if (!req.url.startsWith('/api/') || req.url.startsWith('/api/health')) return;
+  if (!req.url.startsWith('/api/')) return;
+  // Логотипы браузер тянет тегом <img>, а он не умеет слать заголовок с
+  // подписью Telegram. Ничего чувствительного там нет, поэтому пускаем без неё.
+  if (req.url.startsWith('/api/health') || req.url.startsWith('/api/icon/')) return;
 
   const initData = req.headers['x-telegram-init-data'];
 
@@ -114,9 +119,41 @@ app.get('/api/me', async (req) => ({ user: req.tgUser, plan: store.plan }));
 // ---------------------------------------------------------------- скринер
 
 app.get('/api/screener', async (req) => {
-  const q = req.query as { minSpread?: string };
+  const q = req.query as { minSpread?: string; venues?: string };
   const min = q.minSpread !== undefined ? Number(q.minSpread) : undefined;
-  return screenerSnapshot(Number.isFinite(min) ? min : undefined);
+
+  // venues=binance,bybit — считать спред между этими биржами, а не между
+  // лучшими из всех восьми. Неизвестные идентификаторы просто отбрасываем.
+  const valid = new Set(EXCHANGES.map((e) => e.id as string));
+  const venues = (q.venues ?? '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter((v): v is ExchangeId => valid.has(v));
+
+  return screenerSnapshot(
+    Number.isFinite(min) ? min : undefined,
+    venues.length ? venues : undefined,
+  );
+});
+
+app.get('/api/coin/:base', async (req, reply) => {
+  const { base } = req.params as { base: string };
+  const detail = coinDetail(base);
+  if (!detail) return reply.code(404).send({ error: 'not found' });
+  return detail;
+});
+
+app.get('/api/icon/coin/:base', async (req, reply) => {
+  const { base } = req.params as { base: string };
+  const icon = await coinIcon(base, req.log);
+  if (!icon) return reply.code(404).send({ error: 'not found' });
+  return (
+    reply
+      .header('Content-Type', icon.contentType)
+      // Логотипы монет не меняются — пусть браузер держит их у себя.
+      .header('Cache-Control', 'public, max-age=604800, immutable')
+      .send(icon.body)
+  );
 });
 
 // ---------------------------------------------------------------- настройки
@@ -210,6 +247,7 @@ app.get('/api/positions/:id', async (req, reply) => {
     targetSpreadPct: rec.targetSpreadPct,
     stopSpreadPct: rec.stopSpreadPct,
     feesUsdt: roundTripFeesUsdt(rec),
+    funding: positionFunding(rec),
     closeReason: rec.closeReason ?? null,
     holdTimeoutMinutes: store.risk.holdTimeoutMinutes,
   };
@@ -228,7 +266,11 @@ app.patch('/api/positions/:id', async (req, reply) => {
   if (body.stopSpreadPct !== undefined) {
     rec.stopSpreadPct = body.stopSpreadPct === null ? null : Number(body.stopSpreadPct);
   }
-  return { position: toPosition(rec), targetSpreadPct: rec.targetSpreadPct, stopSpreadPct: rec.stopSpreadPct };
+  return {
+    position: toPosition(rec),
+    targetSpreadPct: rec.targetSpreadPct,
+    stopSpreadPct: rec.stopSpreadPct,
+  };
 });
 
 app.post('/api/positions/:id/close', async (req, reply) => {

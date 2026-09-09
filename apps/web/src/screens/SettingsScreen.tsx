@@ -190,9 +190,7 @@ function Row({
   );
 
   if (control || disabled || !onClick) {
-    return (
-      <div className={`list__item${disabled ? ' list__item--disabled' : ''}`}>{content}</div>
-    );
+    return <div className={`list__item${disabled ? ' list__item--disabled' : ''}`}>{content}</div>;
   }
 
   return (

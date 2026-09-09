@@ -154,3 +154,56 @@ export interface SessionInfo {
   current: boolean;
   lastSeenAt: number;
 }
+
+/** Котировка одной монеты на одной бирже — для экрана деталей монеты. */
+export interface VenueQuote {
+  exchange: ExchangeId;
+  price: number;
+  bid: number;
+  ask: number;
+  /** Текущая ставка фандинга, % за период выплаты. */
+  fundingPct: number;
+  /** Время следующей выплаты фандинга, мс epoch. */
+  nextFundingAt: number;
+  updatedAt: number;
+  stale: boolean;
+}
+
+/** Полная картина по монете: цены на всех биржах и лучшая пара для входа. */
+export interface CoinDetail {
+  symbol: string;
+  base: string;
+  name: string;
+  quotes: VenueQuote[];
+  best: {
+    longExchange: ExchangeId;
+    shortExchange: ExchangeId;
+    spreadAbs: number;
+    spreadPct: number;
+    netPct: number;
+    feesPct: number;
+    fundingPct: number;
+  };
+  updatedAt: number;
+}
+
+/**
+ * Фандинг по парной позиции.
+ *
+ * На лонг-ноге фандинг платим мы (при положительной ставке), на шорт-ноге —
+ * получаем. Значение имеет именно разница ставок, а не каждая по отдельности.
+ */
+export interface PositionFunding {
+  /** Ставка на бирже, где открыт лонг, % за период. */
+  longRatePct: number;
+  /** Ставка на бирже, где открыт шорт, % за период. */
+  shortRatePct: number;
+  /** Итог за время удержания, % от объёма. Плюс — в нашу пользу. */
+  netPct: number;
+  /** То же в деньгах. */
+  netUsdt: number;
+  /** Время следующей выплаты, мс epoch. */
+  nextAt: number;
+  /** Сколько выплат уже прошло с момента входа. */
+  periodsElapsed: number;
+}

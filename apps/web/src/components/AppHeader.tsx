@@ -1,28 +1,35 @@
 import { useTranslation } from 'react-i18next';
 
 import { ChevronLeftIcon } from '../icons';
-import { haptic } from '../lib/telegram';
+import { haptic, isTelegram } from '../lib/telegram';
 
 /**
  * Шапка приложения.
  *
- * Гамбургера и кнопки «...» здесь нет намеренно: в Mini App их рисует сам
- * Telegram поверх страницы, и дублировать их — значит получить два ряда
- * одинаковых элементов управления.
+ * Внутри Telegram клиент уже рисует сверху имя мини-приложения и свою кнопку
+ * «назад», поэтому собственные название и стрелку мы там не показываем —
+ * иначе получается два одинаковых заголовка друг под другом. В обычном
+ * браузере этого обрамления нет, и рисуем всё сами.
  */
 export function AppHeader({ title, onBack }: { title?: string; onBack?: () => void }) {
   const { t } = useTranslation();
 
+  const showBrand = !isTelegram && !title;
+  const showBack = Boolean(onBack) && !isTelegram;
+
+  // Внутри Telegram на вкладках показывать нечего — не занимаем экран пустой полосой.
+  if (isTelegram && !title) return null;
+
   return (
     <header className="header">
-      {onBack ? (
+      {showBack ? (
         <button
           className="header__icon-btn"
           type="button"
           aria-label={t('app.back')}
           onClick={() => {
             haptic('tap');
-            onBack();
+            onBack?.();
           }}
         >
           <ChevronLeftIcon size={22} />
@@ -33,7 +40,7 @@ export function AppHeader({ title, onBack }: { title?: string; onBack?: () => vo
 
       <div className="header__title">
         <strong>{title ?? t('app.brand')}</strong>
-        {!title && <span>{t('app.subtitle')}</span>}
+        {showBrand && <span>{t('app.subtitle')}</span>}
       </div>
 
       <span />

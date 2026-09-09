@@ -126,7 +126,10 @@ export function startBot({ token, publicUrl, log }: BotOptions): () => void {
           // 409 — где-то запущен второй экземпляр бота с тем же токеном.
           // Молча продолжать нельзя: два бота будут отвечать по два раза.
           if (res.error_code === 409) {
-            log.error({ description: res.description }, 'бот: конфликт, уже запущен другой экземпляр');
+            log.error(
+              { description: res.description },
+              'бот: конфликт, уже запущен другой экземпляр',
+            );
             stopped = true;
             return;
           }

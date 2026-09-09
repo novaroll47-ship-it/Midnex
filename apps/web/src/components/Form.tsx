@@ -4,7 +4,15 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { CheckIcon, CircleDotIcon, CircleIcon } from '../icons';
 import { haptic } from '../lib/telegram';
 
-export function Section({ title, hint, children }: { title?: string; hint?: string; children: ReactNode }) {
+export function Section({
+  title,
+  hint,
+  children,
+}: {
+  title?: string;
+  hint?: string;
+  children: ReactNode;
+}) {
   return (
     <>
       {title && <div className="section-label">{title}</div>}
@@ -205,9 +213,23 @@ export function NumberRow({
   );
 }
 
-export function InfoRow({ label, value, tone }: { label: string; value: string; tone?: 'green' | 'red' | 'dim' }) {
+export function InfoRow({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: 'green' | 'red' | 'dim';
+}) {
   const color =
-    tone === 'green' ? 'var(--green)' : tone === 'red' ? 'var(--red)' : tone === 'dim' ? 'var(--text-dim)' : undefined;
+    tone === 'green'
+      ? 'var(--green)'
+      : tone === 'red'
+        ? 'var(--red)'
+        : tone === 'dim'
+          ? 'var(--text-dim)'
+          : undefined;
   return (
     <div className="list__item">
       <span className="list__title">{label}</span>

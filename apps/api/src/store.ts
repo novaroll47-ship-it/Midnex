@@ -17,9 +17,12 @@ import {
   type NotificationSettings,
   type PlanId,
   type Position,
+  type PositionFunding,
   type PositionsSummary,
   type RiskSettings,
 } from '@cs/shared';
+
+import { fundingRatePct, nextFundingTime } from './mock.js';
 
 /** Запись о позиции: то, что действительно хранится. Живые цифры считаются при чтении. */
 export interface PositionRecord {
@@ -88,7 +91,7 @@ export const store: Store = {
       shortEntry: 3177.1,
       amount: 0.2,
       leverage: 10,
-      openedAt: now - 54 * 60_000,
+      openedAt: now - 590 * 60_000,
       status: 'open',
       targetSpreadPct: 0.15,
       stopSpreadPct: 2,
@@ -192,4 +195,35 @@ export function closePosition(id: string, reason: PositionRecord['closeReason'] 
   rec.exitSpreadPct = live.currentSpreadPct;
   rec.closeReason = reason;
   return toPosition(rec, at);
+}
+
+/** Интервал выплат фандинга — 8 часов, как у большинства бирж. */
+const FUNDING_INTERVAL_MS = 8 * 60 * 60 * 1000;
+
+/**
+ * Фандинг по парной позиции.
+ *
+ * Лонг платит фандинг при положительной ставке, шорт его получает, поэтому
+ * итог для дельта-нейтральной пары — разница ставок на двух биржах. Это
+ * ровно та величина, которая может съесть прибыль от схождения спреда.
+ */
+export function positionFunding(rec: PositionRecord, at = Date.now()): PositionFunding {
+  const longRatePct = fundingRatePct(rec.base, rec.longExchange, at);
+  const shortRatePct = fundingRatePct(rec.base, rec.shortExchange, at);
+  const perPeriodPct = shortRatePct - longRatePct;
+
+  const end = rec.closedAt ?? at;
+  const periodsElapsed = Math.floor((end - rec.openedAt) / FUNDING_INTERVAL_MS);
+
+  const netPct = perPeriodPct * periodsElapsed;
+  const notional = rec.longEntry * rec.amount;
+
+  return {
+    longRatePct,
+    shortRatePct,
+    netPct,
+    netUsdt: (netPct / 100) * notional,
+    nextAt: nextFundingTime(at),
+    periodsElapsed,
+  };
 }

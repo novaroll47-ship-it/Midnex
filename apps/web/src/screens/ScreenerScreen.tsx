@@ -17,35 +17,61 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { CoinIcon } from '../components/CoinIcon';
-import { Sparkline } from '../components/Sparkline';
+import { ExchangeLogo } from '../components/ExchangeLogo';
+import { Sheet } from '../components/Sheet';
 import {
-  ArrowDownIcon,
-  ArrowUpIcon,
   BoltIcon,
   CheckIcon,
-  ChevronDownIcon,
+  ChevronRightIcon,
   GearIcon,
-  PlusIcon,
+  SearchIcon,
   SlidersIcon,
+  SwapIcon,
+  XIcon,
 } from '../icons';
 import { ApiError, api } from '../lib/api';
 import { haptic } from '../lib/telegram';
 import { usePolling } from '../lib/usePolling';
 
+type SortKey = 'spread' | 'net' | 'name' | 'price';
+
+interface ExtraFilters {
+  onlyPositiveNet: boolean;
+  onlyProfitableFunding: boolean;
+  maxSpreadPct: number;
+  sort: SortKey;
+}
+
+const DEFAULT_EXTRA: ExtraFilters = {
+  onlyPositiveNet: false,
+  onlyProfitableFunding: false,
+  maxSpreadPct: 0,
+  sort: 'spread',
+};
+
 interface Props {
   onOpenSettings: () => void;
+  onOpenCoin: (base: string) => void;
   plan: keyof typeof PLAN_WATCHLIST_LIMIT;
   minSpreadPct?: number;
   refreshMs: number;
 }
 
-export function ScreenerScreen({ onOpenSettings, plan, minSpreadPct, refreshMs }: Props) {
+export function ScreenerScreen({
+  onOpenSettings,
+  onOpenCoin,
+  plan,
+  minSpreadPct,
+  refreshMs,
+}: Props) {
   const { t } = useTranslation();
 
   const [minSpread, setMinSpread] = useState('0.50');
-  const [coinFilter, setCoinFilter] = useState('all');
-  const [venueFilter, setVenueFilter] = useState<'all' | ExchangeId>('all');
+  const [search, setSearch] = useState('');
+  const [venues, setVenues] = useState<ExchangeId[]>([]);
+  const [extra, setExtra] = useState<ExtraFilters>(DEFAULT_EXTRA);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [sheet, setSheet] = useState<'venues' | 'filters' | null>(null);
 
   // Порог берём из настроек бота, но как только пользователь потрогал поле
   // на этом экране — фильтр становится его, и настройки его больше не трогают.
@@ -55,28 +81,50 @@ export function ScreenerScreen({ onOpenSettings, plan, minSpreadPct, refreshMs }
   }, [minSpreadPct]);
 
   const minSpreadNum = Number(minSpread.replace(',', '.')) || 0;
+  const venueKey = venues.join(',');
 
-  const fetcher = useCallback(() => api.screener(minSpreadNum), [minSpreadNum]);
+  const fetcher = useCallback(
+    () => api.screener(minSpreadNum, venueKey || undefined),
+    [minSpreadNum, venueKey],
+  );
   const { data, error, refresh } = usePolling<ScreenerSnapshot>(fetcher, refreshMs);
 
   const rows = data?.rows ?? [];
 
-  const coinOptions = useMemo(() => [...new Set(rows.map((r) => r.base))].sort(), [rows]);
+  const visible = useMemo(() => {
+    const query = search.trim().toLowerCase();
 
-  const visible = useMemo(
-    () =>
-      rows.filter((r) => {
-        if (coinFilter !== 'all' && r.base !== coinFilter) return false;
-        if (
-          venueFilter !== 'all' &&
-          r.longExchange !== venueFilter &&
-          r.shortExchange !== venueFilter
-        )
-          return false;
-        return true;
-      }),
-    [rows, coinFilter, venueFilter],
-  );
+    const filtered = rows.filter((r) => {
+      // Поиск идёт по всем монетам подряд, независимо от величины спреда:
+      // конкретную монету надо находить и когда спред отрицательный.
+      if (query && !r.base.toLowerCase().includes(query) && !r.name.toLowerCase().includes(query))
+        return false;
+      if (extra.onlyPositiveNet && r.netPct <= 0) return false;
+      if (extra.onlyProfitableFunding && r.fundingPct < 0) return false;
+      if (extra.maxSpreadPct > 0 && r.spreadPct > extra.maxSpreadPct) return false;
+      return true;
+    });
+
+    const bySort = (a: SpreadRow, b: SpreadRow) => {
+      switch (extra.sort) {
+        case 'net':
+          return b.netPct - a.netPct;
+        case 'name':
+          return a.base.localeCompare(b.base);
+        case 'price':
+          return b.longPrice - a.longPrice;
+        default:
+          return b.spreadPct - a.spreadPct;
+      }
+    };
+
+    // Отмеченные монеты бот торгует — они всегда наверху, чтобы не искать их
+    // в списке после каждой пересортировки.
+    return filtered.sort((a, b) => {
+      const pinned = Number(selected.has(b.symbol)) - Number(selected.has(a.symbol));
+      return pinned !== 0 ? pinned : bySort(a, b);
+    });
+  }, [rows, search, extra, selected]);
 
   const watchlistLimit = PLAN_WATCHLIST_LIMIT[plan] ?? null;
   const limitReached = watchlistLimit !== null && selected.size >= watchlistLimit;
@@ -98,6 +146,12 @@ export function ScreenerScreen({ onOpenSettings, plan, minSpreadPct, refreshMs }
     : error instanceof ApiError && error.status === 401
       ? t('app.unauthorized')
       : t('app.loadError');
+
+  const extraCount =
+    (extra.onlyPositiveNet ? 1 : 0) +
+    (extra.onlyProfitableFunding ? 1 : 0) +
+    (extra.maxSpreadPct > 0 ? 1 : 0) +
+    (extra.sort !== 'spread' ? 1 : 0);
 
   return (
     <div className="screener">
@@ -124,62 +178,57 @@ export function ScreenerScreen({ onOpenSettings, plan, minSpreadPct, refreshMs }
           </button>
         </section>
 
-        {/* Сводные показатели */}
-        <section className="stats">
+        {/* Две сводные цифры. Частота обновления убрана — она и так написана
+            в подвале, а спарклайн ничего не добавлял к самому числу. */}
+        <section className="stats stats--two">
           <div className="card stat">
             <div className="stat__label">{t('screener.found')}</div>
-            <div className="stat__row">
-              <span className="stat__value num">{data?.opportunities ?? '—'}</span>
-              <Sparkline values={data?.trend ?? []} />
-            </div>
+            <div className="stat__value num">{data?.opportunities ?? '—'}</div>
           </div>
           <div className="card stat">
             <div className="stat__label">{t('screener.avgSpread')}</div>
             <div className="stat__value num">{data ? formatPct(data.avgSpreadPct) : '—'}</div>
           </div>
-          <div className="card stat">
-            <div className="stat__label">{t('screener.refreshRate')}</div>
-            <div className="stat__value num">
-              {t('screener.secondsShort', { count: refreshSeconds })}
-            </div>
-          </div>
         </section>
 
         {/* Фильтры */}
         <section className="filters">
-          <div className="select-wrap">
-            <select
-              className="select"
-              value={coinFilter}
-              onChange={(e) => setCoinFilter(e.target.value)}
-              aria-label={t('screener.allCoins')}
-            >
-              <option value="all">{t('screener.allCoins')}</option>
-              {coinOptions.map((base) => (
-                <option key={base} value={base}>
-                  {base}
-                </option>
-              ))}
-            </select>
-            <ChevronDownIcon className="select-wrap__chevron" />
+          <div className="search">
+            <SearchIcon className="search__icon" />
+            <input
+              className="search__input"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t('screener.searchCoin')}
+              aria-label={t('screener.searchCoin')}
+            />
+            {search && (
+              <button
+                className="search__clear"
+                type="button"
+                onClick={() => setSearch('')}
+                aria-label={t('app.cancel')}
+              >
+                <XIcon size={13} />
+              </button>
+            )}
           </div>
 
-          <div className="select-wrap">
-            <select
-              className="select"
-              value={venueFilter}
-              onChange={(e) => setVenueFilter(e.target.value as 'all' | ExchangeId)}
-              aria-label={t('screener.allExchanges')}
-            >
-              <option value="all">{t('screener.allExchanges')}</option>
-              {EXCHANGES.map((ex) => (
-                <option key={ex.id} value={ex.id}>
-                  {ex.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDownIcon className="select-wrap__chevron" />
-          </div>
+          <button
+            className={`chip${venues.length ? ' chip--active' : ''}`}
+            type="button"
+            onClick={() => setSheet('venues')}
+          >
+            {venues.length === 2 ? (
+              <>
+                <ExchangeLogo id={venues[0]!} size={13} />
+                <SwapIcon size={11} />
+                <ExchangeLogo id={venues[1]!} size={13} />
+              </>
+            ) : (
+              t('screener.allExchanges')
+            )}
+          </button>
 
           <div className="field">
             <span className="field__label">{t('screener.minSpread')}</span>
@@ -194,8 +243,14 @@ export function ScreenerScreen({ onOpenSettings, plan, minSpreadPct, refreshMs }
             />
           </div>
 
-          <button className="icon-btn-square" type="button" aria-label={t('screener.moreFilters')}>
+          <button
+            className={`icon-btn-square${extraCount ? ' icon-btn-square--active' : ''}`}
+            type="button"
+            aria-label={t('screener.moreFilters')}
+            onClick={() => setSheet('filters')}
+          >
             <SlidersIcon size={17} />
+            {extraCount > 0 && <span className="icon-btn-square__badge">{extraCount}</span>}
           </button>
         </section>
 
@@ -218,10 +273,14 @@ export function ScreenerScreen({ onOpenSettings, plan, minSpreadPct, refreshMs }
             checked={selected.has(row.symbol)}
             disabled={!selected.has(row.symbol) && limitReached}
             onToggle={() => toggle(row.symbol)}
+            onOpen={() => onOpenCoin(row.base)}
           />
         ))}
         {visible.length === 0 && (
-          <div className="card empty">{errorText ?? t('screener.empty')}</div>
+          <div className="card empty">
+            {errorText ??
+              (search ? t('screener.nothingFound', { query: search }) : t('screener.empty'))}
+          </div>
         )}
         {watchlistLimit !== null && (
           <div className="watchlist-note">
@@ -246,7 +305,219 @@ export function ScreenerScreen({ onOpenSettings, plan, minSpreadPct, refreshMs }
           {t('screener.refreshNow')}
         </button>
       </section>
+
+      {sheet === 'venues' && (
+        <VenuePairSheet value={venues} onChange={setVenues} onClose={() => setSheet(null)} />
+      )}
+      {sheet === 'filters' && (
+        <FiltersSheet value={extra} onChange={setExtra} onClose={() => setSheet(null)} />
+      )}
     </div>
+  );
+}
+
+/**
+ * Выбор конкретной пары бирж.
+ *
+ * Пока выбрана пара, спред считается именно между этими двумя биржами, а не
+ * между лучшими из восьми — иначе выбор ничего не значил бы.
+ */
+function VenuePairSheet({
+  value,
+  onChange,
+  onClose,
+}: {
+  value: ExchangeId[];
+  onChange: (next: ExchangeId[]) => void;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const [pair, setPair] = useState<ExchangeId[]>(value);
+
+  function pick(id: ExchangeId) {
+    haptic('tap');
+    setPair((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      // Третий выбор вытесняет самый ранний — пара всегда из двух бирж.
+      return prev.length < 2 ? [...prev, id] : [prev[1]!, id];
+    });
+  }
+
+  return (
+    <Sheet
+      title={t('screener.venuePairTitle')}
+      onClose={onClose}
+      footer={
+        <div className="sheet__actions">
+          <button
+            className="btn-outline"
+            type="button"
+            onClick={() => {
+              onChange([]);
+              onClose();
+            }}
+          >
+            {t('screener.allExchanges')}
+          </button>
+          <button
+            className="btn-outline btn-outline--accent"
+            type="button"
+            disabled={pair.length !== 2}
+            onClick={() => {
+              onChange(pair);
+              onClose();
+            }}
+          >
+            {t('app.apply')}
+          </button>
+        </div>
+      }
+    >
+      <p className="hint hint--sheet">{t('screener.venuePairHint')}</p>
+      <div className="venue-grid">
+        {EXCHANGES.map((ex) => {
+          const index = pair.indexOf(ex.id);
+          return (
+            <button
+              key={ex.id}
+              type="button"
+              className={`venue-tile${index >= 0 ? ' venue-tile--on' : ''}`}
+              onClick={() => pick(ex.id)}
+            >
+              <ExchangeLogo id={ex.id} size={20} />
+              <span style={{ color: index >= 0 ? ex.brand : undefined }}>{ex.name}</span>
+              {index >= 0 && <span className="venue-tile__order">{index + 1}</span>}
+            </button>
+          );
+        })}
+      </div>
+    </Sheet>
+  );
+}
+
+function FiltersSheet({
+  value,
+  onChange,
+  onClose,
+}: {
+  value: ExtraFilters;
+  onChange: (next: ExtraFilters) => void;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const [draft, setDraft] = useState(value);
+
+  const sorts: { key: SortKey; label: string }[] = [
+    { key: 'spread', label: t('screener.sortSpread') },
+    { key: 'net', label: t('screener.sortNet') },
+    { key: 'name', label: t('screener.sortName') },
+    { key: 'price', label: t('screener.sortPrice') },
+  ];
+
+  return (
+    <Sheet
+      title={t('screener.moreFilters')}
+      onClose={onClose}
+      footer={
+        <div className="sheet__actions">
+          <button
+            className="btn-outline"
+            type="button"
+            onClick={() => {
+              onChange(DEFAULT_EXTRA);
+              onClose();
+            }}
+          >
+            {t('screener.resetFilters')}
+          </button>
+          <button
+            className="btn-outline btn-outline--accent"
+            type="button"
+            onClick={() => {
+              onChange(draft);
+              onClose();
+            }}
+          >
+            {t('app.apply')}
+          </button>
+        </div>
+      }
+    >
+      <div className="sheet__group">
+        <label className="sheet__row">
+          <span>
+            <span className="sheet__row-title">{t('screener.onlyPositiveNet')}</span>
+            <span className="sheet__row-sub">{t('screener.onlyPositiveNetSub')}</span>
+          </span>
+          <button
+            type="button"
+            className={`switch${draft.onlyPositiveNet ? ' switch--on' : ''}`}
+            role="switch"
+            aria-checked={draft.onlyPositiveNet}
+            onClick={() => setDraft((d) => ({ ...d, onlyPositiveNet: !d.onlyPositiveNet }))}
+          >
+            <span className="switch__knob" />
+          </button>
+        </label>
+
+        <label className="sheet__row">
+          <span>
+            <span className="sheet__row-title">{t('sd.onlyProfitableFunding')}</span>
+            <span className="sheet__row-sub">{t('screener.onlyProfitableFundingSub')}</span>
+          </span>
+          <button
+            type="button"
+            className={`switch${draft.onlyProfitableFunding ? ' switch--on' : ''}`}
+            role="switch"
+            aria-checked={draft.onlyProfitableFunding}
+            onClick={() =>
+              setDraft((d) => ({ ...d, onlyProfitableFunding: !d.onlyProfitableFunding }))
+            }
+          >
+            <span className="switch__knob" />
+          </button>
+        </label>
+
+        <label className="sheet__row">
+          <span>
+            <span className="sheet__row-title">{t('screener.maxSpread')}</span>
+            <span className="sheet__row-sub">{t('screener.maxSpreadSub')}</span>
+          </span>
+          <span className="num-field">
+            <input
+              className="num-field__input num"
+              inputMode="decimal"
+              value={draft.maxSpreadPct || ''}
+              placeholder="—"
+              onChange={(e) =>
+                setDraft((d) => ({
+                  ...d,
+                  maxSpreadPct: Number(e.target.value.replace(',', '.')) || 0,
+                }))
+              }
+            />
+            <span className="num-field__unit">%</span>
+          </span>
+        </label>
+      </div>
+
+      <div className="section-label section-label--sheet">{t('screener.sortBy')}</div>
+      <div className="sheet__group">
+        {sorts.map((s) => (
+          <button
+            key={s.key}
+            type="button"
+            className="sheet__row sheet__row--tap"
+            onClick={() => setDraft((d) => ({ ...d, sort: s.key }))}
+          >
+            <span className="sheet__row-title">{s.label}</span>
+            <span style={{ color: draft.sort === s.key ? 'var(--green)' : 'transparent' }}>
+              <CheckIcon size={14} />
+            </span>
+          </button>
+        ))}
+      </div>
+    </Sheet>
   );
 }
 
@@ -255,11 +526,13 @@ function CoinRow({
   checked,
   disabled,
   onToggle,
+  onOpen,
 }: {
   row: SpreadRow;
   checked: boolean;
   disabled: boolean;
   onToggle: () => void;
+  onOpen: () => void;
 }) {
   const { t } = useTranslation();
   const decimals = priceDecimals(row.longPrice);
@@ -267,7 +540,9 @@ function CoinRow({
   const spreadText = formatDelta(row.spreadAbs, decimals);
 
   return (
-    <div className={`coin-row${row.stale ? ' coin-row--stale' : ''}`}>
+    <div
+      className={`coin-row${row.stale ? ' coin-row--stale' : ''}${checked ? ' coin-row--pinned' : ''}`}
+    >
       <button
         type="button"
         className={`checkbox${checked ? ' checkbox--on' : ''}${disabled ? ' checkbox--disabled' : ''}`}
@@ -279,7 +554,7 @@ function CoinRow({
       </button>
 
       <div className="coin-id">
-        <CoinIcon base={row.base} />
+        <CoinIcon base={row.base} size={24} />
         <div className="coin-id__text">
           <div className="coin-id__ticker">{row.base}</div>
           <div className="coin-id__name">{row.name}</div>
@@ -301,9 +576,14 @@ function CoinRow({
         </div>
       </div>
 
-      <span className="row-plus">
-        <PlusIcon />
-      </span>
+      <button
+        className="row-open"
+        type="button"
+        onClick={onOpen}
+        aria-label={t('coin.openTitle', { base: row.base })}
+      >
+        <ChevronRightIcon size={15} />
+      </button>
     </div>
   );
 }
@@ -329,12 +609,9 @@ function Venue({
   const text = formatPrice(price, decimals);
   return (
     <div className="venue">
-      <div className="venue__name" style={{ color: meta.brand }}>
-        {meta.name}
-        {/* Направление ноги: вверх — где покупаем (дешевле), вниз — где шортим. */}
-        <span className={`venue__side venue__side--${side}`} title={side}>
-          {side === 'long' ? <ArrowUpIcon /> : <ArrowDownIcon />}
-        </span>
+      <div className="venue__name" style={{ color: meta.brand }} title={side}>
+        <ExchangeLogo id={id} size={11} />
+        <span className="venue__label">{meta.name}</span>
       </div>
       <div className={`venue__price num${isLong(text) ? ' venue__price--long' : ''}`}>{text}</div>
       <div className="venue__quote">{t('app.usdt')}</div>

@@ -20,7 +20,7 @@ import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { InfoRow, NumberRow, Section } from '../components/Form';
-import { ExchangeMark } from '../components/ExchangeMark';
+import { ExchangeLogo } from '../components/ExchangeLogo';
 import { ClockIcon, ShieldIcon } from '../icons';
 import { api, type PositionDetail as Detail } from '../lib/api';
 import { usePolling } from '../lib/usePolling';
@@ -50,7 +50,7 @@ function DetailsView({ detail }: { detail: Detail }) {
   const closed = p.status === 'closed';
 
   const grossUsdt = p.pnlUsdt;
-  const netUsdt = grossUsdt - detail.feesUsdt;
+  const netUsdt = grossUsdt - detail.feesUsdt + detail.funding.netUsdt;
 
   return (
     <div className="stack">
@@ -101,6 +101,37 @@ function DetailsView({ detail }: { detail: Detail }) {
         />
       </Section>
 
+      {/* Фандинг — отдельная строка результата: лонг его платит, шорт получает,
+          и разница ставок может съесть всю прибыль от схождения спреда. */}
+      <Section title={t('pd.fundingTitle')} hint={t('pd.fundingHint')}>
+        <InfoRow
+          label={t('pd.fundingResult')}
+          value={`${formatSignedUsdt(detail.funding.netUsdt)} USDT · ${formatSignedPct(detail.funding.netPct, 4)}`}
+          tone={detail.funding.netUsdt >= 0 ? 'green' : 'red'}
+        />
+        <InfoRow
+          label={t('pd.fundingPerPeriod')}
+          value={formatSignedPct(detail.funding.shortRatePct - detail.funding.longRatePct, 4)}
+          tone={detail.funding.shortRatePct - detail.funding.longRatePct >= 0 ? 'green' : 'red'}
+        />
+        <InfoRow
+          label={t('pd.fundingLong')}
+          value={formatSignedPct(detail.funding.longRatePct, 4)}
+        />
+        <InfoRow
+          label={t('pd.fundingShort')}
+          value={formatSignedPct(detail.funding.shortRatePct, 4)}
+        />
+        <InfoRow
+          label={t('pd.fundingPeriods')}
+          value={String(detail.funding.periodsElapsed)}
+          tone="dim"
+        />
+        {!closed && (
+          <InfoRow label={t('pd.fundingNext')} value={clock(detail.funding.nextAt)} tone="dim" />
+        )}
+      </Section>
+
       <Section title={t('pd.result')} hint={t('pd.resultHint')}>
         <InfoRow
           label={t('pd.gross')}
@@ -108,6 +139,11 @@ function DetailsView({ detail }: { detail: Detail }) {
           tone={grossUsdt >= 0 ? 'green' : 'red'}
         />
         <InfoRow label={t('pd.fees')} value={`−${formatUsdt(detail.feesUsdt)} USDT`} tone="dim" />
+        <InfoRow
+          label={t('pd.fundingShortLabel')}
+          value={`${formatSignedUsdt(detail.funding.netUsdt)} USDT`}
+          tone={detail.funding.netUsdt >= 0 ? 'green' : 'red'}
+        />
         <InfoRow
           label={t('pd.net')}
           value={`${formatSignedUsdt(netUsdt)} USDT`}
@@ -242,7 +278,7 @@ function LegRow({
     <div className="list__item">
       <span>
         <span className="list__title" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <ExchangeMark id={exchangeId} />
+          <ExchangeLogo id={exchangeId} />
           {meta.name}
           <span
             className={`badge badge--${tone === 'green' ? 'long' : 'short'}`}

@@ -1,21 +1,12 @@
 /**
- * Иконка монеты. Для монет из макета — узнаваемые фирменные знаки,
- * для всех остальных — монограмма на детерминированном по тикеру фоне.
- * Всё рисуется инлайном: скринер показывает сотни монет, тянуть логотипы
- * по сети на каждую строку нельзя.
+ * Иконка монеты.
+ *
+ * Логотип грузится через наш сервер (`/api/icon/coin/...`), а не напрямую с
+ * чужого CDN: сервер один раз скачивает и кеширует, поэтому иконки работают
+ * даже там, где сторонний CDN недоступен. Если логотипа нет вовсе — рисуем
+ * монограмму на детерминированном по тикеру фоне, чтобы строка не «прыгала».
  */
-
-const BRAND: Record<string, { bg: string; fg: string; glyph: string }> = {
-  BTC: { bg: '#F7931A', fg: '#FFFFFF', glyph: '₿' },
-  ETH: { bg: '#5B6474', fg: '#FFFFFF', glyph: '♦' },
-  XRP: { bg: '#1B1E22', fg: '#FFFFFF', glyph: '✕' },
-  DOGE: { bg: '#C3A634', fg: '#FFFFFF', glyph: 'Ð' },
-  SOL: { bg: '#141A2E', fg: '#14F195', glyph: '≡' },
-  TON: { bg: '#0098EA', fg: '#FFFFFF', glyph: '◆' },
-  PEPE: { bg: '#3D8130', fg: '#FFFFFF', glyph: 'P' },
-  BONK: { bg: '#F5A623', fg: '#FFFFFF', glyph: 'B' },
-  WIF: { bg: '#C8A27A', fg: '#FFFFFF', glyph: 'W' },
-};
+import { useEffect, useState } from 'react';
 
 const PALETTE = [
   '#2A6FDB',
@@ -28,34 +19,69 @@ const PALETTE = [
   '#8A5A9B',
 ];
 
-function fallback(base: string): { bg: string; fg: string; glyph: string } {
+function monogramColor(base: string): string {
   let h = 0;
   for (let i = 0; i < base.length; i++) h = (h * 31 + base.charCodeAt(i)) | 0;
-  const bg = PALETTE[Math.abs(h) % PALETTE.length]!;
-  return { bg, fg: '#FFFFFF', glyph: base.slice(0, 1) };
+  return PALETTE[Math.abs(h) % PALETTE.length]!;
 }
 
+/**
+ * Тикеры, у которых логотипа не нашлось, помним на всё время сессии: иначе
+ * при каждой перерисовке списка браузер снова дёргает заведомо пустой адрес.
+ */
+const known404 = new Set<string>();
+
 export function CoinIcon({ base, size = 28 }: { base: string; size?: number }) {
-  const brand = BRAND[base] ?? fallback(base);
+  const key = base.toLowerCase();
+  const [failed, setFailed] = useState(() => known404.has(key));
+
+  useEffect(() => {
+    setFailed(known404.has(key));
+  }, [key]);
+
+  const style = {
+    width: size,
+    height: size,
+    borderRadius: '50%',
+    flexShrink: 0,
+    display: 'block',
+  } as const;
+
+  if (failed) {
+    return (
+      <span
+        aria-hidden="true"
+        style={{
+          ...style,
+          background: monogramColor(base),
+          color: '#fff',
+          display: 'grid',
+          placeItems: 'center',
+          fontSize: size * 0.44,
+          fontWeight: 700,
+          lineHeight: 1,
+          userSelect: 'none',
+        }}
+      >
+        {base.slice(0, 3)}
+      </span>
+    );
+  }
+
   return (
-    <span
+    <img
+      src={`/api/icon/coin/${encodeURIComponent(key)}`}
+      alt=""
       aria-hidden="true"
-      style={{
-        width: size,
-        height: size,
-        borderRadius: '50%',
-        background: brand.bg,
-        color: brand.fg,
-        display: 'grid',
-        placeItems: 'center',
-        fontSize: size * 0.52,
-        fontWeight: 700,
-        lineHeight: 1,
-        flexShrink: 0,
-        userSelect: 'none',
+      width={size}
+      height={size}
+      loading="lazy"
+      decoding="async"
+      style={{ ...style, background: '#0e1418' }}
+      onError={() => {
+        known404.add(key);
+        setFailed(true);
       }}
-    >
-      {brand.glyph}
-    </span>
+    />
   );
 }

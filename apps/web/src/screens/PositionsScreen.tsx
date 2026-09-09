@@ -1,5 +1,6 @@
 /** Экран «Позиции» — макет docs/mockup-positions.png. */
 import {
+  EXCHANGES,
   exchange,
   formatDate,
   formatPct,
@@ -8,17 +9,20 @@ import {
   formatSignedUsdt,
   formatUsdt,
   priceDecimals,
+  type ExchangeId,
   type Position,
 } from '@cs/shared';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { CoinIcon } from '../components/CoinIcon';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { ExchangeMark } from '../components/ExchangeMark';
+import { ExchangeLogo } from '../components/ExchangeLogo';
+import { Sheet } from '../components/Sheet';
 import {
   ArrowDownIcon,
   ArrowUpIcon,
+  CheckIcon,
   DetailsIcon,
   FilterIcon,
   LinkIcon,
@@ -29,6 +33,15 @@ import { api } from '../lib/api';
 import { usePolling } from '../lib/usePolling';
 
 type PosTab = 'open' | 'closed' | 'history';
+type PosSort = 'pnl' | 'time' | 'coin';
+
+interface PosFilters {
+  coin: string;
+  venue: ExchangeId | null;
+  sort: PosSort;
+}
+
+const NO_FILTERS: PosFilters = { coin: '', venue: null, sort: 'time' };
 
 export function PositionsScreen({
   onOpenDetails,
@@ -40,13 +53,41 @@ export function PositionsScreen({
   const { t } = useTranslation();
   const [tab, setTab] = useState<PosTab>('open');
   const [closing, setClosing] = useState<Position | null>(null);
+  const [filters, setFilters] = useState<PosFilters>(NO_FILTERS);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetcher = useCallback(() => api.positions(tab), [tab]);
   const { data, refresh } = usePolling(fetcher, 1000);
-  const positions = data?.positions ?? [];
   const summary = data?.summary;
+
+  const positions = useMemo(() => {
+    const all = data?.positions ?? [];
+    const query = filters.coin.trim().toLowerCase();
+
+    const filtered = all.filter((p) => {
+      if (query && !p.base.toLowerCase().includes(query) && !p.name.toLowerCase().includes(query))
+        return false;
+      if (filters.venue && p.long.exchange !== filters.venue && p.short.exchange !== filters.venue)
+        return false;
+      return true;
+    });
+
+    return filtered.sort((a, b) => {
+      switch (filters.sort) {
+        case 'pnl':
+          return b.pnlUsdt - a.pnlUsdt;
+        case 'coin':
+          return a.base.localeCompare(b.base);
+        default:
+          return b.openedAt - a.openedAt;
+      }
+    });
+  }, [data, filters]);
+
+  const activeFilters =
+    (filters.coin ? 1 : 0) + (filters.venue ? 1 : 0) + (filters.sort !== 'time' ? 1 : 0);
 
   function confirmClose() {
     if (!closing) return;
@@ -66,9 +107,14 @@ export function PositionsScreen({
     <div className="stack">
       <div className="screen-title">
         <h1>{t('positions.title')}</h1>
-        <button className="btn-ghost" type="button">
+        <button
+          className={`btn-ghost${activeFilters ? ' btn-ghost--on' : ''}`}
+          type="button"
+          onClick={() => setFiltersOpen(true)}
+        >
           <FilterIcon />
           {t('positions.filters')}
+          {activeFilters > 0 && <span className="btn-ghost__badge">{activeFilters}</span>}
         </button>
       </div>
 
@@ -155,6 +201,14 @@ export function PositionsScreen({
         </section>
       )}
 
+      {filtersOpen && (
+        <PositionFiltersSheet
+          value={filters}
+          onChange={setFilters}
+          onClose={() => setFiltersOpen(false)}
+        />
+      )}
+
       {closing && (
         <ConfirmDialog
           title={t('positions.closeConfirmTitle')}
@@ -170,6 +224,100 @@ export function PositionsScreen({
         />
       )}
     </div>
+  );
+}
+
+function PositionFiltersSheet({
+  value,
+  onChange,
+  onClose,
+}: {
+  value: PosFilters;
+  onChange: (next: PosFilters) => void;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const [draft, setDraft] = useState(value);
+
+  const sorts: { key: PosSort; label: string }[] = [
+    { key: 'time', label: t('positions.sortTime') },
+    { key: 'pnl', label: t('positions.sortPnl') },
+    { key: 'coin', label: t('positions.sortCoin') },
+  ];
+
+  return (
+    <Sheet
+      title={t('positions.filters')}
+      onClose={onClose}
+      footer={
+        <div className="sheet__actions">
+          <button
+            className="btn-outline"
+            type="button"
+            onClick={() => {
+              onChange(NO_FILTERS);
+              onClose();
+            }}
+          >
+            {t('screener.resetFilters')}
+          </button>
+          <button
+            className="btn-outline btn-outline--accent"
+            type="button"
+            onClick={() => {
+              onChange(draft);
+              onClose();
+            }}
+          >
+            {t('app.apply')}
+          </button>
+        </div>
+      }
+    >
+      <div className="sheet__group">
+        <label className="sheet__row">
+          <span className="sheet__row-title">{t('positions.filterCoin')}</span>
+          <input
+            className="sheet__input"
+            value={draft.coin}
+            placeholder={t('screener.searchCoin')}
+            onChange={(e) => setDraft((d) => ({ ...d, coin: e.target.value }))}
+          />
+        </label>
+      </div>
+
+      <div className="section-label section-label--sheet">{t('positions.filterVenue')}</div>
+      <div className="venue-grid">
+        {EXCHANGES.map((ex) => (
+          <button
+            key={ex.id}
+            type="button"
+            className={`venue-tile${draft.venue === ex.id ? ' venue-tile--on' : ''}`}
+            onClick={() => setDraft((d) => ({ ...d, venue: d.venue === ex.id ? null : ex.id }))}
+          >
+            <ExchangeLogo id={ex.id} size={20} />
+            <span style={{ color: draft.venue === ex.id ? ex.brand : undefined }}>{ex.name}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="section-label section-label--sheet">{t('screener.sortBy')}</div>
+      <div className="sheet__group">
+        {sorts.map((s) => (
+          <button
+            key={s.key}
+            type="button"
+            className="sheet__row sheet__row--tap"
+            onClick={() => setDraft((d) => ({ ...d, sort: s.key }))}
+          >
+            <span className="sheet__row-title">{s.label}</span>
+            <span style={{ color: draft.sort === s.key ? 'var(--green)' : 'transparent' }}>
+              <CheckIcon size={14} />
+            </span>
+          </button>
+        ))}
+      </div>
+    </Sheet>
   );
 }
 
@@ -227,7 +375,7 @@ function PositionCard({
               LONG
             </span>
             <div className="pos__venue">
-              <ExchangeMark id={p.long.exchange} />
+              <ExchangeLogo id={p.long.exchange} />
               {longMeta.name}
             </div>
           </div>
@@ -245,7 +393,7 @@ function PositionCard({
               SHORT
             </span>
             <div className="pos__venue">
-              <ExchangeMark id={p.short.exchange} />
+              <ExchangeLogo id={p.short.exchange} />
               {shortMeta.name}
             </div>
           </div>

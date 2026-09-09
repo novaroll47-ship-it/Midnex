@@ -183,3 +183,30 @@ export const ClockIcon = (p: P) => (
     <path d="M12 7.5V12l3 2" />
   </Svg>
 );
+
+export const XIcon = (p: P) => (
+  <Svg {...p} size={p.size ?? 18}>
+    <path d="M6 6l12 12M18 6L6 18" />
+  </Svg>
+);
+
+export const SearchIcon = (p: P) => (
+  <Svg {...p} size={p.size ?? 15}>
+    <circle cx="11" cy="11" r="6.5" />
+    <path d="m16 16 4 4" />
+  </Svg>
+);
+
+export const SwapIcon = (p: P) => (
+  <Svg {...p} size={p.size ?? 14}>
+    <path d="M4 8h13l-3-3M20 16H7l3 3" />
+  </Svg>
+);
+
+export const CoinsIcon = (p: P) => (
+  <Svg {...p} size={p.size ?? 15}>
+    <ellipse cx="12" cy="7" rx="7.5" ry="3.2" />
+    <path d="M4.5 7v5c0 1.8 3.4 3.2 7.5 3.2s7.5-1.4 7.5-3.2V7" />
+    <path d="M4.5 12v5c0 1.8 3.4 3.2 7.5 3.2s7.5-1.4 7.5-3.2v-5" />
+  </Svg>
+);

@@ -21,11 +21,11 @@
 
 Compute → Instances → **Create instance**.
 
-| Поле  | Значение                                                    |
-| ----- | ----------------------------------------------------------- |
-| Image | Canonical Ubuntu 24.04                                      |
-| Shape | **VM.Standard.A1.Flex**, 2 OCPU / 12 ГБ (входит в Always Free) |
-| Сеть  | оставить как есть, **Assign a public IPv4 address** — включено |
+| Поле  | Значение                                                                 |
+| ----- | ------------------------------------------------------------------------ |
+| Image | Canonical Ubuntu 24.04                                                   |
+| Shape | **VM.Standard.A1.Flex**, 2 OCPU / 12 ГБ (входит в Always Free)           |
+| Сеть  | оставить как есть, **Assign a public IPv4 address** — включено           |
 | Ключи | Save private key — файл понадобится для входа, второй раз его не скачать |
 
 > Если пишет **Out of host capacity** — это обычная история с бесплатными
