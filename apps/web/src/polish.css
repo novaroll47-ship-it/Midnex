@@ -1,0 +1,284 @@
+/*
+ * Визуальная отделка поверх существующей вёрстки.
+ *
+ * Правило этого файла: он меняет только то, как выглядит, и никогда — сколько
+ * занимает. Ни одной высоты, ширины, отступа или размера шрифта здесь нет.
+ * Сетка строк, высота карточек и плотность таблицы остаются ровно теми же,
+ * что были выверены по утверждённым макетам.
+ *
+ * Слой legacy — тот же, что у app.css, но подключается после него, поэтому
+ * при равной специфичности выигрывает. Утилиты Tailwind по-прежнему сверху.
+ */
+@layer legacy {
+  :root {
+    /* theme.css задаёт body через свою переменную --font и живёт в этом же
+       слое, поэтому базовое правило Tailwind до body не доходит. Переопределяем
+       саму переменную — тогда шрифт подхватывают все, кто на неё ссылается. */
+    --font: 'Onest Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+    /*
+     * Монохромная палитра поверх исходных токенов theme.css.
+     *
+     * Цветными остаются только зелёный и красный, и только там, где цвет
+     * что-то значит: лонг/шорт, прибыль/убыток, фандинг в плюс или минус.
+     * Синий акцент и фирменные цвета бирж убраны — в таблице из двадцати
+     * строк они спорили с цифрами за внимание.
+     */
+    --bg: #0b0b0c;
+    --surface: #141416;
+    --surface-2: #1a1a1d;
+    --surface-3: #202024;
+    --border: #242428;
+    --border-strong: #33333a;
+
+    --text: #e7e7ea;
+    --text-dim: #8b8b93;
+    --text-mute: #5c5c65;
+
+    --green: #3fcf67;
+    --green-soft: rgba(63, 207, 103, 0.11);
+    --green-line: rgba(63, 207, 103, 0.34);
+    --red: #e5484d;
+    --red-soft: rgba(229, 72, 77, 0.11);
+    --red-line: rgba(229, 72, 77, 0.34);
+    --yellow: #d4a01a;
+
+    /* Бывший синий: теперь нейтральное серебро. Кнопки перестают быть
+       акцентом сами по себе и не соревнуются с зелёными цифрами. */
+    --blue: #c3c3cc;
+    --blue-soft: rgba(255, 255, 255, 0.055);
+    --blue-line: rgba(255, 255, 255, 0.14);
+
+    /* Пружинная кривая: движение с массой, а не линейное скольжение. */
+    --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
+
+    /* Двойной бортик одним свойством: внешняя обойма, внутренний блик сверху
+       и мягкая тень под карточкой. Без дополнительной обёртки в разметке —
+       иначе поехали бы размеры. */
+    --bezel:
+      0 0 0 1px rgba(255, 255, 255, 0.045), inset 0 1px 0 rgba(255, 255, 255, 0.06),
+      0 8px 24px -12px rgba(0, 0, 0, 0.9);
+  }
+
+  /* ---------- Карточки ---------- */
+
+  .card,
+  .coin-row {
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.028), transparent 42%);
+    border-color: rgba(255, 255, 255, 0.06);
+    box-shadow: var(--bezel);
+  }
+
+  .coin-row {
+    transition:
+      border-color 400ms var(--ease-spring),
+      background-color 400ms var(--ease-spring);
+  }
+
+  /* Отмеченная монета выделяется светлой рамкой, а не цветом: цвет в этом
+     интерфейсе занят смыслом «прибыль/убыток». */
+  .coin-row--pinned {
+    border-color: rgba(255, 255, 255, 0.22);
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.08),
+      inset 0 1px 0 rgba(255, 255, 255, 0.09),
+      0 8px 26px -14px rgba(0, 0, 0, 0.9);
+  }
+
+  /* ---------- Типографика ---------- */
+
+  .header__title strong {
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+
+  /* Крупные цифры — серебряный градиент. Зелёными они не делаются: это
+     сводные показатели, а не прибыль, и красить их в цвет прибыли значило бы
+     врать глазом. */
+  .stat__value,
+  .stat__value--plain {
+    background: linear-gradient(180deg, #ffffff, rgba(255, 255, 255, 0.62));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    letter-spacing: -0.03em;
+  }
+
+  /* Микро-заголовки в стиле «eyebrow»: разрядка вместо кегля. */
+  .table-head {
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+
+  /* У длинных русских подписей разрядка минимальная: с 0.12em «Объём (каждая
+     сторона)» разъезжался на три строки и ломал выравнивание сетки. */
+  .summary__label,
+  .pos__metric-label {
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+
+  /* У подписи показателя разрядка меньше: с 0.12em «Найдено возможностей»
+     переставало помещаться в строку, и цифры в двух карточках вставали на
+     разной высоте. */
+  .stat__label {
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+
+  .section-label {
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--text-mute);
+  }
+
+  .pos__symbol,
+  .summary__value,
+  .spread__abs {
+    letter-spacing: -0.02em;
+  }
+
+  /* Onest заметно шире системного шрифта. Возвращаем плотность трекингом и
+     небольшим перераспределением колонок — высота строки при этом та же. */
+  .coin-id__ticker {
+    letter-spacing: -0.05em;
+  }
+
+  .coin-id {
+    gap: 6px;
+  }
+
+  .venue__price,
+  .venue__name {
+    letter-spacing: -0.02em;
+  }
+
+  .coin-row,
+  .table-head {
+    --cols: 20px 1.5fr 1.26fr 1.26fr 1.28fr 16px;
+  }
+
+  /* ---------- Кнопки ---------- */
+
+  .btn-ghost,
+  .btn-outline,
+  .segmented__item,
+  .chip {
+    border-radius: var(--radius-pill);
+    transition:
+      transform 500ms var(--ease-spring),
+      background-color 500ms var(--ease-spring),
+      border-color 500ms var(--ease-spring);
+  }
+
+  .btn-ghost:active,
+  .btn-outline:active:not(:disabled),
+  .segmented__item:active,
+  .chip:active {
+    transform: scale(0.975);
+  }
+
+  .logout {
+    transition: transform 500ms var(--ease-spring);
+  }
+
+  .logout:active {
+    transform: scale(0.99);
+  }
+
+  /* ---------- Списки и переключатели ---------- */
+
+  .list__item {
+    transition: background-color 350ms var(--ease-spring);
+  }
+
+  button.list__item:active {
+    background-color: var(--surface-2);
+  }
+
+  .checkbox {
+    transition:
+      background-color 350ms var(--ease-spring),
+      border-color 350ms var(--ease-spring),
+      transform 350ms var(--ease-spring);
+  }
+
+  .checkbox:active {
+    transform: scale(0.9);
+  }
+
+  .venue-tile {
+    transition:
+      border-color 400ms var(--ease-spring),
+      background-color 400ms var(--ease-spring),
+      transform 400ms var(--ease-spring);
+  }
+
+  .venue-tile:active {
+    transform: scale(0.98);
+  }
+
+  /* ---------- Нижняя навигация ---------- */
+
+  .nav {
+    background: rgba(4, 8, 11, 0.86);
+    border-top-color: rgba(255, 255, 255, 0.06);
+  }
+
+  .nav__item {
+    transition: color 350ms var(--ease-spring);
+  }
+
+  .nav__item:active {
+    transform: scale(0.96);
+  }
+
+  /* «Обновить» — действие, а не прибыль. Зелёный здесь читался бы как
+     показатель, поэтому кнопка нейтральная. */
+  .btn-ghost--green {
+    border-color: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.055);
+    color: var(--text);
+  }
+
+  /* Логотипы монет цветные по своей природе. Слегка приглушаем насыщенность,
+     чтобы ряд иконок не спорил с монохромной таблицей, но монета осталась
+     узнаваемой. */
+  .coin-id img,
+  .coin-head img {
+    filter: saturate(0.72) brightness(0.94);
+  }
+
+  /* ---------- Мелочи ---------- */
+
+  .badge {
+    border-radius: var(--radius-pill);
+  }
+
+  .autorefresh {
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 60%);
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+
+  .autorefresh__title {
+    color: var(--text-dim);
+  }
+
+  .autorefresh__icon {
+    color: var(--text-mute);
+  }
+
+  .row-open {
+    transition: color 350ms var(--ease-spring);
+  }
+
+  .coin-row:hover .row-open {
+    color: var(--foreground);
+  }
+
+  .search__input,
+  .input,
+  .select {
+    transition: border-color 400ms var(--ease-spring);
+  }
+}

@@ -6,6 +6,7 @@ import './i18n';
 import './index.css';
 import './theme.css';
 import './app.css';
+import './polish.css';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('#root not found');

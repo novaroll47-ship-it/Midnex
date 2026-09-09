@@ -186,7 +186,6 @@ function OpportunitiesView({ settings }: { settings: SettingsController }) {
             sub={ex.needsPassphrase ? t('sd.needsPassphrase') : undefined}
             checked={enabled.has(ex.id)}
             onToggle={() => toggleExchange(ex.id)}
-            accent={ex.brand}
           />
         ))}
       </Section>
@@ -445,9 +444,7 @@ function ApiKeysView({ settings }: { settings: SettingsController }) {
           return (
             <div className="list__item" key={k.exchange}>
               <span>
-                <span className="list__title" style={{ color: meta.brand }}>
-                  {meta.name}
-                </span>
+                <span className="list__title">{meta.name}</span>
                 <span className="list__sub">
                   {meta.needsPassphrase ? t('sd.keyThreeFields') : t('sd.keyTwoFields')}
                 </span>

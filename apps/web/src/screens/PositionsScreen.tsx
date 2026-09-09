@@ -294,7 +294,7 @@ function PositionFiltersSheet({
             onClick={() => setDraft((d) => ({ ...d, venue: d.venue === ex.id ? null : ex.id }))}
           >
             <ExchangeLogo id={ex.id} size={20} />
-            <span style={{ color: draft.venue === ex.id ? ex.brand : undefined }}>{ex.name}</span>
+            <span>{ex.name}</span>
           </button>
         ))}
       </div>

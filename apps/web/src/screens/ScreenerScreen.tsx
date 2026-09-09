@@ -384,7 +384,7 @@ function VenuePairSheet({
               onClick={() => pick(ex.id)}
             >
               <ExchangeLogo id={ex.id} size={20} />
-              <span style={{ color: index >= 0 ? ex.brand : undefined }}>{ex.name}</span>
+              <span>{ex.name}</span>
               {index >= 0 && <span className="venue-tile__order">{index + 1}</span>}
             </button>
           );
@@ -576,7 +576,7 @@ function CoinRow({
 
 /** Строка длиннее этого не помещается в колонку обычным кеглем. */
 function isLong(text: string): boolean {
-  return text.length > 9;
+  return text.length > 8;
 }
 
 function Venue({
@@ -595,7 +595,7 @@ function Venue({
   const text = formatPrice(price, decimals);
   return (
     <div className="venue">
-      <div className="venue__name" style={{ color: meta.brand }} title={side}>
+      <div className="venue__name" title={side}>
         <ExchangeLogo id={id} size={11} />
         <span className="venue__label">{meta.name}</span>
       </div>

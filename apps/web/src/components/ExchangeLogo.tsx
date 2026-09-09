@@ -7,8 +7,11 @@
  *
  * У Binance, OKX и KuCoin — официальные векторные контуры. У остальных пяти
  * сайты закрыты от автоматического скачивания, поэтому пока стоит плитка с
- * фирменным цветом и кодом биржи; как только появятся их SVG, заменяются
- * добавлением одной строки в LOGOS.
+ * кодом биржи; как только появятся их SVG, заменяются одной строкой в LOGOS.
+ *
+ * Рисуем текущим цветом текста, а не фирменным: палитра интерфейса
+ * монохромная, цвет в ней означает прибыль или убыток. Восемь разноцветных
+ * логотипов в таблице спорили бы с цифрами за внимание.
  */
 import { exchange, type ExchangeId } from '@cs/shared';
 
@@ -31,7 +34,7 @@ export function ExchangeLogo({ id, size = 16 }: { id: ExchangeId; size?: number 
         width={size}
         height={size}
         viewBox="0 0 24 24"
-        fill={meta.brand}
+        fill="currentColor"
         aria-hidden="true"
         style={{ flexShrink: 0, display: 'block' }}
       >
@@ -47,9 +50,9 @@ export function ExchangeLogo({ id, size = 16 }: { id: ExchangeId; size?: number 
         width: size,
         height: size,
         borderRadius: Math.max(3, size * 0.22),
-        background: `${meta.brand}22`,
-        border: `1px solid ${meta.brand}66`,
-        color: meta.brand,
+        background: 'rgba(255, 255, 255, 0.06)',
+        border: '1px solid rgba(255, 255, 255, 0.16)',
+        color: 'inherit',
         display: 'grid',
         placeItems: 'center',
         fontSize: size * 0.5,

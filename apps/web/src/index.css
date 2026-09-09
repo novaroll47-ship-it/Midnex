@@ -12,6 +12,16 @@
 @import 'tailwindcss';
 
 /*
+ * Шрифт лежит в бандле, а не грузится с чужого CDN: внешняя загрузка уже
+ * подводила на этой сети, а без шрифта интерфейс выглядит сломанным.
+ *
+ * Onest, а не Plus Jakarta Sans из скилла: у последнего нет кириллицы, и весь
+ * русский текст свалился бы на системный шрифт — вышла бы каша из двух
+ * гарнитур. У Onest кириллица родная и он не плывёт на подписях в 10px.
+ */
+@import '@fontsource-variable/onest';
+
+/*
  * Токены shadcn, заполненные палитрой MIDNEX.
  *
  * Значения не выдуманы: они сняты пипеткой с утверждённых макетов
@@ -26,43 +36,50 @@
 :root {
   --radius: 12px;
 
-  --background: #010408;
-  --foreground: #e9eef2;
+  /*
+   * Палитра монохромная. Цвет в этом интерфейсе — не украшение, а признак:
+   * зелёный означает лонг и прибыль, красный — шорт и убыток. Всё остальное
+   * серое, поэтому цветная строка сразу читается как значимая. Фирменные
+   * цвета бирж и синие акценты убраны намеренно: они конкурировали за
+   * внимание с цифрами, ради которых экран и open.
+   */
+  --background: #0b0b0c;
+  --foreground: #e7e7ea;
 
-  --card: #0e1418;
-  --card-foreground: #e9eef2;
+  --card: #141416;
+  --card-foreground: #e7e7ea;
 
-  --popover: #0e1418;
-  --popover-foreground: #e9eef2;
+  --popover: #141416;
+  --popover-foreground: #e7e7ea;
 
-  /* Зелёный — цвет прибыли и активного состояния, он же основной акцент. */
-  --primary: #4ecb5c;
-  --primary-foreground: #04160a;
+  /* Основное действие — светлое на тёмном, как кнопка «Торговать» в терминале. */
+  --primary: #e7e7ea;
+  --primary-foreground: #0b0b0c;
 
-  --secondary: #131a1f;
-  --secondary-foreground: #e9eef2;
+  --secondary: #1a1a1d;
+  --secondary-foreground: #e7e7ea;
 
-  --muted: #131a1f;
-  --muted-foreground: #8b98a4;
+  --muted: #1a1a1d;
+  --muted-foreground: #8b8b93;
 
-  --accent: #1a2228;
-  --accent-foreground: #e9eef2;
+  --accent: #202024;
+  --accent-foreground: #e7e7ea;
 
-  --destructive: #f0454b;
+  --destructive: #e5484d;
   --destructive-foreground: #ffffff;
 
-  --border: #1b2329;
-  --input: #273239;
-  --ring: #4ecb5c;
+  --border: #242428;
+  --input: #33333a;
+  --ring: #6e6e78;
 
-  /* --- Доменные цвета, которых нет в наборе shadcn --- */
-  --profit: #4ecb5c;
-  --loss: #f0454b;
-  --warning: #f0b90b;
-  --link: #2f9bff;
-  --text-mute: #5b6772;
-  --border-strong: #273239;
-  --surface-2: #131a1f;
+  /* --- Смысловые цвета: только они и остаются цветными --- */
+  --profit: #3fcf67;
+  --loss: #e5484d;
+  --warning: #d4a01a;
+  --link: #b9b9c2;
+  --text-mute: #5c5c65;
+  --border-strong: #33333a;
+  --surface-2: #1a1a1d;
 }
 
 @theme inline {
@@ -96,10 +113,7 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 
-  /* Шрифт системный: в Telegram он совпадает с интерфейсом клиента. */
-  --font-sans:
-    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, Inter, 'Helvetica Neue',
-    Arial, sans-serif;
+  --font-sans: 'Onest Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 @layer base {
@@ -110,9 +124,30 @@
   body {
     background: var(--background);
     color: var(--foreground);
+    font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -webkit-tap-highlight-color: transparent;
     overscroll-behavior-y: none;
+  }
+
+  /*
+   * Мягкая подсветка сверху — нейтральная, без цветного оттенка: она задаёт
+   * глубину, а не привносит ещё один цвет. Фиксированный слой под контентом,
+   * поэтому прокрутку не перерисовывает.
+   */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0 0 auto;
+    height: 42vh;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(58% 44% at 50% 0%, rgba(255, 255, 255, 0.045), transparent 74%);
+  }
+
+  #root {
+    position: relative;
+    z-index: 1;
   }
 
   /* Цены обновляются раз в секунду — цифры не должны «прыгать» по ширине. */
