@@ -1,7 +1,17 @@
-/** Строительные блоки экранов настроек: переключатели, поля, выбор из списка. */
+/**
+ * Строительные блоки экранов настроек.
+ *
+ * Интерактивные части — Switch, Checkbox и Input из shadcn: они дают
+ * клавиатурную навигацию, корректные состояния для скринридеров и
+ * одинаковое поведение на всех клиентах. Раскладка строки своя: она
+ * выверена по утверждённым макетам.
+ */
 import { useEffect, useState, type ReactNode } from 'react';
 
-import { CheckIcon, CircleDotIcon, CircleIcon } from '../icons';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
+import { CircleDotIcon, CircleIcon } from '../icons';
 import { haptic } from '../lib/telegram';
 
 export function Section({
@@ -42,20 +52,15 @@ export function ToggleRow({
         {sub && <span className="list__sub">{sub}</span>}
       </span>
       <span />
-      <button
-        type="button"
-        className={`switch${value ? ' switch--on' : ''}`}
-        role="switch"
-        aria-checked={value}
-        aria-label={title}
+      <Switch
+        checked={value}
         disabled={disabled}
-        onClick={() => {
+        aria-label={title}
+        onCheckedChange={(next) => {
           haptic('tap');
-          onChange(!value);
+          onChange(next);
         }}
-      >
-        <span className="switch__knob" />
-      </button>
+      />
     </div>
   );
 }
@@ -97,7 +102,7 @@ export function RadioRow({
         {sub && <span className="list__sub">{sub}</span>}
       </span>
       <span />
-      <span style={{ color: selected ? 'var(--green)' : 'var(--text-mute)' }}>
+      <span style={{ color: selected ? 'var(--primary)' : 'var(--text-mute)' }}>
         {selected ? <CircleDotIcon /> : <CircleIcon />}
       </span>
     </button>
@@ -118,14 +123,7 @@ export function CheckRow({
   accent?: string;
 }) {
   return (
-    <button
-      type="button"
-      className="list__item"
-      onClick={() => {
-        haptic('tap');
-        onToggle();
-      }}
-    >
+    <label className="list__item cursor-pointer">
       <span>
         <span className="list__title" style={accent ? { color: accent } : undefined}>
           {title}
@@ -133,10 +131,15 @@ export function CheckRow({
         {sub && <span className="list__sub">{sub}</span>}
       </span>
       <span />
-      <span className={`checkbox${checked ? ' checkbox--on' : ''}`}>
-        <CheckIcon />
-      </span>
-    </button>
+      <Checkbox
+        checked={checked}
+        aria-label={title}
+        onCheckedChange={() => {
+          haptic('tap');
+          onToggle();
+        }}
+      />
+    </label>
   );
 }
 
@@ -190,9 +193,9 @@ export function NumberRow({
         {sub && <span className="list__sub">{sub}</span>}
       </span>
       <span />
-      <span className="num-field">
-        <input
-          className="num-field__input num"
+      <span className="flex items-center gap-1.5">
+        <Input
+          className="num h-[30px] w-[76px] rounded-lg border-[var(--border-strong)] bg-[var(--surface-2)] px-2 text-right text-[13px]"
           inputMode="decimal"
           step={step}
           value={draft}
@@ -207,7 +210,7 @@ export function NumberRow({
           }}
           aria-label={title}
         />
-        {unit && <span className="num-field__unit">{unit}</span>}
+        {unit && <span className="min-w-[30px] text-[11px] text-muted-foreground">{unit}</span>}
       </span>
     </div>
   );
@@ -224,11 +227,11 @@ export function InfoRow({
 }) {
   const color =
     tone === 'green'
-      ? 'var(--green)'
+      ? 'var(--profit)'
       : tone === 'red'
-        ? 'var(--red)'
+        ? 'var(--loss)'
         : tone === 'dim'
-          ? 'var(--text-dim)'
+          ? 'var(--muted-foreground)'
           : undefined;
   return (
     <div className="list__item">

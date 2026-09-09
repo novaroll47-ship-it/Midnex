@@ -15,6 +15,7 @@ import {
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { Button } from '@/components/ui/button';
 import { CoinIcon } from '../components/CoinIcon';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ExchangeLogo } from '../components/ExchangeLogo';
@@ -250,27 +251,24 @@ function PositionFiltersSheet({
       title={t('positions.filters')}
       onClose={onClose}
       footer={
-        <div className="sheet__actions">
-          <button
-            className="btn-outline"
-            type="button"
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            variant="secondary"
             onClick={() => {
               onChange(NO_FILTERS);
               onClose();
             }}
           >
             {t('screener.resetFilters')}
-          </button>
-          <button
-            className="btn-outline btn-outline--accent"
-            type="button"
+          </Button>
+          <Button
             onClick={() => {
               onChange(draft);
               onClose();
             }}
           >
             {t('app.apply')}
-          </button>
+          </Button>
         </div>
       }
     >

@@ -1,0 +1,122 @@
+/*
+ * Порядок слоёв объявляем до импорта Tailwind — иначе неслоёный старый CSS
+ * выигрывает у любых утилит независимо от специфичности, и переезд невозможен.
+ *
+ * legacy стоит выше base: сброс Tailwind не должен стирать фон и рамки у
+ * карточек, свёрстанных по макетам. И ниже utilities: классы Tailwind и
+ * компоненты shadcn обязаны перебивать старую вёрстку, иначе новые экраны
+ * будут выглядеть как старые.
+ */
+@layer theme, base, legacy, components, utilities;
+
+@import 'tailwindcss';
+
+/*
+ * Токены shadcn, заполненные палитрой MIDNEX.
+ *
+ * Значения не выдуманы: они сняты пипеткой с утверждённых макетов
+ * (docs/mockup-*.png) и раньше жили в theme.css. Компоненты shadcn ждут
+ * именно эти имена переменных, поэтому переезд на них не требует
+ * переписывать сами компоненты — достаточно подставить наш цвет.
+ *
+ * Приложение только тёмное, поэтому тёмные значения стоят прямо в :root,
+ * без переключателя класса .dark. Светлая тема появится отдельной темой,
+ * когда будет утверждена.
+ */
+:root {
+  --radius: 12px;
+
+  --background: #010408;
+  --foreground: #e9eef2;
+
+  --card: #0e1418;
+  --card-foreground: #e9eef2;
+
+  --popover: #0e1418;
+  --popover-foreground: #e9eef2;
+
+  /* Зелёный — цвет прибыли и активного состояния, он же основной акцент. */
+  --primary: #4ecb5c;
+  --primary-foreground: #04160a;
+
+  --secondary: #131a1f;
+  --secondary-foreground: #e9eef2;
+
+  --muted: #131a1f;
+  --muted-foreground: #8b98a4;
+
+  --accent: #1a2228;
+  --accent-foreground: #e9eef2;
+
+  --destructive: #f0454b;
+  --destructive-foreground: #ffffff;
+
+  --border: #1b2329;
+  --input: #273239;
+  --ring: #4ecb5c;
+
+  /* --- Доменные цвета, которых нет в наборе shadcn --- */
+  --profit: #4ecb5c;
+  --loss: #f0454b;
+  --warning: #f0b90b;
+  --link: #2f9bff;
+  --text-mute: #5b6772;
+  --border-strong: #273239;
+  --surface-2: #131a1f;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-profit: var(--profit);
+  --color-loss: var(--loss);
+  --color-warning: var(--warning);
+  --color-link: var(--link);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* Шрифт системный: в Telegram он совпадает с интерфейсом клиента. */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, Inter, 'Helvetica Neue',
+    Arial, sans-serif;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: none;
+  }
+
+  /* Цены обновляются раз в секунду — цифры не должны «прыгать» по ширине. */
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+}
