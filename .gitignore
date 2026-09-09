@@ -8,3 +8,6 @@ dist/
 
 # Скачанный бинарник cloudflared для локального туннеля
 .tools/
+
+# Локальные настройки с секретами: токен Supabase живёт здесь, не в .mcp.json
+.claude/settings.local.json
