@@ -16,6 +16,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { CoinIcon } from '../components/CoinIcon';
 import { ExchangeLogo } from '../components/ExchangeLogo';
 import { Sheet } from '../components/Sheet';
@@ -346,22 +348,20 @@ function VenuePairSheet({
   return (
     <Sheet
       title={t('screener.venuePairTitle')}
+      description={t('screener.venuePairHint')}
       onClose={onClose}
       footer={
-        <div className="sheet__actions">
-          <button
-            className="btn-outline"
-            type="button"
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            variant="secondary"
             onClick={() => {
               onChange([]);
               onClose();
             }}
           >
             {t('screener.allExchanges')}
-          </button>
-          <button
-            className="btn-outline btn-outline--accent"
-            type="button"
+          </Button>
+          <Button
             disabled={pair.length !== 2}
             onClick={() => {
               onChange(pair);
@@ -369,11 +369,10 @@ function VenuePairSheet({
             }}
           >
             {t('app.apply')}
-          </button>
+          </Button>
         </div>
       }
     >
-      <p className="hint hint--sheet">{t('screener.venuePairHint')}</p>
       <div className="venue-grid">
         {EXCHANGES.map((ex) => {
           const index = pair.indexOf(ex.id);
@@ -385,7 +384,7 @@ function VenuePairSheet({
               onClick={() => pick(ex.id)}
             >
               <ExchangeLogo id={ex.id} size={20} />
-              <span style={{ color: index >= 0 ? ex.brand : undefined }}>{ex.name}</span>
+              <span>{ex.name}</span>
               {index >= 0 && <span className="venue-tile__order">{index + 1}</span>}
             </button>
           );
@@ -419,27 +418,24 @@ function FiltersSheet({
       title={t('screener.moreFilters')}
       onClose={onClose}
       footer={
-        <div className="sheet__actions">
-          <button
-            className="btn-outline"
-            type="button"
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            variant="secondary"
             onClick={() => {
               onChange(DEFAULT_EXTRA);
               onClose();
             }}
           >
             {t('screener.resetFilters')}
-          </button>
-          <button
-            className="btn-outline btn-outline--accent"
-            type="button"
+          </Button>
+          <Button
             onClick={() => {
               onChange(draft);
               onClose();
             }}
           >
             {t('app.apply')}
-          </button>
+          </Button>
         </div>
       }
     >
@@ -449,15 +445,11 @@ function FiltersSheet({
             <span className="sheet__row-title">{t('screener.onlyPositiveNet')}</span>
             <span className="sheet__row-sub">{t('screener.onlyPositiveNetSub')}</span>
           </span>
-          <button
-            type="button"
-            className={`switch${draft.onlyPositiveNet ? ' switch--on' : ''}`}
-            role="switch"
-            aria-checked={draft.onlyPositiveNet}
-            onClick={() => setDraft((d) => ({ ...d, onlyPositiveNet: !d.onlyPositiveNet }))}
-          >
-            <span className="switch__knob" />
-          </button>
+          <Switch
+            checked={draft.onlyPositiveNet}
+            aria-label={t('screener.onlyPositiveNet')}
+            onCheckedChange={(v) => setDraft((d) => ({ ...d, onlyPositiveNet: v }))}
+          />
         </label>
 
         <label className="sheet__row">
@@ -465,17 +457,11 @@ function FiltersSheet({
             <span className="sheet__row-title">{t('sd.onlyProfitableFunding')}</span>
             <span className="sheet__row-sub">{t('screener.onlyProfitableFundingSub')}</span>
           </span>
-          <button
-            type="button"
-            className={`switch${draft.onlyProfitableFunding ? ' switch--on' : ''}`}
-            role="switch"
-            aria-checked={draft.onlyProfitableFunding}
-            onClick={() =>
-              setDraft((d) => ({ ...d, onlyProfitableFunding: !d.onlyProfitableFunding }))
-            }
-          >
-            <span className="switch__knob" />
-          </button>
+          <Switch
+            checked={draft.onlyProfitableFunding}
+            aria-label={t('sd.onlyProfitableFunding')}
+            onCheckedChange={(v) => setDraft((d) => ({ ...d, onlyProfitableFunding: v }))}
+          />
         </label>
 
         <label className="sheet__row">
@@ -590,7 +576,7 @@ function CoinRow({
 
 /** Строка длиннее этого не помещается в колонку обычным кеглем. */
 function isLong(text: string): boolean {
-  return text.length > 9;
+  return text.length > 8;
 }
 
 function Venue({
@@ -609,7 +595,7 @@ function Venue({
   const text = formatPrice(price, decimals);
   return (
     <div className="venue">
-      <div className="venue__name" style={{ color: meta.brand }} title={side}>
+      <div className="venue__name" title={side}>
         <ExchangeLogo id={id} size={11} />
         <span className="venue__label">{meta.name}</span>
       </div>

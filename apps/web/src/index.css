@@ -1,0 +1,157 @@
+/*
+ * Порядок слоёв объявляем до импорта Tailwind — иначе неслоёный старый CSS
+ * выигрывает у любых утилит независимо от специфичности, и переезд невозможен.
+ *
+ * legacy стоит выше base: сброс Tailwind не должен стирать фон и рамки у
+ * карточек, свёрстанных по макетам. И ниже utilities: классы Tailwind и
+ * компоненты shadcn обязаны перебивать старую вёрстку, иначе новые экраны
+ * будут выглядеть как старые.
+ */
+@layer theme, base, legacy, components, utilities;
+
+@import 'tailwindcss';
+
+/*
+ * Шрифт лежит в бандле, а не грузится с чужого CDN: внешняя загрузка уже
+ * подводила на этой сети, а без шрифта интерфейс выглядит сломанным.
+ *
+ * Onest, а не Plus Jakarta Sans из скилла: у последнего нет кириллицы, и весь
+ * русский текст свалился бы на системный шрифт — вышла бы каша из двух
+ * гарнитур. У Onest кириллица родная и он не плывёт на подписях в 10px.
+ */
+@import '@fontsource-variable/onest';
+
+/*
+ * Токены shadcn, заполненные палитрой MIDNEX.
+ *
+ * Значения не выдуманы: они сняты пипеткой с утверждённых макетов
+ * (docs/mockup-*.png) и раньше жили в theme.css. Компоненты shadcn ждут
+ * именно эти имена переменных, поэтому переезд на них не требует
+ * переписывать сами компоненты — достаточно подставить наш цвет.
+ *
+ * Приложение только тёмное, поэтому тёмные значения стоят прямо в :root,
+ * без переключателя класса .dark. Светлая тема появится отдельной темой,
+ * когда будет утверждена.
+ */
+:root {
+  --radius: 12px;
+
+  /*
+   * Палитра монохромная. Цвет в этом интерфейсе — не украшение, а признак:
+   * зелёный означает лонг и прибыль, красный — шорт и убыток. Всё остальное
+   * серое, поэтому цветная строка сразу читается как значимая. Фирменные
+   * цвета бирж и синие акценты убраны намеренно: они конкурировали за
+   * внимание с цифрами, ради которых экран и open.
+   */
+  --background: #0b0b0c;
+  --foreground: #e7e7ea;
+
+  --card: #141416;
+  --card-foreground: #e7e7ea;
+
+  --popover: #141416;
+  --popover-foreground: #e7e7ea;
+
+  /* Основное действие — светлое на тёмном, как кнопка «Торговать» в терминале. */
+  --primary: #e7e7ea;
+  --primary-foreground: #0b0b0c;
+
+  --secondary: #1a1a1d;
+  --secondary-foreground: #e7e7ea;
+
+  --muted: #1a1a1d;
+  --muted-foreground: #8b8b93;
+
+  --accent: #202024;
+  --accent-foreground: #e7e7ea;
+
+  --destructive: #e5484d;
+  --destructive-foreground: #ffffff;
+
+  --border: #242428;
+  --input: #33333a;
+  --ring: #6e6e78;
+
+  /* --- Смысловые цвета: только они и остаются цветными --- */
+  --profit: #3fcf67;
+  --loss: #e5484d;
+  --warning: #d4a01a;
+  --link: #b9b9c2;
+  --text-mute: #5c5c65;
+  --border-strong: #33333a;
+  --surface-2: #1a1a1d;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-profit: var(--profit);
+  --color-loss: var(--loss);
+  --color-warning: var(--warning);
+  --color-link: var(--link);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans: 'Onest Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: none;
+  }
+
+  /*
+   * Мягкая подсветка сверху — нейтральная, без цветного оттенка: она задаёт
+   * глубину, а не привносит ещё один цвет. Фиксированный слой под контентом,
+   * поэтому прокрутку не перерисовывает.
+   */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0 0 auto;
+    height: 42vh;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(58% 44% at 50% 0%, rgba(255, 255, 255, 0.045), transparent 74%);
+  }
+
+  #root {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Цены обновляются раз в секунду — цифры не должны «прыгать» по ширине. */
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+}

@@ -118,7 +118,7 @@ function VenueRow({
       <span>
         <span className="list__title venue-row__name">
           <ExchangeLogo id={quote.exchange} size={16} />
-          <span style={{ color: meta.brand }}>{meta.name}</span>
+          <span>{meta.name}</span>
           {cheapest && (
             <span className="badge badge--long" style={{ marginTop: 0 }}>
               <ArrowUpIcon size={9} />

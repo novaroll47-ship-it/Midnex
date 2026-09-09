@@ -1,6 +1,15 @@
-/** Модальное подтверждение — для необратимых действий вроде закрытия позиции. */
+/** Подтверждение необратимого действия — например, закрытия позиции. */
 import { useTranslation } from 'react-i18next';
 
+import { Button } from '@/components/ui/button';
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from '@/components/ui/drawer';
 import { haptic } from '../lib/telegram';
 
 export function ConfirmDialog({
@@ -23,17 +32,21 @@ export function ConfirmDialog({
   const { t } = useTranslation();
 
   return (
-    <div className="modal" role="dialog" aria-modal="true" onClick={onCancel}>
-      <div className="modal__sheet" onClick={(e) => e.stopPropagation()}>
-        <div className="modal__title">{title}</div>
-        <div className="modal__text">{message}</div>
-        <div className="modal__actions">
-          <button className="btn-outline" type="button" onClick={onCancel} disabled={busy}>
+    <Drawer open onOpenChange={(open) => !open && !busy && onCancel()}>
+      <DrawerContent className="max-w-[420px] mx-auto border-border bg-background">
+        <DrawerHeader className="px-[13px] text-left">
+          <DrawerTitle className="text-base font-bold">{title}</DrawerTitle>
+          <DrawerDescription className="text-[12.5px] leading-relaxed text-muted-foreground">
+            {message}
+          </DrawerDescription>
+        </DrawerHeader>
+
+        <DrawerFooter className="grid grid-cols-2 gap-2 px-[13px] pb-4">
+          <Button variant="secondary" onClick={onCancel} disabled={busy}>
             {t('app.cancel')}
-          </button>
-          <button
-            className={`btn-outline${danger ? ' btn-outline--danger' : ''}`}
-            type="button"
+          </Button>
+          <Button
+            variant={danger ? 'destructive' : 'default'}
             disabled={busy}
             onClick={() => {
               haptic('warning');
@@ -41,9 +54,9 @@ export function ConfirmDialog({
             }}
           >
             {busy ? t('app.working') : confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DrawerFooter>
+      </DrawerContent>
+    </Drawer>
   );
 }
