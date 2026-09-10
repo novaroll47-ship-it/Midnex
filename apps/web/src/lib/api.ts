@@ -1,6 +1,7 @@
 /** Клиент бэкенда. initData уходит в заголовке — сервер проверяет подпись. */
 import type {
   ApiKeyStatus,
+  ExchangeId,
   BotSettings,
   CoinDetail,
   NotificationSettings,
@@ -77,7 +78,32 @@ export interface SettingsResponse {
   version: string;
 }
 
+export interface FeedStatus {
+  exchange: ExchangeId;
+  mode: 'ws' | 'rest';
+  status: 'starting' | 'live' | 'reconnecting' | 'down';
+  symbols: number;
+  quoted: number;
+  lastUpdateAt: number | null;
+  latencyMs: number | null;
+  reconnects: number;
+  lastError: string | null;
+}
+
+export interface MarketStatus {
+  mode: 'live' | 'mock';
+  live: boolean;
+  engine: {
+    ready: boolean;
+    startedAt: number | null;
+    universeSize: number;
+    feeds: FeedStatus[];
+    fundingUnsupported: ExchangeId[];
+  } | null;
+}
+
 export const api = {
+  marketStatus: () => get<MarketStatus>('/api/market/status'),
   health: () =>
     get<{ ok: boolean; version: string; devFakeUser: boolean; botTokenConfigured: boolean }>(
       '/api/health',

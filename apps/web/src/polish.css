@@ -142,10 +142,28 @@
      небольшим перераспределением колонок — высота строки при этом та же. */
   .coin-id__ticker {
     letter-spacing: -0.05em;
+    /* Семибуквенные тикеры (PIPEDOG) иначе выезжают на соседнюю колонку. */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .coin-id__ticker--md {
+    font-size: 13px;
+  }
+
+  .coin-id__ticker--sm {
+    font-size: 11.5px;
+    letter-spacing: -0.04em;
+  }
+
+  .coin-id__ticker--xs {
+    font-size: 10px;
+    letter-spacing: -0.03em;
   }
 
   .coin-id {
-    gap: 6px;
+    gap: 5px;
   }
 
   .venue__price,
@@ -153,9 +171,11 @@
     letter-spacing: -0.02em;
   }
 
+  /* minmax(0, …) вместо голого fr: у fr минимальная ширина равна содержимому,
+     и одно длинное число в колонке спреда сжимало соседние колонки до «Ku…». */
   .coin-row,
   .table-head {
-    --cols: 20px 1.5fr 1.26fr 1.26fr 1.28fr 16px;
+    --cols: 20px minmax(0, 1.64fr) minmax(0, 1.19fr) minmax(0, 1.19fr) minmax(0, 1.26fr) 16px;
   }
 
   /* ---------- Кнопки ---------- */

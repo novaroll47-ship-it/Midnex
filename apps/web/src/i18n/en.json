@@ -62,7 +62,8 @@
     "sortNet": "Net profit",
     "sortName": "Name",
     "sortPrice": "Price",
-    "resetFilters": "Reset"
+    "resetFilters": "Reset",
+    "fundingUnknown": "net {{value}} ?"
   },
   "positions": {
     "title": "Positions",
@@ -132,7 +133,9 @@
     "aboutTitle": "About",
     "aboutSub": "Version, support, documents",
     "logout": "Log out",
-    "notReady": "This section arrives in a later milestone"
+    "notReady": "This section arrives in a later milestone",
+    "marketTitle": "Exchange data",
+    "marketSub": "Connections, latency, coverage"
   },
   "sd": {
     "botState": "Bot state",
@@ -306,5 +309,26 @@
     "funding": "funding",
     "updatedAt": "Updated at {{time}}",
     "fundingNote": "funding is shown per payment period, usually 8 hours"
+  },
+  "md": {
+    "source": "Data source",
+    "modeLive": "Live quotes from exchanges",
+    "modeMock": "Mock — exchanges not connected",
+    "modeWarming": "Connecting to exchanges, showing mock meanwhile",
+    "universe": "Coins on two or more exchanges",
+    "uptime": "Engine running for",
+    "feeds": "Exchanges",
+    "feedsHint": "WS — quotes stream over WebSocket as they change. REST — all tickers polled every two seconds: slower, but works everywhere.",
+    "status_starting": "connecting",
+    "status_live": "live",
+    "status_reconnecting": "reconnecting",
+    "status_down": "down",
+    "coverage": "{{quoted}} of {{symbols}} quoted",
+    "latency": "latency {{ms}} ms",
+    "reconnects": "reconnects: {{count}}",
+    "fundingUnsupported": "Funding unavailable",
+    "fundingUnsupportedHint": "These exchanges do not return funding rates in bulk. Pairs involving them show net profit without funding, marked with «?».",
+    "suspect": "different assets?",
+    "suspectHint": "The spread is implausibly large: this ticker almost certainly refers to different coins on the two exchanges. Excluded from opportunities."
   }
 }

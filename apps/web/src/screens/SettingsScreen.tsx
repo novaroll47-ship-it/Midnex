@@ -134,6 +134,11 @@ export function SettingsScreen({
 
       <section className="card list">
         <Row
+          title={t('settings.marketTitle')}
+          sub={t('settings.marketSub')}
+          onClick={() => onOpen('market')}
+        />
+        <Row
           title={t('settings.aboutTitle')}
           sub={t('settings.aboutSub')}
           onClick={() => onOpen('about')}

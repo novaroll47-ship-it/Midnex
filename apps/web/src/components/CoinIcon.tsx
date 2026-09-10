@@ -8,21 +8,16 @@
  */
 import { useEffect, useState } from 'react';
 
-const PALETTE = [
-  '#2A6FDB',
-  '#7B5BD6',
-  '#1F9D8C',
-  '#C25A4B',
-  '#4B7BB5',
-  '#9B6A2F',
-  '#3E8E5A',
-  '#8A5A9B',
-];
-
+/**
+ * Монограмма нейтральная, как и вся палитра: оттенок серого зависит от
+ * тикера, чтобы соседние монеты без логотипа всё же различались, но цвета
+ * в ней нет — он в этом интерфейсе означает прибыль или убыток.
+ */
 function monogramColor(base: string): string {
   let h = 0;
   for (let i = 0; i < base.length; i++) h = (h * 31 + base.charCodeAt(i)) | 0;
-  return PALETTE[Math.abs(h) % PALETTE.length]!;
+  const light = 26 + (Math.abs(h) % 5) * 4; // 26–42: тёмное серебро
+  return `hsl(0 0% ${light}%)`;
 }
 
 /**
@@ -54,7 +49,7 @@ export function CoinIcon({ base, size = 28 }: { base: string; size?: number }) {
         style={{
           ...style,
           background: monogramColor(base),
-          color: '#fff',
+          color: 'rgba(255, 255, 255, 0.82)',
           display: 'grid',
           placeItems: 'center',
           fontSize: size * 0.44,
@@ -77,7 +72,7 @@ export function CoinIcon({ base, size = 28 }: { base: string; size?: number }) {
       height={size}
       loading="lazy"
       decoding="async"
-      style={{ ...style, background: '#0e1418' }}
+      style={{ ...style, background: '#1a1a1d' }}
       onError={() => {
         known404.add(key);
         setFailed(true);

@@ -121,10 +121,15 @@ export function ScreenerScreen({
     };
 
     // Отмеченные монеты бот торгует — они всегда наверху, чтобы не искать их
-    // в списке после каждой пересортировки.
+    // в списке после каждой пересортировки. Подозрительные — всегда внизу:
+    // их спред как число смысла не имеет, и любая сортировка по нему
+    // вытолкнула бы их на первое место.
     return filtered.sort((a, b) => {
       const pinned = Number(selected.has(b.symbol)) - Number(selected.has(a.symbol));
-      return pinned !== 0 ? pinned : bySort(a, b);
+      if (pinned !== 0) return pinned;
+      const suspect = Number(Boolean(a.suspect)) - Number(Boolean(b.suspect));
+      if (suspect !== 0) return suspect;
+      return bySort(a, b);
     });
   }, [rows, search, extra, selected]);
 
@@ -540,25 +545,31 @@ function CoinRow({
       </button>
 
       <div className="coin-id">
-        <CoinIcon base={row.base} size={24} />
+        <CoinIcon base={row.base} size={20} />
         <div className="coin-id__text">
-          <div className="coin-id__ticker">{row.base}</div>
-          <div className="coin-id__name">{row.name}</div>
+          <div className={`coin-id__ticker${tickerSizeClass(row.base)}`}>{row.base}</div>
+          {row.name !== row.base && <div className="coin-id__name">{row.name}</div>}
         </div>
       </div>
 
       <Venue id={row.longExchange} price={row.longPrice} decimals={decimals} side="long" />
       <Venue id={row.shortExchange} price={row.shortPrice} decimals={decimals} side="short" />
 
-      <div className={`spread spread--${direction}`}>
+      <div className={`spread spread--${row.suspect ? 'flat' : direction}`}>
         <div className={`spread__abs num${isLong(spreadText) ? ' spread__abs--long' : ''}`}>
-          {spreadText}
+          {row.suspect ? '—' : spreadText}
         </div>
-        <div className="spread__pct num">({formatPct(row.spreadPct)})</div>
-        <div className={`spread__net num${row.netPct > 0 ? ' spread__net--good' : ''}`}>
-          {row.stale
-            ? t('screener.stale')
-            : t('screener.netShort', { value: formatSignedPct(row.netPct) })}
+        <div className="spread__pct num">{row.suspect ? '' : `(${formatPct(row.spreadPct)})`}</div>
+        <div
+          className={`spread__net num${row.netPct > 0 && !row.suspect ? ' spread__net--good' : ''}`}
+        >
+          {row.suspect
+            ? t('md.suspect')
+            : row.stale
+              ? t('screener.stale')
+              : t(row.fundingKnown === false ? 'screener.fundingUnknown' : 'screener.netShort', {
+                  value: formatSignedPct(row.netPct),
+                })}
         </div>
       </div>
 
@@ -574,9 +585,21 @@ function CoinRow({
   );
 }
 
+/**
+ * В макете тикеры были по три-четыре буквы, у реальных бирж — до девяти
+ * (PENGSTOCK, APPSTOCK). Кегль подстраивается под длину, чтобы тикер
+ * помещался целиком; высота строки от этого не меняется.
+ */
+function tickerSizeClass(base: string): string {
+  if (base.length >= 8) return ' coin-id__ticker--xs';
+  if (base.length >= 6) return ' coin-id__ticker--sm';
+  if (base.length >= 5) return ' coin-id__ticker--md';
+  return '';
+}
+
 /** Строка длиннее этого не помещается в колонку обычным кеглем. */
 function isLong(text: string): boolean {
-  return text.length > 8;
+  return text.length > 7;
 }
 
 function Venue({

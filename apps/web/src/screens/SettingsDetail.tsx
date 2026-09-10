@@ -10,10 +10,12 @@ import { APP_VERSION, EXCHANGES, PLAN_WATCHLIST_LIMIT, type PlanId } from '@cs/s
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { ExchangeLogo } from '../components/ExchangeLogo';
 import { CheckRow, InfoRow, NumberRow, RadioRow, Section, ToggleRow } from '../components/Form';
 import { AlertIcon, ShieldIcon } from '../icons';
 import { LANGUAGES, currentLanguage, setLanguage } from '../i18n';
-import { api } from '../lib/api';
+import { api, type MarketStatus } from '../lib/api';
+import { usePolling } from '../lib/usePolling';
 import { platform, tgVersion } from '../lib/telegram';
 import type { SettingsController } from '../lib/useSettings';
 
@@ -27,7 +29,8 @@ export type SettingsView =
   | 'sessions'
   | 'theme'
   | 'language'
-  | 'about';
+  | 'about'
+  | 'market';
 
 export function settingsViewTitle(view: SettingsView, t: (k: string) => string): string {
   const map: Record<SettingsView, string> = {
@@ -41,6 +44,7 @@ export function settingsViewTitle(view: SettingsView, t: (k: string) => string):
     theme: 'settings.themeTitle',
     language: 'settings.languageTitle',
     about: 'settings.aboutTitle',
+    market: 'settings.marketTitle',
   };
   return t(map[view]);
 }
@@ -79,6 +83,8 @@ export function SettingsDetail({
       return <LanguageView />;
     case 'about':
       return <AboutView />;
+    case 'market':
+      return <MarketView />;
   }
 }
 
@@ -559,4 +565,101 @@ function AboutView() {
       <p className="hint">{t('sd.aboutDisclaimer')}</p>
     </div>
   );
+}
+
+// ------------------------------------------------------------- данные бирж
+
+/**
+ * Экран отладки рыночного слоя: что подключено, каким способом, сколько
+ * символов покрыто и с какой задержкой. Нужен, чтобы на приёмке отличить
+ * «биржа молчит» от «код считает неправильно».
+ */
+function MarketView() {
+  const { t } = useTranslation();
+  const { data } = usePolling<MarketStatus>(() => api.marketStatus(), 2000);
+
+  if (!data) return <div className="empty">{t('app.loading')}</div>;
+
+  const engine = data.engine;
+  const sourceText =
+    data.mode === 'mock' ? t('md.modeMock') : data.live ? t('md.modeLive') : t('md.modeWarming');
+  const uptime = engine?.startedAt ? formatUptime(Date.now() - engine.startedAt) : '—';
+
+  return (
+    <div className="stack">
+      <Section title={t('md.source')}>
+        <InfoRow label={t('md.source')} value={sourceText} tone={data.live ? 'green' : 'dim'} />
+        <InfoRow label={t('md.universe')} value={String(engine?.universeSize ?? 0)} />
+        <InfoRow label={t('md.uptime')} value={uptime} tone="dim" />
+      </Section>
+
+      {engine && (
+        <Section title={t('md.feeds')} hint={t('md.feedsHint')}>
+          {engine.feeds.map((f) => {
+            const tone =
+              f.status === 'live'
+                ? 'var(--green)'
+                : f.status === 'down'
+                  ? 'var(--red)'
+                  : 'var(--text-dim)';
+            return (
+              <div className="list__item" key={f.exchange}>
+                <span>
+                  <span
+                    className="list__title"
+                    style={{ display: 'flex', alignItems: 'center', gap: 7 }}
+                  >
+                    <ExchangeLogo id={f.exchange} size={15} />
+                    {EXCHANGES.find((e) => e.id === f.exchange)?.name}
+                    <span className="badge badge--soon" style={{ marginTop: 0 }}>
+                      {f.mode.toUpperCase()}
+                    </span>
+                  </span>
+                  <span className="list__sub num">
+                    {t('md.coverage', { quoted: f.quoted, symbols: f.symbols })}
+                    {f.latencyMs !== null && ` · ${t('md.latency', { ms: f.latencyMs })}`}
+                    {f.reconnects > 0 && ` · ${t('md.reconnects', { count: f.reconnects })}`}
+                  </span>
+                  {f.lastError && (
+                    <span className="list__sub" style={{ color: 'var(--red)' }}>
+                      {f.lastError.slice(0, 90)}
+                    </span>
+                  )}
+                </span>
+                <span />
+                <span className="list__meta" style={{ color: tone }}>
+                  {t(`md.status_${f.status}`)}
+                </span>
+              </div>
+            );
+          })}
+        </Section>
+      )}
+
+      {engine && engine.fundingUnsupported.length > 0 && (
+        <Section title={t('md.fundingUnsupported')} hint={t('md.fundingUnsupportedHint')}>
+          {engine.fundingUnsupported.map((id) => (
+            <div className="list__item" key={id}>
+              <span
+                className="list__title"
+                style={{ display: 'flex', alignItems: 'center', gap: 7 }}
+              >
+                <ExchangeLogo id={id} size={15} />
+                {EXCHANGES.find((e) => e.id === id)?.name}
+              </span>
+            </div>
+          ))}
+        </Section>
+      )}
+    </div>
+  );
+}
+
+function formatUptime(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h > 0) return `${h} ч ${m} мин`;
+  if (m > 0) return `${m} мин ${s % 60} с`;
+  return `${s} с`;
 }

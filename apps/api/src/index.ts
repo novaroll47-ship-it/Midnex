@@ -1,9 +1,9 @@
 /**
  * HTTP-слой приложения.
  *
- * Рыночные данные пока мок (M2 заменит их живыми биржами), а вот настройки
- * и позиции — уже настоящее состояние: их можно менять, и изменения видны
- * во всём приложении. На M3 это состояние переезжает в Postgres.
+ * Рыночные данные — живые, с восьми бирж через @cs/market; мок остаётся
+ * страховкой на время подъёма соединений. Настройки и позиции — состояние
+ * в памяти процесса, на M3 оно переезжает в Postgres.
  */
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -25,7 +25,8 @@ import { APP_VERSION, EXCHANGES, type ExchangeId } from '@cs/shared';
 import { AuthError, DEV_USER, verifyInitData, type TelegramUser } from './auth.js';
 import { startBot } from './bot.js';
 import { coinIcon } from './icons.js';
-import { apiKeyStatuses, coinDetail, screenerSnapshot } from './mock.js';
+import { createMarketSource } from './market.js';
+import { apiKeyStatuses } from './mock.js';
 import {
   closePosition,
   findPosition,
@@ -57,6 +58,10 @@ if (DEV_FAKE_USER && IS_PROD) {
 }
 
 const app = Fastify({ logger: { level: 'info' } });
+
+// Рыночный слой стартует сразу и грузит биржи параллельно с подъёмом HTTP:
+// первые секунды скринер отдаёт мок, потом сам переключается на живое.
+const market = createMarketSource(app.log);
 
 await app.register(cors, {
   origin: IS_PROD ? WEB_ORIGIN : true,
@@ -130,18 +135,27 @@ app.get('/api/screener', async (req) => {
     .map((v) => v.trim())
     .filter((v): v is ExchangeId => valid.has(v));
 
-  return screenerSnapshot(
-    Number.isFinite(min) ? min : undefined,
+  const snapshot = market.snapshot(
+    min !== undefined && Number.isFinite(min) ? min : store.bot.minSpreadPct,
     venues.length ? venues : undefined,
   );
+  // Частота обновления и состояние бота — из настроек, а не из мока.
+  return { ...snapshot, refreshMs: store.bot.refreshMs, botRunning: store.bot.running };
 });
 
 app.get('/api/coin/:base', async (req, reply) => {
   const { base } = req.params as { base: string };
-  const detail = coinDetail(base);
+  const detail = market.coinDetail(base);
   if (!detail) return reply.code(404).send({ error: 'not found' });
   return detail;
 });
+
+/** Состояние подключений к биржам — для экрана отладки в настройках. */
+app.get('/api/market/status', async () => ({
+  mode: market.mode,
+  live: market.live(),
+  engine: market.status(),
+}));
 
 app.get('/api/icon/coin/:base', async (req, reply) => {
   const { base } = req.params as { base: string };
@@ -316,6 +330,10 @@ app.setErrorHandler((err, _req, reply) => {
   if (err instanceof AuthError) return reply.code(401).send({ error: 'unauthorized' });
   app.log.error(err);
   return reply.code(500).send({ error: 'internal' });
+});
+
+app.addHook('onClose', async () => {
+  await market.stop();
 });
 
 await app.listen({ port: PORT, host: '0.0.0.0' });
