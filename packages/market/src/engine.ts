@@ -124,19 +124,51 @@ export class MarketEngine {
     }, 60_000);
   }
 
+  /** Биржи, у которых загрузка рынков уже идёт — чтобы не запускать вторую. */
+  private readonly connecting = new Set<ExchangeId>();
+
+  /**
+   * Жёсткий предел на загрузку рынков. Таймаут ccxt действует на один запрос,
+   * а loadMarkets у некоторых бирж — это цепочка запросов; зависший
+   * посередине держит попытку вечно и блокирует повтор.
+   */
+  private static readonly LOAD_MARKETS_DEADLINE_MS = 45_000;
+
   private async connect(id: ExchangeId): Promise<void> {
-    if (!this.running || this.clients.has(id)) return;
+    if (!this.running || this.clients.has(id) || this.connecting.has(id)) return;
+    this.connecting.add(id);
+    try {
+      await this.connectOnce(id);
+    } finally {
+      this.connecting.delete(id);
+    }
+  }
+
+  private async connectOnce(id: ExchangeId): Promise<void> {
     const { log } = this.opts;
     const client = this.createClient(id);
     const t0 = Date.now();
 
     let markets: VenueMarket[];
     try {
-      await client.loadMarkets();
+      await Promise.race([
+        client.loadMarkets(),
+        new Promise((_, reject) =>
+          setTimeout(
+            () => reject(new Error(`loadMarkets дольше ${MarketEngine.LOAD_MARKETS_DEADLINE_MS}мс`)),
+            MarketEngine.LOAD_MARKETS_DEADLINE_MS,
+          ),
+        ),
+      ]);
       markets = venueMarkets(id, client);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       log.warn(`${id}: не загрузил рынки (${message.slice(0, 100)}) — попробую через минуту`);
+      try {
+        await client.close();
+      } catch {
+        // Клиент мог и не открыть соединений.
+      }
       return;
     }
     if (!this.running) return;
