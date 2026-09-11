@@ -6,18 +6,19 @@
  * поведение приложения; заглушек без функции здесь нет, кроме двух мест,
  * которые честно помечены как недоступные до следующих этапов.
  */
-import { APP_VERSION, EXCHANGES, PLAN_WATCHLIST_LIMIT, type PlanId } from '@cs/shared';
-import { useEffect, useState } from 'react';
+import { APP_VERSION, EXCHANGES, PLAN_WATCHLIST_LIMIT, type PlanId, type SessionInfo } from '@cs/shared';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ExchangeLogo } from '../components/ExchangeLogo';
 import { CheckRow, InfoRow, NumberRow, RadioRow, Section, ToggleRow } from '../components/Form';
-import { AlertIcon, ShieldIcon } from '../icons';
 import { LANGUAGES, currentLanguage, setLanguage } from '../i18n';
 import { api, type MarketStatus } from '../lib/api';
 import { usePolling } from '../lib/usePolling';
-import { platform, tgVersion } from '../lib/telegram';
+import { haptic, platform, tgVersion } from '../lib/telegram';
 import type { SettingsController } from '../lib/useSettings';
+import { ApiKeysView } from './ApiKeysView';
 
 export type SettingsView =
   | 'general'
@@ -82,7 +83,7 @@ export function SettingsDetail({
     case 'language':
       return <LanguageView />;
     case 'about':
-      return <AboutView />;
+      return <AboutView settings={settings} />;
     case 'market':
       return <MarketView />;
   }
@@ -428,90 +429,111 @@ function SubscriptionView({ settings }: { settings: SettingsController }) {
 
 // ------------------------------------------------------------- API-ключи
 
-function ApiKeysView({ settings }: { settings: SettingsController }) {
-  const { t } = useTranslation();
-  const keys = settings.data!.apiKeys;
-
-  return (
-    <div className="stack">
-      <section className="card notice notice--warn">
-        <AlertIcon className="notice__icon" />
-        <span>{t('sd.keysStageWarning')}</span>
-      </section>
-
-      <Section title={t('sd.keysList')}>
-        {keys.map((k) => {
-          const meta = EXCHANGES.find((e) => e.id === k.exchange)!;
-          const status = !k.connected
-            ? t('sd.keyNotConnected')
-            : k.permissionsVerified
-              ? t('sd.keyVerified')
-              : t('sd.keyManual');
-          return (
-            <div className="list__item" key={k.exchange}>
-              <span>
-                <span className="list__title">{meta.name}</span>
-                <span className="list__sub">
-                  {meta.needsPassphrase ? t('sd.keyThreeFields') : t('sd.keyTwoFields')}
-                </span>
-              </span>
-              <span />
-              <span
-                className="list__meta"
-                style={{
-                  color: !k.connected
-                    ? 'var(--text-mute)'
-                    : k.permissionsVerified
-                      ? 'var(--green)'
-                      : 'var(--yellow)',
-                }}
-              >
-                {status}
-              </span>
-            </div>
-          );
-        })}
-      </Section>
-
-      <section className="card notice">
-        <ShieldIcon className="notice__icon" />
-        <span>{t('sd.keysSafetyNote')}</span>
-      </section>
-    </div>
-  );
-}
-
 // ------------------------------------------------------------- сессии
 
 function SessionsView() {
   const { t } = useTranslation();
-  const [sessions, setSessions] = useState<{ platform: string; telegramVersion: string }[]>([]);
+  const [sessions, setSessions] = useState<SessionInfo[] | null>(null);
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     api
       .sessions()
       .then((r) => setSessions(r.sessions))
-      .catch(() => setSessions([{ platform, telegramVersion: tgVersion }]));
+      .catch(() =>
+        setSessions([
+          {
+            id: 'local',
+            platform,
+            telegramVersion: tgVersion,
+            current: true,
+            firstSeenAt: Date.now(),
+            lastSeenAt: Date.now(),
+          },
+        ]),
+      );
   }, []);
+
+  useEffect(load, [load]);
+
+  async function logoutOthers() {
+    setBusy(true);
+    try {
+      await api.logoutOthers();
+      haptic('success');
+      load();
+    } finally {
+      setBusy(false);
+      setConfirm(false);
+    }
+  }
+
+  const others = (sessions ?? []).filter((s) => !s.current).length;
 
   return (
     <div className="stack">
       <Section title={t('sd.currentSession')} hint={t('sd.sessionsHint')}>
-        {sessions.map((s, i) => (
-          <div className="list__item" key={i}>
+        {sessions === null && <div className="empty">{t('app.loading')}</div>}
+        {(sessions ?? []).map((s) => (
+          <div className="list__item" key={s.id}>
             <span>
-              <span className="list__title">{s.platform}</span>
+              <span className="list__title">{platformName(s.platform, t)}</span>
               <span className="list__sub">
-                {t('sd.tgVersion')}: {s.telegramVersion}
+                {t('sd.tgVersion')}: {s.telegramVersion || '—'} · {t('sd.lastSeen')}:{' '}
+                {new Date(s.lastSeenAt).toLocaleString()}
               </span>
             </span>
             <span />
-            <span className="list__meta list__meta--green">{t('sd.sessionCurrent')}</span>
+            <span className={`list__meta${s.current ? ' list__meta--green' : ''}`}>
+              {s.current ? t('sd.sessionCurrent') : t('sd.sessionOther')}
+            </span>
           </div>
         ))}
       </Section>
+
+      <Section hint={t('sd.logoutOthersHint')}>
+        <button
+          type="button"
+          className="list__item"
+          disabled={others === 0 || busy}
+          onClick={() => setConfirm(true)}
+        >
+          <span className="list__title" style={{ color: others ? 'var(--loss)' : 'var(--text-mute)' }}>
+            {t('sd.logoutOthers')}
+          </span>
+          <span />
+          <span className="list__meta">{others}</span>
+        </button>
+      </Section>
+
+      {confirm && (
+        <ConfirmDialog
+          title={t('sd.logoutOthers')}
+          message={t('sd.logoutOthersConfirm', { count: others })}
+          confirmLabel={t('sd.logoutOthers')}
+          danger
+          busy={busy}
+          onConfirm={logoutOthers}
+          onCancel={() => setConfirm(false)}
+        />
+      )}
     </div>
   );
+}
+
+function platformName(p: string, t: (k: string) => string): string {
+  const map: Record<string, string> = {
+    ios: 'iOS',
+    android: 'Android',
+    tdesktop: 'Telegram Desktop',
+    macos: 'macOS',
+    weba: 'Telegram Web',
+    webk: 'Telegram Web',
+    web: t('sd.platformBrowser'),
+    unknown: t('sd.platformUnknown'),
+  };
+  return map[p] ?? p;
 }
 
 // ------------------------------------------------------------- тема и язык
@@ -553,14 +575,20 @@ function LanguageView() {
   );
 }
 
-function AboutView() {
+function AboutView({ settings }: { settings: SettingsController }) {
   const { t } = useTranslation();
+  const storage = settings.data?.storage;
   return (
     <div className="stack">
       <Section title={t('sd.aboutApp')}>
         <InfoRow label={t('sd.version')} value={APP_VERSION} />
         <InfoRow label={t('sd.stage')} value={t('sd.stageValue')} tone="dim" />
         <InfoRow label={t('sd.platform')} value={platform} tone="dim" />
+        <InfoRow
+          label={t('sd.storage')}
+          value={storage === 'postgres' ? t('sd.storagePostgres') : t('sd.storageMemory')}
+          tone={storage === 'postgres' ? 'green' : 'red'}
+        />
       </Section>
       <p className="hint">{t('sd.aboutDisclaimer')}</p>
     </div>

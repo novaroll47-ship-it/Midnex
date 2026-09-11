@@ -20,6 +20,8 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** Машинный код причины из тела ответа, если сервер его дал. */
+    readonly code?: string,
   ) {
     super(message);
   }
@@ -41,7 +43,16 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     body: body ? JSON.stringify(body) : undefined,
   });
 
-  if (!res.ok) throw new ApiError(`${method} ${path} -> ${res.status}`, res.status);
+  if (!res.ok) {
+    // Сервер объясняет отказ в теле — пробрасываем, чтобы экран мог показать причину.
+    let detail: { error?: string; status?: string } = {};
+    try {
+      detail = (await res.json()) as typeof detail;
+    } catch {
+      // Тело не JSON — достаточно кода.
+    }
+    throw new ApiError(detail.error ?? `${method} ${path} -> ${res.status}`, res.status, detail.status);
+  }
   return (await res.json()) as T;
 }
 
@@ -76,6 +87,34 @@ export interface SettingsResponse {
   plan: PlanId;
   apiKeys: ApiKeyStatus[];
   version: string;
+  /** Где лежат данные пользователя: база или память процесса. */
+  storage: 'postgres' | 'memory';
+}
+
+export type ExchangeKeyStatus = 'unverified' | 'ok' | 'invalid' | 'withdrawal_enabled';
+
+/** Ключ биржи так, как его видит интерфейс: без секретов. */
+export interface ExchangeKeyPublic {
+  exchange: ExchangeId;
+  label: string;
+  keyHint: string;
+  status: ExchangeKeyStatus;
+  withdrawalDisabled: boolean | null;
+  permissionsVerified: boolean;
+  lastError: string | null;
+  createdAt: number;
+  lastCheckedAt: number | null;
+}
+
+export interface KeysResponse {
+  encryption: boolean;
+  keys: ExchangeKeyPublic[];
+}
+
+export interface ConnectKeyResponse {
+  key: ExchangeKeyPublic;
+  usdtBalance: number | null;
+  manualChecklist: boolean;
 }
 
 export interface FeedStatus {
@@ -131,5 +170,21 @@ export const api = {
   closePosition: (id: string) =>
     request<{ position: Position }>('POST', `/api/positions/${id}/close`),
 
+  watchlist: () => get<{ bases: string[] }>('/api/watchlist'),
+  setWatchlist: (bases: string[]) => request<{ bases: string[] }>('PUT', '/api/watchlist', { bases }),
+
+  keys: () => get<KeysResponse>('/api/keys'),
+  connectKey: (
+    exchange: ExchangeId,
+    body: { apiKey: string; secret: string; passphrase?: string; label?: string },
+  ) => request<ConnectKeyResponse>('POST', `/api/keys/${exchange}`, body),
+  verifyKey: (exchange: ExchangeId) =>
+    request<{ key: ExchangeKeyPublic; usdtBalance: number | null }>(
+      'POST',
+      `/api/keys/${exchange}/verify`,
+    ),
+  deleteKey: (exchange: ExchangeId) => request<{ ok: true }>('DELETE', `/api/keys/${exchange}`),
+
   sessions: () => get<{ sessions: SessionInfo[] }>('/api/sessions'),
+  logoutOthers: () => request<{ removed: number }>('POST', '/api/sessions/logout-others'),
 };

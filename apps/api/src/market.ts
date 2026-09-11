@@ -19,7 +19,6 @@ import {
 import { MarketEngine, type EngineStatus } from '@cs/market';
 
 import * as mock from './mock.js';
-import { store } from './store.js';
 
 export type MarketMode = 'live' | 'mock';
 
@@ -55,7 +54,9 @@ export function createMarketSource(log: FastifyBaseLogger): MarketSource {
     // настроек — порог для входа в сделку, а не для показа в списке.
     staleMs: Math.max(QUOTE_STALE_MS, 10_000),
     pollMs: 2000,
-    holdMinutes: store.risk.holdTimeoutMinutes,
+    // Горизонт удержания по умолчанию; персональный порог пользователя
+    // применится на M4, когда чистый профит будет считаться под конкретную сделку.
+    holdMinutes: 240,
     httpsProxy: process.env.EXCHANGE_HTTPS_PROXY || undefined,
     log: {
       info: (m) => log.info(`рынок: ${m}`),

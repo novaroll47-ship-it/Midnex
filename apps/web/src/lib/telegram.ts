@@ -30,6 +30,7 @@ interface TelegramWebApp {
   isExpanded: boolean;
   ready(): void;
   expand(): void;
+  close?(): void;
   disableVerticalSwipes?(): void;
   setHeaderColor(color: string): void;
   setBackgroundColor(color: string): void;
@@ -76,11 +77,11 @@ export function initTelegram(): void {
   }
 }
 
-export function haptic(kind: 'tap' | 'success' | 'warning' = 'tap'): void {
+export function haptic(kind: 'tap' | 'success' | 'warning' | 'error' = 'tap'): void {
   const h = webApp?.HapticFeedback;
   if (!h) return;
   if (kind === 'tap') h.selectionChanged();
-  else h.notificationOccurred(kind === 'success' ? 'success' : 'warning');
+  else h.notificationOccurred(kind);
 }
 
 export function backButton(visible: boolean, onClick?: () => void): () => void {
@@ -96,4 +97,10 @@ export function backButton(visible: boolean, onClick?: () => void): () => void {
     if (onClick) bb.offClick(onClick);
     bb.hide();
   };
+}
+
+/** Закрыть мини-приложение; в браузере закрывать нечего — просто перезагрузка. */
+export function closeApp(): void {
+  if (webApp?.close) webApp.close();
+  else window.location.reload();
 }

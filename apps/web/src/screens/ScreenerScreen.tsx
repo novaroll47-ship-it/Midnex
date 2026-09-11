@@ -75,6 +75,19 @@ export function ScreenerScreen({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sheet, setSheet] = useState<'venues' | 'filters' | null>(null);
 
+  // Вотчлист хранится на сервере: закреплённые монеты переживают перезапуск
+  // приложения и одинаковы на телефоне и на компьютере.
+  useEffect(() => {
+    let alive = true;
+    api
+      .watchlist()
+      .then((r) => alive && setSelected(new Set(r.bases)))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   // Порог берём из настроек бота, но как только пользователь потрогал поле
   // на этом экране — фильтр становится его, и настройки его больше не трогают.
   const touched = useRef(false);
@@ -130,7 +143,7 @@ export function ScreenerScreen({
     // их спред как число смысла не имеет, и любая сортировка по нему
     // вытолкнула бы их на первое место.
     return filtered.sort((a, b) => {
-      const pinned = Number(selected.has(b.symbol)) - Number(selected.has(a.symbol));
+      const pinned = Number(selected.has(b.base)) - Number(selected.has(a.base));
       if (pinned !== 0) return pinned;
       // Свежие выше устаревших, подозрительные в конце — как и на сервере;
       // иначе любая сортировка по спреду поднимала бы фантомы наверх.
@@ -144,15 +157,16 @@ export function ScreenerScreen({
   const watchlistLimit = PLAN_WATCHLIST_LIMIT[plan] ?? null;
   const limitReached = watchlistLimit !== null && selected.size >= watchlistLimit;
 
-  function toggle(symbol: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(symbol)) next.delete(symbol);
-      else if (!limitReached) next.add(symbol);
-      else return prev;
-      return next;
-    });
+  function toggle(base: string) {
+    const next = new Set(selected);
+    if (next.has(base)) next.delete(base);
+    else if (!limitReached) next.add(base);
+    else return;
     haptic('tap');
+    // Сначала показываем, потом сохраняем; если сервер отказал (лимит тарифа
+    // или сеть) — возвращаем как было, чтобы экран не расходился с базой.
+    setSelected(next);
+    api.setWatchlist([...next]).catch(() => setSelected(selected));
   }
 
   const refreshSeconds = Math.max(1, Math.round(refreshMs / 1000));
@@ -285,9 +299,9 @@ export function ScreenerScreen({
           <CoinRow
             key={row.symbol}
             row={row}
-            checked={selected.has(row.symbol)}
-            disabled={!selected.has(row.symbol) && limitReached}
-            onToggle={() => toggle(row.symbol)}
+            checked={selected.has(row.base)}
+            disabled={!selected.has(row.base) && limitReached}
+            onToggle={() => toggle(row.base)}
             onOpen={() => onOpenCoin(row.base)}
           />
         ))}

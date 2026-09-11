@@ -4,7 +4,9 @@ import { useTranslation } from 'react-i18next';
 
 import { ChevronRightIcon, LogoutIcon } from '../icons';
 import { LANGUAGES, currentLanguage } from '../i18n';
-import { haptic } from '../lib/telegram';
+import { api } from '../lib/api';
+import { closeApp, haptic } from '../lib/telegram';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import type { SettingsController } from '../lib/useSettings';
 import type { SettingsView } from './SettingsDetail';
 
@@ -17,6 +19,20 @@ export function SettingsScreen({
 }) {
   const { t } = useTranslation();
   const [sounds, setSounds] = useState(true);
+  const [logoutAsk, setLogoutAsk] = useState(false);
+  const [logoutBusy, setLogoutBusy] = useState(false);
+
+  // Личность в мини-приложении даёт Telegram, «выйти» из неё нельзя. Что
+  // можно — забыть остальные устройства и закрыть приложение.
+  async function logout() {
+    setLogoutBusy(true);
+    try {
+      await api.logoutOthers();
+    } catch {
+      // Сеть упала — приложение всё равно закрываем, как просили.
+    }
+    closeApp();
+  }
 
   const data = settings.data;
   const connectedKeys = (data?.apiKeys ?? []).filter((k) => k.connected).length;
@@ -145,10 +161,22 @@ export function SettingsScreen({
         />
       </section>
 
-      <button className="logout" type="button">
+      <button className="logout" type="button" onClick={() => setLogoutAsk(true)}>
         {t('settings.logout')}
         <LogoutIcon />
       </button>
+
+      {logoutAsk && (
+        <ConfirmDialog
+          title={t('settings.logout')}
+          message={t('settings.logoutConfirm')}
+          confirmLabel={t('settings.logout')}
+          danger
+          busy={logoutBusy}
+          onConfirm={logout}
+          onCancel={() => setLogoutAsk(false)}
+        />
+      )}
     </div>
   );
 }

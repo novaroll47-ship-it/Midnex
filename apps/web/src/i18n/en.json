@@ -135,7 +135,8 @@
     "logout": "Log out",
     "notReady": "This section arrives in a later milestone",
     "marketTitle": "Exchange data",
-    "marketSub": "Connections, latency, coverage"
+    "marketSub": "Connections, latency, coverage",
+    "logoutConfirm": "All other devices will be forgotten and the app will close. Sign back in via Telegram — no password needed."
   },
   "sd": {
     "botState": "Bot state",
@@ -220,7 +221,6 @@
     "plan_limited_sub": "Trade a list of up to 10 coins",
     "plan_unlimited": "Unlimited",
     "plan_unlimited_sub": "Trade with no cap on the coin list",
-    "keysStageWarning": "Key intake turns on at stage M3, together with AES-256 encryption and permission checks. Accepting trading keys before that is unsafe, so there is no input form here yet.",
     "keysList": "Exchanges",
     "keyNotConnected": "Not connected",
     "keyVerified": "Permissions verified",
@@ -228,8 +228,8 @@
     "keyTwoFields": "API key + secret",
     "keyThreeFields": "API key + secret + passphrase",
     "keysSafetyNote": "The key must allow futures trading only, with withdrawals disabled and an IP whitelist pinned to the server address.",
-    "currentSession": "Current session",
-    "sessionsHint": "Full sign-in history arrives with the database at stage M3.",
+    "currentSession": "Devices",
+    "sessionsHint": "A session is a device the app was opened from. Telegram vouches for your identity, so there is no password here.",
     "tgVersion": "Telegram version",
     "sessionCurrent": "Active",
     "theme": "Theme",
@@ -239,11 +239,21 @@
     "aboutApp": "Application",
     "version": "Version",
     "stage": "Stage",
-    "stageValue": "M1 — interface on mock data",
+    "stageValue": "M3 — storage, exchange keys, sessions",
     "platform": "Platform",
     "aboutDisclaimer": "This app does not provide investment advice. Leveraged futures trading carries a risk of losing funds.",
     "on": "On",
-    "off": "Off"
+    "off": "Off",
+    "lastSeen": "Last activity",
+    "sessionOther": "Other device",
+    "logoutOthers": "End other sessions",
+    "logoutOthersHint": "This device stays; the others are forgotten and reappear on their next open.",
+    "logoutOthersConfirm": "{{count}} session(s) will be ended. Continue?",
+    "platformBrowser": "Browser",
+    "platformUnknown": "Unknown",
+    "storage": "Storage",
+    "storagePostgres": "Database",
+    "storageMemory": "Process memory"
   },
   "pd": {
     "instrument": "Instrument",
@@ -330,5 +340,38 @@
     "fundingUnsupportedHint": "These exchanges do not return funding rates in bulk. Pairs involving them show net profit without funding, marked with «?».",
     "suspect": "different assets?",
     "suspectHint": "The spread is implausibly large: this ticker almost certainly refers to different coins on the two exchanges. Excluded from opportunities."
+  },
+  "keys": {
+    "encryptionOff": "The server has no encryption key configured (KEY_ENCRYPTION_KEY). Accepting keys is disabled — they must never be stored in plain text.",
+    "listHint": "Tap an exchange to connect a key, re-check it or remove it. Secrets are encrypted with AES-256-GCM and never sent back to the app.",
+    "key": "Key",
+    "statusWithdrawal": "Withdrawal enabled — rejected",
+    "statusInvalid": "Error",
+    "statusUnverified": "Unverified",
+    "formHint": "Create a key in the exchange dashboard with futures trading rights only. The server checks it by reading the balance and — where the exchange allows — the permissions.",
+    "pasteKey": "Paste API key",
+    "pasteSecret": "Paste secret",
+    "pastePassphrase": "Passphrase set when creating the key",
+    "label": "Name (optional)",
+    "labelPlaceholder": "e.g. “main”",
+    "connect": "Connect",
+    "checking": "Checking…",
+    "verify": "Check again",
+    "remove": "Remove",
+    "replace": "Enter another key",
+    "checkedAt": "Checked",
+    "connected": "Key accepted",
+    "balance": "Futures balance",
+    "withdrawalRejected": "This key can withdraw funds. It was not saved. Create a new key without withdrawal rights and connect that one.",
+    "failed": "Failed",
+    "checklistTitle": "Key requirements",
+    "checklist": {
+      "noWithdraw": "Withdrawal permission is off.",
+      "futuresOnly": "Only futures trading (USDT-M / linear) is allowed. Spot and margin are not needed.",
+      "ipWhitelist": "IP whitelist is set to the app server address.",
+      "separateKey": "The key was created for this app only and is used nowhere else."
+    },
+    "autoChecked": "This exchange exposes key permissions via API: a key with withdrawal enabled is rejected automatically.",
+    "manualOnly": "This exchange does not expose key permissions via API. Check the items above yourself — the app cannot confirm them."
   }
 }

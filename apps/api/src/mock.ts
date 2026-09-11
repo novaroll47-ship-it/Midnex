@@ -12,7 +12,6 @@ import {
   DEFAULT_TAKER_PCT,
   EXCHANGES,
   ROUND_TRIP_LEGS,
-  type ApiKeyStatus,
   type CoinDetail,
   type ExchangeId,
   type ScreenerSnapshot,
@@ -201,15 +200,4 @@ export function coinDetail(base: string): CoinDetail | undefined {
     },
     updatedAt: now,
   };
-}
-
-export function apiKeyStatuses(): ApiKeyStatus[] {
-  // M1: пять «подключённых» ключей, как на макете настроек.
-  const connected: ExchangeId[] = ['binance', 'bybit', 'okx', 'kucoin', 'gate'];
-  return EXCHANGES.map((e) => ({
-    exchange: e.id,
-    connected: connected.includes(e.id),
-    permissionsVerified: connected.includes(e.id) && e.canQueryKeyPermissions,
-    withdrawalDisabled: connected.includes(e.id) ? (e.canQueryKeyPermissions ? true : null) : null,
-  }));
 }

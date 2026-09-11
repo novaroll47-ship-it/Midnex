@@ -163,6 +163,7 @@ export interface SessionInfo {
   platform: string;
   telegramVersion: string;
   current: boolean;
+  firstSeenAt: number;
   lastSeenAt: number;
 }
 
