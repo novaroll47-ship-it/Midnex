@@ -47,6 +47,18 @@ const MAX_PLAUSIBLE_SPREAD_PCT = 20;
  */
 const REST_ONLY: ReadonlySet<ExchangeId> = new Set<ExchangeId>(['kucoin']);
 
+/** Какие типы рынков грузить при loadMarkets — только линейные перпетуалы. */
+const MARKET_SCOPE: Record<ExchangeId, Record<string, unknown>> = {
+  binance: { fetchMarkets: ['linear'] },
+  bybit: { fetchMarkets: ['linear'] },
+  okx: { fetchMarkets: ['swap'] },
+  mexc: { fetchMarkets: ['swap'] },
+  bitget: { fetchMarkets: ['swap'] },
+  bingx: { fetchMarkets: ['swap'] },
+  gate: { fetchMarkets: { types: ['swap'] } },
+  kucoin: {},
+};
+
 export interface EngineOptions {
   exchanges: ExchangeId[];
   /** Котировка старше этого — не участвует в расчёте. */
@@ -88,63 +100,88 @@ export class MarketEngine {
 
   // ---------------------------------------------------------------- жизненный цикл
 
+  /** Рынки каждой биржи по отдельности — из них пересобирается вселенная. */
+  private readonly marketsByExchange = new Map<ExchangeId, VenueMarket[]>();
+  private retryTimer: ReturnType<typeof setInterval> | null = null;
+  private running = false;
+
+  /**
+   * Каждая биржа подключается независимо. Ждать все восемь разом нельзя:
+   * одна зависшая держала бы весь запуск, а на сервере такое случается
+   * регулярно. Вселенная пересобирается по мере прихода бирж; те, что не
+   * загрузились, пробуются снова раз в минуту.
+   */
   async start(): Promise<void> {
-    const { log } = this.opts;
     this.startedAt = Date.now();
+    this.running = true;
 
-    // Рынки грузим параллельно: Gate отвечает по 15 секунд, ждать его
-    // последовательно — терять полминуты на старте.
-    const loaded = await Promise.all(
-      this.opts.exchanges.map(async (id) => {
-        const client = this.createClient(id);
-        try {
-          const t0 = Date.now();
-          await client.loadMarkets();
-          const markets = venueMarkets(id, client);
-          log.info(`${id}: рынков ${markets.length} за ${Date.now() - t0}мс`);
-          this.clients.set(id, client);
-          return markets;
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          log.warn(`${id}: не загрузил рынки (${message.slice(0, 100)}) — биржа пропущена`);
-          return [] as VenueMarket[];
-        }
-      }),
-    );
+    await Promise.all(this.opts.exchanges.map((id) => this.connect(id)));
 
-    this.universe = buildUniverse(loaded.flat());
-    log.info(`вселенная: ${this.universe.byBase.size} монет минимум на двух биржах`);
-
-    const perExchange = new Map<ExchangeId, VenueMarket[]>();
-    for (const list of this.universe.byBase.values()) {
-      for (const m of list) {
-        const arr = perExchange.get(m.exchange) ?? [];
-        arr.push(m);
-        perExchange.set(m.exchange, arr);
+    this.retryTimer = setInterval(() => {
+      for (const id of this.opts.exchanges) {
+        if (!this.clients.has(id)) void this.connect(id);
       }
-    }
+    }, 60_000);
+  }
 
-    for (const [id, client] of this.clients) {
-      const markets = perExchange.get(id) ?? [];
-      const feed = new Feed({
-        exchange: id,
-        client,
-        markets,
-        pollMs: this.opts.pollMs,
-        log,
-        onQuote: (market, quote) => this.onQuote(market, quote),
-      });
-      this.feeds.set(id, feed);
-      feed.start();
-    }
+  private async connect(id: ExchangeId): Promise<void> {
+    if (!this.running || this.clients.has(id)) return;
+    const { log } = this.opts;
+    const client = this.createClient(id);
+    const t0 = Date.now();
 
-    this.funding = new FundingTracker(this.clients, perExchange, log);
+    let markets: VenueMarket[];
+    try {
+      await client.loadMarkets();
+      markets = venueMarkets(id, client);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      log.warn(`${id}: не загрузил рынки (${message.slice(0, 100)}) — попробую через минуту`);
+      return;
+    }
+    if (!this.running) return;
+
+    log.info(`${id}: рынков ${markets.length} за ${Date.now() - t0}мс`);
+    this.clients.set(id, client);
+    this.marketsByExchange.set(id, markets);
+    this.rebuildUniverse();
+
+    // Поток следит за всеми рынками своей биржи, а не только за теми, что
+    // сейчас во вселенной: когда позже подключится ещё одна биржа, часть монет
+    // станет «общей», и их котировки уже должны быть под рукой.
+    const feed = new Feed({
+      exchange: id,
+      client,
+      markets,
+      pollMs: this.opts.pollMs,
+      log,
+      onQuote: (market, quote) => this.onQuote(market, quote),
+    });
+    this.feeds.set(id, feed);
+    feed.start();
+
+    // Фандинг-трекер один на всех; при появлении новой биржи пересоздаём —
+    // это дешёвый REST-опрос раз в минуту.
+    this.funding?.stop();
+    this.funding = new FundingTracker(this.clients, this.marketsByExchange, log);
     this.funding.start();
-    this.ready = true;
+
+    // Готовы, когда есть хотя бы две биржи — до того сравнивать не с чем.
+    if (!this.ready && this.clients.size >= 2) {
+      this.ready = true;
+      log.info(`вселенная: ${this.universe.byBase.size} монет минимум на двух биржах`);
+    }
+  }
+
+  private rebuildUniverse(): void {
+    this.universe = buildUniverse([...this.marketsByExchange.values()].flat());
   }
 
   async stop(): Promise<void> {
+    this.running = false;
     this.ready = false;
+    if (this.retryTimer) clearInterval(this.retryTimer);
+    this.retryTimer = null;
     this.funding?.stop();
     await Promise.all([...this.feeds.values()].map((f) => f.stop()));
     this.feeds.clear();
@@ -161,9 +198,11 @@ export class MarketEngine {
       timeout: 30_000,
       options: {
         defaultType: 'swap',
-        // Нам нужны только перпетуалы; опционы и спот Gate грузит отдельными
-        // запросами, и именно опционы у неё отваливаются по таймауту.
-        ...(id === 'gate' ? { fetchMarkets: { types: ['swap'] } } : {}),
+        // Грузим только линейные перпетуалы. Спот, обратные контракты и
+        // опционы нам не нужны, а каждый из них — отдельный запрос, и именно
+        // они отваливаются по таймауту на слабой сети. Формат опции у бирж
+        // разный; лишнюю ccxt просто не замечает.
+        ...MARKET_SCOPE[id],
       },
       ...(this.opts.httpsProxy ? { httpsProxy: this.opts.httpsProxy } : {}),
     });
@@ -265,6 +304,11 @@ export class MarketEngine {
     const fundingPct = fundingKnown ? (fShort - fLong) * periods : 0;
 
     const suspect = Math.abs(spreadPct) > MAX_PLAUSIBLE_SPREAD_PCT;
+
+    // Числа округляем до того, что вообще имеет смысл показывать: цена с
+    // 17 знаками после запятой раздувает JSON вдвое и ничего не добавляет.
+    const r6 = (v: number) => Number(v.toPrecision(8));
+    const r4 = (v: number) => Math.round(v * 10_000) / 10_000;
     if (suspect && !this.reportedSuspects.has(base)) {
       this.reportedSuspects.add(base);
       this.opts.log.warn(
@@ -279,14 +323,14 @@ export class MarketEngine {
       base,
       name: coinName(base),
       longExchange: long.market.exchange,
-      longPrice,
+      longPrice: r6(longPrice),
       shortExchange: short.market.exchange,
-      shortPrice,
-      spreadAbs,
-      spreadPct,
-      netPct: spreadPct - feesPct + fundingPct,
-      fundingPct,
-      feesPct,
+      shortPrice: r6(shortPrice),
+      spreadAbs: r6(spreadAbs),
+      spreadPct: r4(spreadPct),
+      netPct: r4(spreadPct - feesPct + fundingPct),
+      fundingPct: r4(fundingPct),
+      feesPct: r4(feesPct),
       quotedAt: Math.min(long.quote.receivedAt, short.quote.receivedAt),
       stale,
       fundingKnown,
@@ -310,11 +354,12 @@ export class MarketEngine {
       const row = this.buildRow(base, filter);
       if (row) rows.push(row);
     }
-    // Подозрительные — в самый конец: их спред не имеет смысла как число.
-    rows.sort((a, b) => {
-      if (a.suspect !== b.suspect) return a.suspect ? 1 : -1;
-      return b.spreadPct - a.spreadPct;
-    });
+    // Порядок: свежие, потом устаревшие, потом подозрительные. Устаревшая
+    // строка с большим спредом — почти всегда фантом от замершей котировки,
+    // ей нечего делать выше живых цифр. Подозрительные — в самый конец: их
+    // спред не имеет смысла как число.
+    const rank = (r: SpreadRow) => (r.suspect ? 2 : r.stale ? 1 : 0);
+    rows.sort((a, b) => rank(a) - rank(b) || b.spreadPct - a.spreadPct);
 
     const passing = rows.filter((r) => !r.stale && !r.suspect && r.spreadPct >= minSpreadPct);
     const value: ScreenerSnapshot = {

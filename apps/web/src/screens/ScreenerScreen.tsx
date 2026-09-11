@@ -89,7 +89,12 @@ export function ScreenerScreen({
     () => api.screener(minSpreadNum, venueKey || undefined),
     [minSpreadNum, venueKey],
   );
-  const { data, error, refresh } = usePolling<ScreenerSnapshot>(fetcher, refreshMs);
+  const { data, error, refresh } = usePolling<ScreenerSnapshot>(
+    fetcher,
+    refreshMs,
+    true,
+    'screener',
+  );
 
   const rows = data?.rows ?? [];
 
@@ -127,8 +132,11 @@ export function ScreenerScreen({
     return filtered.sort((a, b) => {
       const pinned = Number(selected.has(b.symbol)) - Number(selected.has(a.symbol));
       if (pinned !== 0) return pinned;
-      const suspect = Number(Boolean(a.suspect)) - Number(Boolean(b.suspect));
-      if (suspect !== 0) return suspect;
+      // Свежие выше устаревших, подозрительные в конце — как и на сервере;
+      // иначе любая сортировка по спреду поднимала бы фантомы наверх.
+      const rank = (r: SpreadRow) => (r.suspect ? 2 : r.stale ? 1 : 0);
+      const byRank = rank(a) - rank(b);
+      if (byRank !== 0) return byRank;
       return bySort(a, b);
     });
   }, [rows, search, extra, selected]);
@@ -286,7 +294,11 @@ export function ScreenerScreen({
         {visible.length === 0 && (
           <div className="card empty">
             {errorText ??
-              (search ? t('screener.nothingFound', { query: search }) : t('screener.empty'))}
+              (!data
+                ? t('app.loading')
+                : search
+                  ? t('screener.nothingFound', { query: search })
+                  : t('screener.empty'))}
           </div>
         )}
         {watchlistLimit !== null && (

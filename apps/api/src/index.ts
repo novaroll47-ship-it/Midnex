@@ -9,6 +9,7 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import compress from '@fastify/compress';
 import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import dotenv from 'dotenv';
@@ -67,6 +68,11 @@ await app.register(cors, {
   origin: IS_PROD ? WEB_ORIGIN : true,
   credentials: true,
 });
+
+// Снимок скринера — 900 строк и ~300 КБ JSON раз в секунду. Через туннель
+// на телефон это несколько секунд на ответ, и запросы наслаиваются друг на
+// друга. Сжатый JSON в десять раз меньше.
+await app.register(compress, { global: true, threshold: 2048 });
 
 /** Авторизация на всех /api/* кроме health. */
 app.addHook('preHandler', async (req: FastifyRequest, reply: FastifyReply) => {

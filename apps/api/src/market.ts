@@ -63,20 +63,24 @@ export function createMarketSource(log: FastifyBaseLogger): MarketSource {
     },
   });
 
-  let ready = false;
-  engine
-    .start()
-    .then(() => {
-      ready = true;
-      log.info('рынок: движок запущен, переключаюсь с мока на живые данные');
-    })
-    .catch((err: unknown) => {
-      log.error({ err: String(err) }, 'рынок: движок не запустился, остаёмся на моке');
-    });
+  // start() резолвится, когда отработали все биржи, включая зависшие на
+  // таймауте. Готовность берём из самого движка: ему хватает двух бирж.
+  engine.start().catch((err: unknown) => {
+    log.error({ err: String(err) }, 'рынок: движок не запустился, остаёмся на моке');
+  });
 
   // Живыми данные считаем, когда хотя бы две биржи отдали котировки —
   // иначе спред считать не из чего и лучше показать мок, чем пустой список.
-  const isLive = () => ready && engine.status().feeds.filter((f) => f.quoted > 0).length >= 2;
+  let announced = false;
+  const isLive = () => {
+    const st = engine.status();
+    const live = st.ready && st.feeds.filter((f) => f.quoted > 0).length >= 2;
+    if (live && !announced) {
+      announced = true;
+      log.info(`рынок: живые данные, ${st.universeSize} монет — мок больше не используется`);
+    }
+    return live;
+  };
 
   return {
     mode,
