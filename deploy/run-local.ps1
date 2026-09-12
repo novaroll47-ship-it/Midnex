@@ -71,9 +71,16 @@ Start-Process -FilePath 'node' -ArgumentList 'apps/api/dist/index.js' `
     -WorkingDirectory $Root -WindowStyle Hidden `
     -RedirectStandardOutput $ApiLog -RedirectStandardError "$ApiLog.err"
 
-Start-Sleep -Seconds 5
-$health = Invoke-RestMethod -Uri 'http://localhost:8787/api/health' -TimeoutSec 10
-if (-not $health.ok) { throw 'Приложение не поднялось, смотри .tools/api.log' }
+# С базой старт длится дольше (проверка соединения с Postgres), поэтому ждём
+# до минуты, а не фиксированные пять секунд.
+$health = $null
+foreach ($i in 1..30) {
+    Start-Sleep -Seconds 2
+    try { $health = Invoke-RestMethod -Uri 'http://localhost:8787/api/health' -TimeoutSec 5 } catch { }
+    if ($health -and $health.ok) { break }
+}
+if (-not ($health -and $health.ok)) { throw 'Приложение не поднялось, смотри .tools/api.log' }
+Write-Host "    хранилище: $($health.storage)"
 
 Write-Host ''
 Write-Host "Готово: $url"
