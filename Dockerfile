@@ -9,6 +9,7 @@ WORKDIR /app
 # пока зависимости не менялись.
 COPY package.json package-lock.json ./
 COPY packages/shared/package.json packages/shared/
+COPY packages/market/package.json packages/market/
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 RUN npm ci
@@ -23,10 +24,11 @@ FROM node:24-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Только продакшн-зависимости: fastify и его плагины. @cs/shared в рантайме
-# не нужен — esbuild вшил его прямо в bundle.
+# Только продакшн-зависимости: fastify с плагинами, ccxt и драйвер postgres.
+# @cs/shared и @cs/market в рантайме не нужны — esbuild вшил их в bundle.
 COPY package.json package-lock.json ./
 COPY packages/shared/package.json packages/shared/
+COPY packages/market/package.json packages/market/
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 RUN npm ci --omit=dev && npm cache clean --force

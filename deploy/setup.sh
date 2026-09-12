@@ -3,14 +3,14 @@
 # Первичная настройка сервера Oracle Cloud (Ubuntu 22.04/24.04, ARM Ampere).
 # Запускать один раз на чистой машине:
 #
-#   sudo TELEGRAM_BOT_TOKEN=<токен> bash deploy/setup.sh
+#   sudo TELEGRAM_BOT_TOKEN=<токен> DATABASE_URL=<строка Supabase> bash deploy/setup.sh
 #
 # Скрипт идемпотентен: повторный запуск ничего не ломает.
 
 set -euo pipefail
 
 if [[ $EUID -ne 0 ]]; then
-	echo "Запусти через sudo: sudo TELEGRAM_BOT_TOKEN=... bash deploy/setup.sh" >&2
+	echo "Запусти через sudo: sudo TELEGRAM_BOT_TOKEN=... DATABASE_URL=... bash deploy/setup.sh" >&2
 	exit 1
 fi
 
@@ -61,11 +61,21 @@ if [[ ! -f "$DEPLOY_DIR/.env" ]]; then
 		read -rsp "Токен бота от @BotFather: " TELEGRAM_BOT_TOKEN
 		echo
 	fi
+	if [[ -z "${DATABASE_URL:-}" ]]; then
+		read -rp "DATABASE_URL (Supabase pooler, пусто = хранить в памяти): " DATABASE_URL
+	fi
+	# Ключ шифрования API-ключей бирж рождается здесь и живёт только на сервере.
+	# Потерять его — значит потерять все сохранённые ключи, поэтому deploy/.env
+	# стоит забэкапить. Переносишь приложение на другой сервер — переноси и его.
+	KEY_ENCRYPTION_KEY="${KEY_ENCRYPTION_KEY:-$(openssl rand -hex 32)}"
 	umask 077
 	cat >"$DEPLOY_DIR/.env" <<EOF
 DOMAIN=$DOMAIN
 TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
 WEB_ORIGIN=https://$DOMAIN
+DATABASE_URL=$DATABASE_URL
+KEY_ENCRYPTION_KEY=$KEY_ENCRYPTION_KEY
+MARKET_MODE=live
 EOF
 	echo "    создан deploy/.env"
 else
@@ -80,10 +90,8 @@ docker compose up -d --build
 echo
 echo "Готово. Приложение: https://$DOMAIN"
 echo
-echo "Осталось привязать его к боту (подставь свой токен):"
-echo "  curl -X POST \"https://api.telegram.org/bot<ТОКЕН>/setChatMenuButton\" \\"
-echo "    -H 'Content-Type: application/json' \\"
-echo "    -d '{\"menu_button\":{\"type\":\"web_app\",\"text\":\"MIDNEX\",\"web_app\":{\"url\":\"https://$DOMAIN\"}}}'"
+echo "Сертификат выпускается около минуты после первого запуска. Бот сам"
+echo "привяжет кнопку меню к этому адресу — ничего вручную делать не нужно."
 echo
 echo "Проверить: curl https://$DOMAIN/api/health"
 echo "Логи:      cd $DEPLOY_DIR && docker compose logs -f"
