@@ -194,11 +194,22 @@ app.get('/api/coin/:base', async (req, reply) => {
 });
 
 /** Состояние подключений к биржам — для экрана отладки в настройках. */
-app.get('/api/market/status', async () => ({
-  mode: market.mode,
-  live: market.live(),
-  engine: market.status(),
-}));
+app.get('/api/market/status', async () => {
+  const mem = process.memoryUsage();
+  return {
+    mode: market.mode,
+    live: market.live(),
+    engine: market.status(),
+    // Память процесса в мегабайтах: heap — что держит JS, rss — что занято у ОС.
+    memoryMb: {
+      rss: Math.round(mem.rss / 1048576),
+      heapUsed: Math.round(mem.heapUsed / 1048576),
+      heapTotal: Math.round(mem.heapTotal / 1048576),
+      external: Math.round(mem.external / 1048576),
+    },
+    uptimeSec: Math.round(process.uptime()),
+  };
+});
 
 app.get('/api/icon/coin/:base', async (req, reply) => {
   const { base } = req.params as { base: string };
