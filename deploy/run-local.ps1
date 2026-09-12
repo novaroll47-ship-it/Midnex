@@ -69,7 +69,9 @@ $env:NODE_ENV = 'production'
 $env:DEV_FAKE_USER = '0'
 $env:PORT = '8787'
 $env:PUBLIC_URL = $url
-Start-Process -FilePath 'node' -ArgumentList 'apps/api/dist/index.js' `
+# Потолок кучи: процесс с восемью биржами тяжёлый, и лучше явный предел
+# с понятной ошибкой в api.log.err, чем тихая смерть.
+Start-Process -FilePath 'node' -ArgumentList '--max-old-space-size=2048', 'apps/api/dist/index.js' `
     -WorkingDirectory $Root -WindowStyle Hidden `
     -RedirectStandardOutput $ApiLog -RedirectStandardError "$ApiLog.err"
 
