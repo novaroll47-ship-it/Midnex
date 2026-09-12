@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Первичная настройка сервера Oracle Cloud (Ubuntu 22.04/24.04, ARM Ampere).
+# Первичная настройка сервера — любой VPS с Ubuntu 22.04/24.04 (x86 или ARM).
 # Запускать один раз на чистой машине:
 #
 #   sudo TELEGRAM_BOT_TOKEN=<токен> DATABASE_URL=<строка Supabase> bash deploy/setup.sh
@@ -35,6 +35,20 @@ else
 	echo "    Docker уже установлен, пропускаю"
 fi
 systemctl enable --now docker
+
+echo "==> 2.5/5 Своп"
+# На дешёвых VPS с 1–2 ГБ памяти сборка фронта (Vite) и установка ccxt
+# упираются в OOM. Два гигабайта свопа снимают проблему раз и навсегда.
+if [[ ! -f /swapfile ]] && (( $(free -m | awk '/^Mem:/{print $2}') < 3000 )); then
+	fallocate -l 2G /swapfile
+	chmod 600 /swapfile
+	mkswap /swapfile >/dev/null
+	swapon /swapfile
+	echo '/swapfile none swap sw 0 0' >>/etc/fstab
+	echo "    добавлен своп 2 ГБ"
+else
+	echo "    своп не нужен или уже есть"
+fi
 
 echo "==> 3/5 Порты 80 и 443"
 # В образах Ubuntu от Oracle iptables по умолчанию пропускает только SSH,
