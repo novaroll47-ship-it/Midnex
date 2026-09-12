@@ -43,10 +43,12 @@ Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" |
 Write-Host '==> Собираю'
 npm run build | Out-Null
 
+# http2 (TCP) вместо quic (UDP): домашние провайдеры и VPN часто режут UDP,
+# и туннель тогда молча отваливается от Cloudflare с ошибкой 530.
 Write-Host '==> Открываю туннель'
 Remove-Item "$TunnelLog*" -Force -ErrorAction SilentlyContinue
 Start-Process -FilePath $Cloudflared `
-    -ArgumentList 'tunnel', '--url', 'http://localhost:8787', '--no-autoupdate' `
+    -ArgumentList 'tunnel', '--url', 'http://localhost:8787', '--no-autoupdate', '--protocol', 'http2' `
     -WindowStyle Hidden -RedirectStandardOutput $TunnelLog -RedirectStandardError "$TunnelLog.err"
 
 $url = $null
