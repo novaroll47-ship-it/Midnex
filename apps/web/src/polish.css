@@ -24,30 +24,29 @@
      * Синий акцент и фирменные цвета бирж убраны — в таблице из двадцати
      * строк они спорили с цифрами за внимание.
      */
-    --bg: #0b0b0c;
-    --surface: #141416;
-    --surface-2: #1a1a1d;
-    --surface-3: #202024;
-    --border: #242428;
-    --border-strong: #33333a;
+    --bg: #141415;
+    --surface: #242426;
+    --surface-2: #2c2c2e;
+    --surface-3: #3a3a3c;
+    --border: rgba(255, 255, 255, 0.07);
+    --border-strong: rgba(255, 255, 255, 0.14);
 
-    --text: #e7e7ea;
-    --text-dim: #8b8b93;
-    --text-mute: #5c5c65;
+    --text: #ffffff;
+    --text-dim: #8e8e93;
+    --text-mute: #636366;
 
-    --green: #3fcf67;
-    --green-soft: rgba(63, 207, 103, 0.11);
-    --green-line: rgba(63, 207, 103, 0.34);
-    --red: #e5484d;
-    --red-soft: rgba(229, 72, 77, 0.11);
-    --red-line: rgba(229, 72, 77, 0.34);
-    --yellow: #d4a01a;
+    --green: #32d74b;
+    --green-soft: rgba(50, 215, 75, 0.13);
+    --green-line: rgba(50, 215, 75, 0.4);
+    --red: #ff453a;
+    --red-soft: rgba(255, 69, 58, 0.13);
+    --red-line: rgba(255, 69, 58, 0.4);
+    --yellow: #ffd60a;
 
-    /* Бывший синий: теперь нейтральное серебро. Кнопки перестают быть
-       акцентом сами по себе и не соревнуются с зелёными цифрами. */
-    --blue: #c3c3cc;
-    --blue-soft: rgba(255, 255, 255, 0.055);
-    --blue-line: rgba(255, 255, 255, 0.14);
+    /* Синий Wallet — цвет действия. */
+    --blue: #3e8bff;
+    --blue-soft: rgba(62, 139, 255, 0.14);
+    --blue-line: rgba(62, 139, 255, 0.35);
 
     /* Пружинная кривая: движение с массой, а не линейное скольжение. */
     --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
@@ -55,18 +54,17 @@
     /* Двойной бортик одним свойством: внешняя обойма, внутренний блик сверху
        и мягкая тень под карточкой. Без дополнительной обёртки в разметке —
        иначе поехали бы размеры. */
-    --bezel:
-      0 0 0 1px rgba(255, 255, 255, 0.045), inset 0 1px 0 rgba(255, 255, 255, 0.06),
-      0 8px 24px -12px rgba(0, 0, 0, 0.9);
+    --bezel: none;
   }
 
   /* ---------- Карточки ---------- */
 
+  /* Плоские карточки: ровный графит, без рамки, блика и тени. */
   .card,
   .coin-row {
-    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.028), transparent 42%);
-    border-color: rgba(255, 255, 255, 0.06);
-    box-shadow: var(--bezel);
+    background-image: none;
+    border-color: transparent;
+    box-shadow: none;
   }
 
   .coin-row {
@@ -78,11 +76,9 @@
   /* Отмеченная монета выделяется светлой рамкой, а не цветом: цвет в этом
      интерфейсе занят смыслом «прибыль/убыток». */
   .coin-row--pinned {
-    border-color: rgba(255, 255, 255, 0.22);
-    box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.08),
-      inset 0 1px 0 rgba(255, 255, 255, 0.09),
-      0 8px 26px -14px rgba(0, 0, 0, 0.9);
+    border-color: var(--green-line);
+    background: var(--surface);
+    box-shadow: none;
   }
 
   /* ---------- Типографика ---------- */
@@ -97,10 +93,7 @@
      врать глазом. */
   .stat__value,
   .stat__value--plain {
-    background: linear-gradient(180deg, #ffffff, rgba(255, 255, 255, 0.62));
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+    color: var(--text);
     letter-spacing: -0.03em;
   }
 
@@ -195,7 +188,7 @@
   .btn-outline:active:not(:disabled),
   .segmented__item:active,
   .chip:active {
-    transform: scale(0.975);
+    filter: brightness(0.85);
   }
 
   .logout {
@@ -203,7 +196,7 @@
   }
 
   .logout:active {
-    transform: scale(0.99);
+    filter: brightness(0.85);
   }
 
   /* ---------- Списки и переключатели ---------- */
@@ -224,7 +217,7 @@
   }
 
   .checkbox:active {
-    transform: scale(0.9);
+    filter: brightness(0.85);
   }
 
   .venue-tile {
@@ -235,14 +228,14 @@
   }
 
   .venue-tile:active {
-    transform: scale(0.98);
+    filter: brightness(0.85);
   }
 
   /* ---------- Нижняя навигация ---------- */
 
   .nav {
-    background: rgba(4, 8, 11, 0.86);
-    border-top-color: rgba(255, 255, 255, 0.06);
+    background: rgba(20, 20, 21, 0.94);
+    border-top-color: var(--border);
   }
 
   .nav__item {
@@ -250,14 +243,14 @@
   }
 
   .nav__item:active {
-    transform: scale(0.96);
+    filter: brightness(0.85);
   }
 
   /* «Обновить» — действие, а не прибыль. Зелёный здесь читался бы как
      показатель, поэтому кнопка нейтральная. */
   .btn-ghost--green {
-    border-color: rgba(255, 255, 255, 0.14);
-    background: rgba(255, 255, 255, 0.055);
+    border-color: transparent;
+    background: var(--surface-2);
     color: var(--text);
   }
 
@@ -266,7 +259,7 @@
      узнаваемой. */
   .coin-id img,
   .coin-head img {
-    filter: saturate(0.72) brightness(0.94);
+    filter: none;
   }
 
   /* ---------- Мелочи ---------- */
@@ -276,8 +269,8 @@
   }
 
   .autorefresh {
-    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 60%);
-    border-color: rgba(255, 255, 255, 0.08);
+    background-image: none;
+    border-color: transparent;
   }
 
   .autorefresh__title {
@@ -301,4 +294,75 @@
   .select {
     transition: border-color 400ms var(--ease-spring);
   }
+
+  /* ---------- Плоские элементы управления ---------- */
+
+  .btn-ghost {
+    border-color: transparent;
+    background: var(--blue-soft);
+  }
+
+  .chip,
+  .icon-btn-square,
+  .btn-outline,
+  .input,
+  .search,
+  .select,
+  .segmented {
+    border-color: transparent;
+    background: var(--surface-2);
+  }
+
+  .chip--active,
+  .icon-btn-square--active {
+    background: var(--blue-soft);
+    color: var(--blue);
+  }
+
+  .segmented__item--active {
+    background: var(--surface-3);
+    box-shadow: none;
+  }
+
+  .list__item {
+    border-bottom-color: var(--border);
+  }
+
+  .dev-banner {
+    border-color: var(--border);
+    color: var(--text-dim);
+  }
+}
+
+/*
+ * Токены shadcn объявлены в index.css вне слоёв и слоем не перебиваются —
+ * поэтому та же палитра повторена здесь, тоже вне слоя.
+ */
+:root {
+  --background: #141415;
+  --foreground: #ffffff;
+  --card: #242426;
+  --card-foreground: #ffffff;
+  --popover: #1c1c1e;
+  --popover-foreground: #ffffff;
+  --primary: #3e8bff;
+  --primary-foreground: #ffffff;
+  --secondary: #2c2c2e;
+  --secondary-foreground: #ffffff;
+  --muted: #2c2c2e;
+  --muted-foreground: #8e8e93;
+  --accent: #3a3a3c;
+  --accent-foreground: #ffffff;
+  --destructive: #ff453a;
+  --destructive-foreground: #ffffff;
+  --border: rgba(255, 255, 255, 0.07);
+  --input: #3a3a3c;
+  --ring: #3e8bff;
+  --profit: #32d74b;
+  --loss: #ff453a;
+  --warning: #ffd60a;
+  --link: #3e8bff;
+  --text-mute: #636366;
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --surface-2: #2c2c2e;
 }
