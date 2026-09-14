@@ -61,14 +61,48 @@ foreach ($i in 1..30) {
 }
 if (-not $url) { throw 'Туннель не поднялся, смотри .tools/tunnel.log.err' }
 
+# Постоянный адрес: edge-функция Supabase (deploy/supabase/functions/app)
+# перенаправляет на тот туннель, что записан в app_config.public_url.
+# Бот и кнопка меню привязаны к постоянному адресу, поэтому старые кнопки
+# в чате не умирают при каждом перезапуске. Запись — через Management API,
+# токен берём из .claude/settings.local.json (в git он не попадает).
+$StableUrl = 'https://bilivlcjttmoelqeuwxz.supabase.co/functions/v1/app'
+Write-Host '==> Обновляю постоянный адрес'
+$settingsPath = Join-Path $Root '.claude\settings.local.json'
+$pat = $null
+if (Test-Path $settingsPath) {
+    $m = [regex]::Match((Get-Content $settingsPath -Raw), '"SUPABASE_ACCESS_TOKEN"\s*:\s*"([^"]+)"')
+    if ($m.Success) { $pat = $m.Groups[1].Value }
+}
+if ($pat) {
+    $sql = "insert into app_config (key, value) values ('public_url', '$url') " +
+           "on conflict (key) do update set value = excluded.value, updated_at = now()"
+    $body = @{ query = $sql } | ConvertTo-Json -Compress
+    try {
+        Invoke-RestMethod -Method Post -TimeoutSec 20 `
+            -Uri 'https://api.supabase.com/v1/projects/bilivlcjttmoelqeuwxz/database/query' `
+            -Headers @{ Authorization = "Bearer $pat" } -ContentType 'application/json' `
+            -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) | Out-Null
+        Write-Host "    $StableUrl -> $url"
+    } catch {
+        Write-Warning "Постоянный адрес не обновился: $_. Бот получит временный адрес."
+        $StableUrl = $url
+    }
+} else {
+    Write-Warning 'Нет токена Supabase в .claude/settings.local.json — бот получит временный адрес.'
+    $StableUrl = $url
+}
+
 Write-Host '==> Запускаю приложение и бота'
 # NODE_ENV=production включает настоящую проверку подписи Telegram:
 # открыть приложение можно будет только из клиента Telegram.
-# PUBLIC_URL нужен боту, чтобы показать кнопку и привязать меню чата.
+# PUBLIC_URL нужен боту, чтобы показать кнопку и привязать меню чата;
+# WEB_ORIGIN — откуда реально приходят запросы к API (для CORS).
 $env:NODE_ENV = 'production'
 $env:DEV_FAKE_USER = '0'
 $env:PORT = '8787'
-$env:PUBLIC_URL = $url
+$env:PUBLIC_URL = $StableUrl
+$env:WEB_ORIGIN = $url
 # Потолок кучи: процесс с восемью биржами тяжёлый, и лучше явный предел
 # с понятной ошибкой в api.log.err, чем тихая смерть.
 Start-Process -FilePath 'node' -ArgumentList '--max-old-space-size=2048', 'apps/api/dist/index.js' `
@@ -87,8 +121,9 @@ if (-not ($health -and $health.ok)) { throw 'Приложение не подн�
 Write-Host "    хранилище: $($health.storage)"
 
 Write-Host ''
-Write-Host "Готово: $url"
-Write-Host 'Напиши боту /start — он пришлёт кнопку «Открыть MIDNEX».'
+Write-Host "Готово: $StableUrl"
+Write-Host "Туннель: $url"
+Write-Host 'Кнопка меню бота и /start ведут на постоянный адрес.'
 Write-Host ''
 Write-Host 'Вне Telegram приложение отдаёт 401 — так и задумано.'
 Write-Host 'Логи: .tools\api.log и .tools\tunnel.log.err'
