@@ -114,11 +114,6 @@ export function App() {
               setTab('settings');
               setRoute({ kind: 'settings', view: 'subscription' });
             }}
-            onOpenSettings={() => {
-              setTab('settings');
-              // Без торговли настраивать бота нечего — ведём к настройкам скринера.
-              setRoute({ kind: 'settings', view: trading ? 'general' : 'opportunities' });
-            }}
           />
         )}
 

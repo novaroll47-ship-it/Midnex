@@ -152,7 +152,13 @@
     "notReady": "This section arrives in a later milestone",
     "marketTitle": "Exchange data",
     "marketSub": "Connections, latency, coverage",
-    "logoutConfirm": "All other devices will be forgotten and the app will close. Sign back in via Telegram — no password needed."
+    "logoutConfirm": "All other devices will be forgotten and the app will close. Sign back in via Telegram — no password needed.",
+    "botsSection": "Bots",
+    "accountSection": "Account",
+    "botTrading": "Trading bot",
+    "botTradingSub": "Opens and closes pairs on spread",
+    "botFunding": "Funding bot",
+    "botFundingSub": "Collects funding-rate differences between exchanges"
   },
   "sd": {
     "botState": "Bot state",

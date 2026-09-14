@@ -198,7 +198,20 @@ app.get('/api/health', async () => ({
   encryption: encryptionReady(),
   trading: TRADING_ENABLED,
   time: Date.now(),
+  uptimeSec: Math.round(process.uptime()),
+  memoryMb: memoryMb(),
 }));
+
+function memoryMb() {
+  const mem = process.memoryUsage();
+  return {
+    rss: Math.round(mem.rss / 1048576),
+    heapUsed: Math.round(mem.heapUsed / 1048576),
+    heapTotal: Math.round(mem.heapTotal / 1048576),
+    external: Math.round(mem.external / 1048576),
+    arrayBuffers: Math.round(mem.arrayBuffers / 1048576),
+  };
+}
 
 app.get('/api/me', async (req) => ({ user: req.tgUser, plan: req.state!.plan }));
 
@@ -248,18 +261,12 @@ app.get('/api/coin/:base', async (req, reply) => {
 
 /** Состояние подключений к биржам — для экрана отладки в настройках. */
 app.get('/api/market/status', async () => {
-  const mem = process.memoryUsage();
   return {
     mode: market.mode,
     live: market.live(),
     engine: market.status(),
     // Память процесса в мегабайтах: heap — что держит JS, rss — что занято у ОС.
-    memoryMb: {
-      rss: Math.round(mem.rss / 1048576),
-      heapUsed: Math.round(mem.heapUsed / 1048576),
-      heapTotal: Math.round(mem.heapTotal / 1048576),
-      external: Math.round(mem.external / 1048576),
-    },
+    memoryMb: memoryMb(),
     uptimeSec: Math.round(process.uptime()),
   };
 });

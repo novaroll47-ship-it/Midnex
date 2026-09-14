@@ -55,7 +55,6 @@ const DEFAULT_EXTRA: ExtraFilters = {
 };
 
 interface Props {
-  onOpenSettings: () => void;
   onOpenSubscription: () => void;
   onOpenCoin: (base: string) => void;
   plan: keyof typeof PLAN_WATCHLIST_LIMIT;
@@ -66,7 +65,6 @@ interface Props {
 }
 
 export function ScreenerScreen({
-  onOpenSettings,
   onOpenSubscription,
   onOpenCoin,
   plan,
@@ -206,7 +204,7 @@ export function ScreenerScreen({
                 <span className="num">{formatClock(data?.updatedAt ?? Date.now())}</span>
               </div>
             </div>
-            <button className="panel__btn" type="button" onClick={onOpenSettings}>
+            <button className="panel__btn" type="button" onClick={() => setSheet('filters')}>
               {t('screener.configure')}
             </button>
           </div>

@@ -105,7 +105,7 @@ $env:PUBLIC_URL = $StableUrl
 $env:WEB_ORIGIN = $url
 # Потолок кучи: процесс с восемью биржами тяжёлый, и лучше явный предел
 # с понятной ошибкой в api.log.err, чем тихая смерть.
-Start-Process -FilePath 'node' -ArgumentList '--max-old-space-size=2048', 'apps/api/dist/index.js' `
+Start-Process -FilePath 'node' -ArgumentList '--max-old-space-size=1024', 'apps/api/dist/index.js' `
     -WorkingDirectory $Root -WindowStyle Hidden `
     -RedirectStandardOutput $ApiLog -RedirectStandardError "$ApiLog.err"
 
