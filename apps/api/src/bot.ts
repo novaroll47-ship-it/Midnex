@@ -38,7 +38,15 @@ interface TgUpdate {
     total_amount: number;
     invoice_payload: string;
   };
+  callback_query?: {
+    id: string;
+    from: { id: number };
+    data?: string;
+    message?: { message_id: number; chat: { id: number } };
+  };
 }
+
+type Keyboard = { text: string; callback_data: string }[][];
 
 interface TgResponse<T> {
   ok: boolean;
@@ -59,14 +67,23 @@ export interface BotOptions {
 /** Что бот умеет наружу: слать сообщения из API и останавливаться. */
 export interface BotHandle {
   send(chatId: number, text: string, extra?: Record<string, unknown>): Promise<boolean>;
+  /** Сообщить администратору о заявке на оплату — с кнопками подтверждения. */
+  notifyPayment(text: string, paymentId: string): Promise<void>;
   stop(): void;
 }
 
-async function call<T>(token: string, method: string, body?: unknown): Promise<TgResponse<T>> {
+async function call<T>(
+  token: string,
+  method: string,
+  body?: unknown,
+  timeoutMs = 20_000,
+): Promise<TgResponse<T>> {
+  // Без таймаута обрыв сети превращается в вечно висящий запрос.
   const res = await fetch(`${API}/bot${token}/${method}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body ?? {}),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   return (await res.json()) as TgResponse<T>;
 }
@@ -120,7 +137,33 @@ export function startBot({ token, publicUrl, log, billing, repo }: BotOptions): 
     if (billing.adminId !== null) await send(billing.adminId, text);
   }
 
-  // ---------------------------------------------------------------- админ-команды
+  // ---------------------------------------------------------------- админка
+
+  /**
+   * Панель администратора живёт на кнопках: меню, заявки с «Подтвердить /
+   * Отклонить», действия с вводом (выдать, отозвать, статус) — бот задаёт
+   * вопрос и ждёт следующее сообщение. Текстовые команды тоже работают.
+   */
+  type Awaiting = 'grant' | 'revoke' | 'sub' | null;
+  let awaiting: Awaiting = null;
+
+  const MENU: Keyboard = [
+    [
+      { text: '📋 Заявки', callback_data: 'adm:pending' },
+      { text: '👥 Пользователи', callback_data: 'adm:users' },
+    ],
+    [
+      { text: '➕ Выдать доступ', callback_data: 'adm:grant' },
+      { text: '🚫 Отозвать', callback_data: 'adm:revoke' },
+    ],
+    [{ text: '🔎 Статус подписки', callback_data: 'adm:sub' }],
+  ];
+  const BACK: Keyboard = [[{ text: '← Меню', callback_data: 'adm:menu' }]];
+  const CANCEL: Keyboard = [[{ text: 'Отмена', callback_data: 'adm:menu' }]];
+
+  function kb(inline_keyboard: Keyboard): Record<string, unknown> {
+    return { reply_markup: { inline_keyboard } };
+  }
 
   async function resolveUserId(arg: string): Promise<number | null> {
     if (/^\d+$/.test(arg)) return Number(arg);
@@ -128,118 +171,191 @@ export function startBot({ token, publicUrl, log, billing, repo }: BotOptions): 
     return u?.id ?? null;
   }
 
+  async function showMenu(chatId: number): Promise<void> {
+    awaiting = null;
+    const [users, active, pending] = await Promise.all([
+      repo.countUsers(),
+      repo.countActiveSubscriptions(),
+      repo.listPendingPayments(),
+    ]);
+    const open = pending.filter((p) => p.method === 'crypto' && p.txHash).length;
+    await send(
+      chatId,
+      `Панель администратора\n\nПользователей: ${users}\nАктивных подписок: ${active}\nЗаявок на проверку: ${open}`,
+      kb(MENU),
+    );
+  }
+
+  async function showPending(chatId: number): Promise<void> {
+    const list = (await repo.listPendingPayments()).filter((p) => p.method === 'crypto');
+    if (list.length === 0) {
+      await send(chatId, 'Открытых заявок нет.', kb(BACK));
+      return;
+    }
+    for (const p of list) {
+      const u = await repo.getUser(p.userId);
+      const who = u?.username ? `@${u.username}` : `id ${p.userId}`;
+      await send(
+        chatId,
+        `Заявка #${p.id}\n${who} · ${planTitle(p.plan)} · ${p.months} мес.\n` +
+          `${p.amount} USDT (${p.network})\nHash: ${p.txHash ?? 'ещё не прислан'}`,
+        kb([
+          [
+            { text: '✅ Подтвердить', callback_data: `pay:ok:${p.id}` },
+            { text: '❌ Отклонить', callback_data: `pay:no:${p.id}` },
+          ],
+        ]),
+      );
+    }
+    await send(chatId, `Всего заявок: ${list.length}`, kb(BACK));
+  }
+
+  async function showUsers(chatId: number): Promise<void> {
+    const [users, active] = await Promise.all([repo.countUsers(), repo.countActiveSubscriptions()]);
+    await send(chatId, `Пользователей: ${users}\nАктивных подписок: ${active}`, kb(BACK));
+  }
+
+  async function approvePayment(chatId: number, id: string): Promise<void> {
+    const r = await billing.approve(id);
+    if (!r) {
+      await send(chatId, `Заявка #${id} не найдена или уже закрыта.`, kb(BACK));
+      return;
+    }
+    await send(chatId, `✅ #${id} подтверждена. Доступ до ${fmtDate(r.sub.expiresAt)}.`, kb(BACK));
+    await send(
+      r.payment.userId,
+      `Оплата получена — спасибо! ${planTitle(r.payment.plan)} активен до ${fmtDate(r.sub.expiresAt)}.`,
+    );
+  }
+
+  async function rejectPayment(chatId: number, id: string): Promise<void> {
+    const p = await billing.reject(id, null);
+    if (!p) {
+      await send(chatId, `Заявка #${id} не найдена или уже закрыта.`, kb(BACK));
+      return;
+    }
+    await send(chatId, `❌ #${id} отклонена.`, kb(BACK));
+    await send(
+      p.userId,
+      `Заявка на оплату #${id} отклонена: перевод не найден. ` +
+        'Проверь сумму, сеть и хэш и создай заявку заново в приложении.',
+    );
+  }
+
+  /** Ответ администратора на вопрос бота (выдать / отозвать / статус). */
+  async function handleAwaiting(chatId: number, text: string): Promise<void> {
+    const action = awaiting;
+    awaiting = null;
+    const [who, daysRaw, planRaw] = text.trim().split(/\s+/);
+    if (!who) return showMenu(chatId);
+    const userId = await resolveUserId(who);
+    if (userId === null) {
+      await send(
+        chatId,
+        `Пользователь ${who} не найден — он должен хотя бы раз открыть приложение.`,
+        kb(BACK),
+      );
+      return;
+    }
+    if (action === 'grant') {
+      const days = Number(daysRaw);
+      if (!Number.isFinite(days) || days <= 0) {
+        await send(chatId, 'Нужно число дней, например: @user 30', kb(BACK));
+        return;
+      }
+      const plan = (PLAN_ORDER.includes(planRaw as PlanId) ? planRaw : 'screener') as PlanId;
+      const sub = await billing.grant(userId, days, plan);
+      await send(
+        chatId,
+        `Выдано: ${who} → ${planTitle(plan)} до ${fmtDate(sub.expiresAt)}.`,
+        kb(BACK),
+      );
+      await send(userId, `Тебе открыт доступ: ${planTitle(plan)} до ${fmtDate(sub.expiresAt)}.`);
+    } else if (action === 'revoke') {
+      await repo.revokeSubscription(userId);
+      await send(chatId, `Доступ ${who} отозван.`, kb(BACK));
+    } else if (action === 'sub') {
+      const info = await billing.info(userId);
+      await send(
+        chatId,
+        info.active
+          ? `${who}: ${planTitle(info.plan)}, активна до ${info.expiresAt ? fmtDate(info.expiresAt) : '∞'} (${info.daysLeft} дн.)`
+          : `${who}: подписки нет${info.expiresAt ? `, истекла ${fmtDate(info.expiresAt)}` : ''}.`,
+        kb(BACK),
+      );
+    }
+  }
+
+  async function onCallback(q: NonNullable<TgUpdate['callback_query']>): Promise<void> {
+    const chatId = q.message?.chat.id ?? q.from.id;
+    await call(token, 'answerCallbackQuery', { callback_query_id: q.id });
+    if (!billing.isAdmin(q.from.id)) return;
+    const data = q.data ?? '';
+
+    if (data === 'adm:menu') return showMenu(chatId);
+    if (data === 'adm:pending') return showPending(chatId);
+    if (data === 'adm:users') return showUsers(chatId);
+    if (data === 'adm:grant') {
+      awaiting = 'grant';
+      return void (await send(
+        chatId,
+        'Кому и на сколько дней? Отправь: @username 30\nТретьим словом можно указать тариф: screener, limited или unlimited.',
+        kb(CANCEL),
+      ));
+    }
+    if (data === 'adm:revoke') {
+      awaiting = 'revoke';
+      return void (await send(
+        chatId,
+        'У кого отозвать доступ? Отправь @username или ID.',
+        kb(CANCEL),
+      ));
+    }
+    if (data === 'adm:sub') {
+      awaiting = 'sub';
+      return void (await send(
+        chatId,
+        'Чей статус показать? Отправь @username или ID.',
+        kb(CANCEL),
+      ));
+    }
+    if (data.startsWith('pay:ok:')) return approvePayment(chatId, data.slice(7));
+    if (data.startsWith('pay:no:')) return rejectPayment(chatId, data.slice(7));
+  }
+
+  /** Текстовые команды — дубль кнопок для тех, кому так быстрее. */
   async function admin(chatId: number, text: string): Promise<boolean> {
     const [cmd, ...args] = text.trim().split(/\s+/);
     switch (cmd) {
+      case '/admin':
       case '/help':
-      case '/admin': {
-        await send(
-          chatId,
-          'Команды администратора:\n' +
-            '/users — сколько пользователей и активных подписок\n' +
-            '/pending — открытые заявки на оплату USDT\n' +
-            '/approve <код> — подтвердить перевод\n' +
-            '/reject <код> [причина] — отклонить\n' +
-            '/grant <id|@username> <дней> [screener|limited|unlimited] — выдать доступ\n' +
-            '/revoke <id|@username> — отозвать доступ\n' +
-            '/sub <id|@username> — статус подписки',
-        );
+      case '/menu':
+        await showMenu(chatId);
         return true;
-      }
-      case '/users': {
-        const [users, active] = await Promise.all([
-          repo.countUsers(),
-          repo.countActiveSubscriptions(),
-        ]);
-        await send(chatId, `Пользователей: ${users}\nАктивных подписок: ${active}`);
+      case '/pending':
+        await showPending(chatId);
         return true;
-      }
-      case '/pending': {
-        const list = (await repo.listPendingPayments()).filter((p) => p.method === 'crypto');
-        if (list.length === 0) {
-          await send(chatId, 'Открытых заявок нет.');
-          return true;
-        }
-        const lines = await Promise.all(
-          list.map(async (p) => {
-            const u = await repo.getUser(p.userId);
-            const who = u?.username ? `@${u.username}` : `id ${p.userId}`;
-            return (
-              `#${p.id} · ${who} · ${planTitle(p.plan)} ${p.months} мес · ${p.amount} USDT (${p.network})` +
-              `\n   hash: ${p.txHash ?? '— ещё не прислан'}`
-            );
-          }),
-        );
-        await send(chatId, lines.join('\n\n') + '\n\n/approve <код> или /reject <код>');
+      case '/users':
+        await showUsers(chatId);
         return true;
-      }
-      case '/approve': {
-        const id = args[0];
-        if (!id) return send(chatId, 'Укажи код заявки: /approve a1b2c3');
-        const r = await billing.approve(id);
-        if (!r) return send(chatId, `Заявка #${id} не найдена или уже закрыта.`);
-        await send(chatId, `Готово: #${id} подтверждена, доступ до ${fmtDate(r.sub.expiresAt)}.`);
-        await send(
-          r.payment.userId,
-          `Оплата получена — спасибо! ${planTitle(r.payment.plan)} активен до ${fmtDate(r.sub.expiresAt)}.`,
-        );
+      case '/approve':
+        if (args[0]) await approvePayment(chatId, args[0]);
         return true;
-      }
-      case '/reject': {
-        const id = args[0];
-        if (!id) return send(chatId, 'Укажи код заявки: /reject a1b2c3 причина');
-        const note = args.slice(1).join(' ') || null;
-        const p = await billing.reject(id, note);
-        if (!p) return send(chatId, `Заявка #${id} не найдена или уже закрыта.`);
-        await send(chatId, `Заявка #${id} отклонена.`);
-        await send(
-          p.userId,
-          `Заявка на оплату #${id} отклонена${note ? `: ${note}` : ''}. ` +
-            'Проверь перевод и создай заявку заново в приложении, либо напиши в поддержку.',
-        );
+      case '/reject':
+        if (args[0]) await rejectPayment(chatId, args[0]);
         return true;
-      }
-      case '/grant': {
-        const [who, daysRaw, planRaw] = args;
-        const days = Number(daysRaw);
-        if (!who || !Number.isFinite(days) || days <= 0) {
-          return send(chatId, 'Формат: /grant <id|@username> <дней> [screener|limited|unlimited]');
-        }
-        const userId = await resolveUserId(who);
-        if (userId === null)
-          return send(
-            chatId,
-            `Пользователь ${who} не найден — он должен хотя бы раз открыть приложение.`,
-          );
-        const plan = (PLAN_ORDER.includes(planRaw as PlanId) ? planRaw : 'screener') as PlanId;
-        const sub = await billing.grant(userId, days, plan);
-        await send(chatId, `Выдано: ${who} → ${planTitle(plan)} до ${fmtDate(sub.expiresAt)}.`);
-        await send(userId, `Тебе открыт доступ: ${planTitle(plan)} до ${fmtDate(sub.expiresAt)}.`);
+      case '/grant':
+        awaiting = 'grant';
+        await handleAwaiting(chatId, args.join(' '));
         return true;
-      }
-      case '/revoke': {
-        const who = args[0];
-        if (!who) return send(chatId, 'Формат: /revoke <id|@username>');
-        const userId = await resolveUserId(who);
-        if (userId === null) return send(chatId, `Пользователь ${who} не найден.`);
-        await repo.revokeSubscription(userId);
-        await send(chatId, `Доступ ${who} отозван.`);
+      case '/revoke':
+        awaiting = 'revoke';
+        await handleAwaiting(chatId, args.join(' '));
         return true;
-      }
-      case '/sub': {
-        const who = args[0];
-        if (!who) return send(chatId, 'Формат: /sub <id|@username>');
-        const userId = await resolveUserId(who);
-        if (userId === null) return send(chatId, `Пользователь ${who} не найден.`);
-        const info = await billing.info(userId);
-        await send(
-          chatId,
-          info.active
-            ? `${who}: ${planTitle(info.plan)}, активна, до ${info.expiresAt ? fmtDate(info.expiresAt) : '∞'} (${info.daysLeft} дн.)`
-            : `${who}: подписки нет${info.expiresAt ? `, истекла ${fmtDate(info.expiresAt)}` : ''}.`,
-        );
+      case '/sub':
+        awaiting = 'sub';
+        await handleAwaiting(chatId, args.join(' '));
         return true;
-      }
       default:
         return false;
     }
@@ -248,6 +364,11 @@ export function startBot({ token, publicUrl, log, billing, repo }: BotOptions): 
   // ---------------------------------------------------------------- апдейты
 
   async function handle(update: TgUpdate): Promise<void> {
+    if (update.callback_query) {
+      await onCallback(update.callback_query);
+      return;
+    }
+
     // Telegram спрашивает разрешение на списание звёзд — отвечать надо за 10 с.
     if (update.pre_checkout_query) {
       const q = update.pre_checkout_query;
@@ -298,12 +419,14 @@ export function startBot({ token, publicUrl, log, billing, repo }: BotOptions): 
       return;
     }
 
-    if (
-      billing.isAdmin(msg.chat.id) &&
-      msg.text.startsWith('/') &&
-      !msg.text.startsWith('/start')
-    ) {
-      if (await admin(msg.chat.id, msg.text)) return;
+    if (billing.isAdmin(msg.chat.id)) {
+      if (awaiting && !msg.text.startsWith('/')) {
+        await handleAwaiting(msg.chat.id, msg.text);
+        return;
+      }
+      if (msg.text.startsWith('/') && !msg.text.startsWith('/start')) {
+        if (await admin(msg.chat.id, msg.text)) return;
+      }
     }
 
     const appUrl = await resolveAppUrl(token, publicUrl);
@@ -334,11 +457,16 @@ export function startBot({ token, publicUrl, log, billing, repo }: BotOptions): 
       try {
         // timeout=25 — long polling: соединение висит до появления апдейта,
         // а не долбит Telegram в цикле.
-        const res = await call<TgUpdate[]>(token, 'getUpdates', {
-          offset,
-          timeout: 25,
-          allowed_updates: ['message', 'pre_checkout_query'],
-        });
+        const res = await call<TgUpdate[]>(
+          token,
+          'getUpdates',
+          {
+            offset,
+            timeout: 25,
+            allowed_updates: ['message', 'pre_checkout_query', 'callback_query'],
+          },
+          40_000,
+        );
 
         if (!res.ok) {
           // 409 — где-то запущен второй экземпляр бота с тем же токеном.
@@ -385,6 +513,20 @@ export function startBot({ token, publicUrl, log, billing, repo }: BotOptions): 
       else log.warn({ description: res.description }, 'бот: не удалось привязать кнопку меню');
     }
 
+    await call(token, 'setMyCommands', {
+      commands: [{ command: 'start', description: 'Открыть скринер' }],
+    });
+    if (billing.adminId !== null) {
+      await call(token, 'setMyCommands', {
+        scope: { type: 'chat', chat_id: billing.adminId },
+        commands: [
+          { command: 'admin', description: 'Панель администратора' },
+          { command: 'pending', description: 'Заявки на оплату' },
+          { command: 'start', description: 'Открыть скринер' },
+        ],
+      });
+    }
+
     const me = await call<{ username: string }>(token, 'getMe');
     log.info(`бот: слушаю @${me.result?.username ?? '?'}`);
     void poll();
@@ -418,6 +560,19 @@ export function startBot({ token, publicUrl, log, billing, repo }: BotOptions): 
 
   return {
     send,
+    async notifyPayment(text, paymentId) {
+      if (billing.adminId === null) return;
+      await send(
+        billing.adminId,
+        text,
+        kb([
+          [
+            { text: '✅ Подтвердить', callback_data: `pay:ok:${paymentId}` },
+            { text: '❌ Отклонить', callback_data: `pay:no:${paymentId}` },
+          ],
+        ]),
+      );
+    },
     stop() {
       stopped = true;
     },

@@ -144,6 +144,7 @@ export class Billing {
         currency: 'XTR',
         prices: [{ label: `${planTitle(v.plan)} ${v.months} мес.`, amount: stars }],
       }),
+      signal: AbortSignal.timeout(15_000),
     });
     const body = (await res.json()) as { ok: boolean; result?: string; description?: string };
     if (!body.ok || !body.result) {

@@ -26,6 +26,14 @@ import { api, type BillingResponse } from '../lib/api';
 import { haptic, openInvoice } from '../lib/telegram';
 import type { SettingsController } from '../lib/useSettings';
 
+/** Подписи сетей: пользователь должен выбрать ту же сеть, что в своём кошельке. */
+const NETWORK_LABEL: Record<string, string> = {
+  TRC20: 'Tron — комиссия ~1 USDT',
+  BEP20: 'BNB Smart Chain — комиссия копейки',
+  ERC20: 'Ethereum — комиссия высокая, лучше другая сеть',
+  TON: 'TON',
+};
+
 export function SubscriptionView({ settings }: { settings: SettingsController }) {
   const { t } = useTranslation();
   const [billing, setBilling] = useState<BillingResponse | null>(null);
@@ -334,6 +342,7 @@ function CryptoSheet({
             <RadioRow
               key={n}
               title={`USDT · ${n}`}
+              sub={NETWORK_LABEL[n]}
               selected={network === n}
               onSelect={() => setNetwork(n)}
             />

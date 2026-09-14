@@ -430,11 +430,10 @@ app.post('/api/billing/crypto/:id/tx', async (req, reply) => {
   // Админ узнаёт о заявке сразу — подтверждать удобнее по горячим следам.
   const u = req.tgUser!;
   const who = u.username ? `@${u.username}` : `${u.firstName} (id ${u.id})`;
-  if (bot && billing.adminId !== null) {
-    void bot.send(
-      billing.adminId,
-      `💵 Заявка #${p.id}: ${who} · ${p.plan} ${p.months} мес · ${p.amount} USDT (${p.network})\n` +
-        `hash: ${p.txHash}\n\n/approve ${p.id}  или  /reject ${p.id} причина`,
+  if (bot) {
+    void bot.notifyPayment(
+      `💵 Заявка #${p.id}\n${who} · ${p.plan} · ${p.months} мес.\n${p.amount} USDT (${p.network})\nHash: ${p.txHash}`,
+      p.id,
     );
   }
   return { payment: toPaymentInfo(p) };

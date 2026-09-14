@@ -77,7 +77,9 @@
     "scanningShort": "Scanning markets",
     "paywallTitle": "{{count}} more spreads hidden",
     "paywallText": "Without a subscription you see the top three pairs. Screener unlocks the full list, coin screen, filters and one-second refresh.",
-    "paywallCta": "Unlock screener — $25/mo"
+    "paywallCta": "Unlock screener — $25/mo",
+    "screenerActive": "Screener is live",
+    "screenerStarting": "Connecting to exchanges…"
   },
   "positions": {
     "title": "Positions",

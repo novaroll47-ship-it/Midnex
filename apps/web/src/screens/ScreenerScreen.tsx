@@ -198,13 +198,11 @@ export function ScreenerScreen({
           <div className="panel__head">
             <div>
               <div className="panel__status">
-                <i
-                  className={`panel__dot${data?.botRunning === false ? ' panel__dot--off' : ''}`}
-                />
-                {data?.botRunning === false ? t('screener.botStopped') : t('screener.botActive')}
+                <i className={`panel__dot${data ? '' : ' panel__dot--off'}`} />
+                {data ? t('screener.screenerActive') : t('screener.screenerStarting')}
               </div>
               <div className="panel__sub">
-                {data?.botRunning === false ? t('screener.idle') : t('screener.scanningShort')} ·{' '}
+                {t('screener.scanningShort')} ·{' '}
                 <span className="num">{formatClock(data?.updatedAt ?? Date.now())}</span>
               </div>
             </div>
