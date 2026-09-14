@@ -7,6 +7,7 @@ import { api } from './lib/api';
 import { backButton, initTelegram, isBrowserFallback, isTelegram } from './lib/telegram';
 import { useSettings } from './lib/useSettings';
 import { CoinDetailScreen } from './screens/CoinDetailScreen';
+import { ComingSoonScreen } from './screens/ComingSoonScreen';
 import { PositionDetailScreen, type PositionView } from './screens/PositionDetail';
 import { PositionsScreen } from './screens/PositionsScreen';
 import { ScreenerScreen } from './screens/ScreenerScreen';
@@ -78,6 +79,9 @@ export function App() {
   // только список монет. Остальные экраны скроллятся целиком.
   const fixedLayout = route.kind === 'tab' && tab === 'screener';
 
+  // Пока не включена торговля — наружу только скринер; остальное «Скоро».
+  const trading = settings.data?.features?.trading ?? false;
+
   return (
     <div className="app">
       <AppHeader title={headerTitle} onBack={route.kind === 'tab' ? undefined : goBack} />
@@ -102,17 +106,23 @@ export function App() {
         {route.kind === 'tab' && tab === 'screener' && (
           <ScreenerScreen
             plan={settings.data?.plan ?? 'unlimited'}
+            trading={trading}
             minSpreadPct={settings.data?.bot.minSpreadPct}
             refreshMs={settings.data?.bot.refreshMs ?? 1000}
             onOpenCoin={(base) => setRoute({ kind: 'coin', base })}
             onOpenSettings={() => {
               setTab('settings');
-              setRoute({ kind: 'settings', view: 'general' });
+              // Без торговли настраивать бота нечего — ведём к настройкам скринера.
+              setRoute({ kind: 'settings', view: trading ? 'general' : 'opportunities' });
             }}
           />
         )}
 
-        {route.kind === 'tab' && tab === 'positions' && (
+        {route.kind === 'tab' && tab === 'positions' && !trading && (
+          <ComingSoonScreen what="positions" />
+        )}
+
+        {route.kind === 'tab' && tab === 'positions' && trading && (
           <PositionsScreen
             onOpenDetails={(id) => setRoute({ kind: 'position', id, view: 'details' })}
             onOpenEdit={(id) => setRoute({ kind: 'position', id, view: 'edit' })}
@@ -122,6 +132,7 @@ export function App() {
         {route.kind === 'tab' && tab === 'settings' && (
           <SettingsScreen
             settings={settings}
+            trading={trading}
             onOpen={(view) => setRoute({ kind: 'settings', view })}
           />
         )}

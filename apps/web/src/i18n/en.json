@@ -117,7 +117,7 @@
     "generalTitle": "General",
     "generalSub": "Mode, active positions, refresh rate",
     "opportunitiesTitle": "Opportunities (spreads)",
-    "opportunitiesSub": "Exchanges, minimum spread, leverage",
+    "opportunitiesSub": "Exchanges, minimum spread, funding",
     "notificationsTitle": "Notifications",
     "notificationsSub": "Alerts and thresholds",
     "riskTitle": "Risk management",
@@ -384,5 +384,21 @@
     },
     "autoChecked": "This exchange exposes key permissions via API: a key with withdrawal enabled is rejected automatically.",
     "manualOnly": "This exchange does not expose key permissions via API. Check the items above yourself — the app cannot confirm them."
+  },
+  "soon": {
+    "positionsTitle": "Positions",
+    "positionsLead": "Trading is in development",
+    "positionsText": "Right now MIDNEX works as a screener: it shows spreads between exchanges in real time. The bot that opens and closes pairs on these spreads is being tested and will appear here.",
+    "plannedTitle": "Coming up",
+    "planned": {
+      "paper": "Paper trading",
+      "paperSub": "Trades on a virtual balance at live prices",
+      "auto": "Automatic trades",
+      "autoSub": "Opening and closing pairs by target, stop and timeout",
+      "risk": "Risk management",
+      "riskSub": "Limits on positions, leverage and daily loss",
+      "keys": "Exchange connections",
+      "keysSub": "Trade-only API keys, no withdrawal rights"
+    }
   }
 }

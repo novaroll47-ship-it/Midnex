@@ -151,7 +151,8 @@ export class PostgresRepo implements Repo {
   // ---------------------------------------------------------------- watchlist
 
   async getWatchlist(userId: number): Promise<string[]> {
-    const rows = await this.sql`select base from watchlist where user_id = ${userId} order by added_at`;
+    const rows = await this
+      .sql`select base from watchlist where user_id = ${userId} order by added_at`;
     return rows.map((r) => r['base'] as string);
   }
 
@@ -168,7 +169,8 @@ export class PostgresRepo implements Repo {
   // ---------------------------------------------------------------- keys
 
   async listKeys(userId: number): Promise<ExchangeKeyRecord[]> {
-    const rows = await this.sql`select * from exchange_keys where user_id = ${userId} order by created_at`;
+    const rows = await this
+      .sql`select * from exchange_keys where user_id = ${userId} order by created_at`;
     return rows.map((r) => ({
       id: r['id'] as string,
       userId: Number(r['user_id']),

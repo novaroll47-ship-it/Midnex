@@ -36,7 +36,12 @@ export class MemoryRepo implements Repo {
     const now = Date.now();
     const existing = this.users.get(u.id);
     const record: UserRecord = existing
-      ? { ...existing, username: u.username ?? existing.username, firstName: u.firstName, lastSeenAt: now }
+      ? {
+          ...existing,
+          username: u.username ?? existing.username,
+          firstName: u.firstName,
+          lastSeenAt: now,
+        }
       : {
           id: u.id,
           username: u.username ?? null,

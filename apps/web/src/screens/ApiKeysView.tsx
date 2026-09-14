@@ -340,7 +340,8 @@ function KeySheet({
             <ShieldIcon className="notice__icon" />
             <span>
               {t('keys.connected')}
-              {result.balance !== null && ` · ${t('keys.balance')}: ${result.balance.toFixed(2)} USDT`}
+              {result.balance !== null &&
+                ` · ${t('keys.balance')}: ${result.balance.toFixed(2)} USDT`}
             </span>
           </section>
         )}

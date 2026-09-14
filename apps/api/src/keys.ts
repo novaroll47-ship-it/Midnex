@@ -69,10 +69,13 @@ function describe(err: unknown): string {
   return raw.replace(/[A-Za-z0-9]{32,}/g, '…').slice(0, 160);
 }
 
-async function checkBinance(client: Exchange): Promise<Pick<KeyCheck, 'withdrawalDisabled' | 'permissionsVerified'>> {
+async function checkBinance(
+  client: Exchange,
+): Promise<Pick<KeyCheck, 'withdrawalDisabled' | 'permissionsVerified'>> {
   // sapiGetAccountApiRestrictions — права ключа на уровне аккаунта.
-  const call = (client as unknown as { sapiGetAccountApiRestrictions?: () => Promise<Record<string, unknown>> })
-    .sapiGetAccountApiRestrictions;
+  const call = (
+    client as unknown as { sapiGetAccountApiRestrictions?: () => Promise<Record<string, unknown>> }
+  ).sapiGetAccountApiRestrictions;
   if (!call) return { withdrawalDisabled: null, permissionsVerified: false };
   const r = await call.call(client);
   return {
@@ -81,9 +84,14 @@ async function checkBinance(client: Exchange): Promise<Pick<KeyCheck, 'withdrawa
   };
 }
 
-async function checkBybit(client: Exchange): Promise<Pick<KeyCheck, 'withdrawalDisabled' | 'permissionsVerified'>> {
-  const call = (client as unknown as { privateGetV5UserQueryApi?: () => Promise<{ result?: Record<string, unknown> }> })
-    .privateGetV5UserQueryApi;
+async function checkBybit(
+  client: Exchange,
+): Promise<Pick<KeyCheck, 'withdrawalDisabled' | 'permissionsVerified'>> {
+  const call = (
+    client as unknown as {
+      privateGetV5UserQueryApi?: () => Promise<{ result?: Record<string, unknown> }>;
+    }
+  ).privateGetV5UserQueryApi;
   if (!call) return { withdrawalDisabled: null, permissionsVerified: false };
   const r = await call.call(client);
   const perms = (r.result?.['permissions'] ?? {}) as Record<string, unknown>;

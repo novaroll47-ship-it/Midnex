@@ -58,6 +58,8 @@ interface Props {
   onOpenSettings: () => void;
   onOpenCoin: (base: string) => void;
   plan: keyof typeof PLAN_WATCHLIST_LIMIT;
+  /** Без торговли закреплённые монеты — избранное без лимитов тарифа. */
+  trading: boolean;
   minSpreadPct?: number;
   refreshMs: number;
 }
@@ -66,6 +68,7 @@ export function ScreenerScreen({
   onOpenSettings,
   onOpenCoin,
   plan,
+  trading,
   minSpreadPct,
   refreshMs,
 }: Props) {
@@ -157,7 +160,7 @@ export function ScreenerScreen({
     });
   }, [rows, search, extra, selected]);
 
-  const watchlistLimit = PLAN_WATCHLIST_LIMIT[plan] ?? null;
+  const watchlistLimit = trading ? (PLAN_WATCHLIST_LIMIT[plan] ?? null) : null;
   const limitReached = watchlistLimit !== null && selected.size >= watchlistLimit;
 
   function toggle(base: string) {

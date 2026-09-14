@@ -51,7 +51,11 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     } catch {
       // Тело не JSON — достаточно кода.
     }
-    throw new ApiError(detail.error ?? `${method} ${path} -> ${res.status}`, res.status, detail.status);
+    throw new ApiError(
+      detail.error ?? `${method} ${path} -> ${res.status}`,
+      res.status,
+      detail.status,
+    );
   }
   return (await res.json()) as T;
 }
@@ -89,6 +93,8 @@ export interface SettingsResponse {
   version: string;
   /** Где лежат данные пользователя: база или память процесса. */
   storage: 'postgres' | 'memory';
+  /** Что включено на этом этапе релиза. */
+  features: { trading: boolean };
 }
 
 export type ExchangeKeyStatus = 'unverified' | 'ok' | 'invalid' | 'withdrawal_enabled';
@@ -171,7 +177,8 @@ export const api = {
     request<{ position: Position }>('POST', `/api/positions/${id}/close`),
 
   watchlist: () => get<{ bases: string[] }>('/api/watchlist'),
-  setWatchlist: (bases: string[]) => request<{ bases: string[] }>('PUT', '/api/watchlist', { bases }),
+  setWatchlist: (bases: string[]) =>
+    request<{ bases: string[] }>('PUT', '/api/watchlist', { bases }),
 
   keys: () => get<KeysResponse>('/api/keys'),
   connectKey: (

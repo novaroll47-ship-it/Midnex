@@ -44,7 +44,10 @@ export class StateService {
 
   // ---------------------------------------------------------------- загрузка
 
-  async forUser(userId: number, profile?: { username?: string; firstName: string; language?: string }): Promise<UserState> {
+  async forUser(
+    userId: number,
+    profile?: { username?: string; firstName: string; language?: string },
+  ): Promise<UserState> {
     let pending = this.cache.get(userId);
     if (!pending) {
       pending = this.load(userId, profile);
@@ -54,7 +57,10 @@ export class StateService {
     return pending;
   }
 
-  private async load(userId: number, profile?: { username?: string; firstName: string; language?: string }): Promise<UserState> {
+  private async load(
+    userId: number,
+    profile?: { username?: string; firstName: string; language?: string },
+  ): Promise<UserState> {
     const user = await this.repo.upsertUser({
       id: userId,
       username: profile?.username,
@@ -130,7 +136,11 @@ export class StateService {
     return entry * (0.62 + wave(seed * 7, at / 1000, 0.05) * 0.14);
   }
 
-  toPosition(rec: PositionRecord, executionMode: Position['executionMode'], at = Date.now()): Position {
+  toPosition(
+    rec: PositionRecord,
+    executionMode: Position['executionMode'],
+    at = Date.now(),
+  ): Position {
     const entrySpreadPct = ((rec.shortEntry - rec.longEntry) / rec.longEntry) * 100;
     const notional = rec.longEntry * rec.amount;
     const currentSpreadPct =
@@ -147,7 +157,13 @@ export class StateService {
       name: rec.base,
       status: rec.status,
       executionMode: rec.executionMode ?? executionMode,
-      long: { exchange: rec.longExchange, side: 'long', entryPrice: rec.longEntry, amount: rec.amount, notional },
+      long: {
+        exchange: rec.longExchange,
+        side: 'long',
+        entryPrice: rec.longEntry,
+        amount: rec.amount,
+        notional,
+      },
       short: {
         exchange: rec.shortExchange,
         side: 'short',

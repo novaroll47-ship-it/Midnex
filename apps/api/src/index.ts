@@ -53,6 +53,14 @@ const PORT = Number(process.env.PORT ?? process.env.API_PORT ?? 8787);
 // origin — публичный адрес приложения. Значение по умолчанию с localhost имеет
 // смысл только для локальной разработки.
 const WEB_ORIGIN = process.env.WEB_ORIGIN ?? process.env.PUBLIC_URL ?? 'http://localhost:5173';
+
+/**
+ * Этап релиза. Пока бот-торговец не готов, наружу выходит только скринер:
+ * всё торговое в интерфейсе помечено «Скоро» и не взаимодействует, а
+ * закреплённые монеты — просто избранное без лимитов тарифа.
+ * TRADING_ENABLED=1 включает торговые разделы обратно.
+ */
+const TRADING_ENABLED = process.env.TRADING_ENABLED === '1';
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 const DEV_FAKE_USER = process.env.DEV_FAKE_USER === '1';
 const IS_PROD = process.env.NODE_ENV === 'production';
@@ -159,6 +167,7 @@ app.get('/api/health', async () => ({
   botTokenConfigured: Boolean(BOT_TOKEN),
   storage: repo.kind,
   encryption: encryptionReady(),
+  trading: TRADING_ENABLED,
   time: Date.now(),
 }));
 
@@ -215,11 +224,13 @@ app.get('/api/icon/coin/:base', async (req, reply) => {
   const { base } = req.params as { base: string };
   const icon = await coinIcon(base, req.log);
   if (!icon) return reply.code(404).send({ error: 'not found' });
-  return reply
-    .header('Content-Type', icon.contentType)
-    // Логотипы монет не меняются — пусть браузер держит их у себя.
-    .header('Cache-Control', 'public, max-age=604800, immutable')
-    .send(icon.body);
+  return (
+    reply
+      .header('Content-Type', icon.contentType)
+      // Логотипы монет не меняются — пусть браузер держит их у себя.
+      .header('Cache-Control', 'public, max-age=604800, immutable')
+      .send(icon.body)
+  );
 });
 
 // ---------------------------------------------------------------- вотчлист
@@ -234,7 +245,8 @@ app.put('/api/watchlist', async (req, reply) => {
     .map((b) => b.toUpperCase());
 
   // Лимит тарифа проверяет сервер, а не только интерфейс (ТЗ §9).
-  const limit = PLAN_WATCHLIST_LIMIT[req.state!.plan] ?? null;
+  // На этапе «только скринер» лимитов нет: это избранное, а не список торговли.
+  const limit = TRADING_ENABLED ? (PLAN_WATCHLIST_LIMIT[req.state!.plan] ?? null) : null;
   if (limit !== null && bases.length > limit) {
     return reply.code(409).send({ error: 'watchlist limit', limit });
   }
@@ -265,6 +277,7 @@ async function settingsPayload(s: UserState) {
     apiKeys: await keyStatuses(s.userId),
     version: APP_VERSION,
     storage: repo.kind,
+    features: { trading: TRADING_ENABLED },
   };
 }
 
@@ -359,7 +372,12 @@ app.post('/api/keys/:exchange', async (req, reply) => {
   if (!valid) return reply.code(404).send({ error: 'unknown exchange' });
   const id = valid.id;
 
-  const body = req.body as { apiKey?: string; secret?: string; passphrase?: string; label?: string };
+  const body = req.body as {
+    apiKey?: string;
+    secret?: string;
+    passphrase?: string;
+    label?: string;
+  };
   const apiKey = (body.apiKey ?? '').trim();
   const secret = (body.secret ?? '').trim();
   const passphrase = (body.passphrase ?? '').trim() || undefined;
@@ -379,7 +397,9 @@ app.post('/api/keys/:exchange', async (req, reply) => {
   if (!check.ok) {
     // Нерабочий ключ тоже не храним: пользователь видит причину и вводит заново,
     // а прежний рабочий ключ (если был) остаётся на месте.
-    return reply.code(422).send({ error: check.error ?? 'key rejected', status: 'invalid' as const });
+    return reply
+      .code(422)
+      .send({ error: check.error ?? 'key rejected', status: 'invalid' as const });
   }
 
   const record: ExchangeKeyRecord = {

@@ -1611,4 +1611,30 @@
     font-size: 15px;
     color: var(--blue);
   }
+
+  /* ---------- Заглушка «Скоро» ---------- */
+
+  .soon {
+    padding: 22px 18px;
+    text-align: center;
+  }
+
+  .soon__icon {
+    width: 34px;
+    height: 34px;
+    margin: 0 auto 10px;
+    color: var(--text-mute);
+  }
+
+  .soon__title {
+    font-size: 17px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+
+  .soon__text {
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--text-dim);
+  }
 }

@@ -6,7 +6,13 @@
  * поведение приложения; заглушек без функции здесь нет, кроме двух мест,
  * которые честно помечены как недоступные до следующих этапов.
  */
-import { APP_VERSION, EXCHANGES, PLAN_WATCHLIST_LIMIT, type PlanId, type SessionInfo } from '@cs/shared';
+import {
+  APP_VERSION,
+  EXCHANGES,
+  PLAN_WATCHLIST_LIMIT,
+  type PlanId,
+  type SessionInfo,
+} from '@cs/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -171,6 +177,8 @@ function GeneralView({ settings }: { settings: SettingsController }) {
 
 function OpportunitiesView({ settings }: { settings: SettingsController }) {
   const { t } = useTranslation();
+  // Плечо и объём — параметры сделки; на этапе «только скринер» их не показываем.
+  const trading = settings.data?.features?.trading ?? false;
   const bot = settings.data!.bot;
   const enabled = new Set(bot.enabledExchanges);
 
@@ -207,22 +215,26 @@ function OpportunitiesView({ settings }: { settings: SettingsController }) {
           step={0.05}
           onCommit={(minSpreadPct) => settings.patchBot({ minSpreadPct })}
         />
-        <NumberRow
-          title={t('sd.defaultLeverage')}
-          value={bot.defaultLeverage}
-          unit="x"
-          min={1}
-          max={settings.data!.risk.maxLeverage}
-          onCommit={(defaultLeverage) => settings.patchBot({ defaultLeverage })}
-        />
-        <NumberRow
-          title={t('sd.defaultNotional')}
-          sub={t('sd.defaultNotionalSub')}
-          value={bot.defaultNotionalUsdt}
-          unit="USDT"
-          min={5}
-          onCommit={(defaultNotionalUsdt) => settings.patchBot({ defaultNotionalUsdt })}
-        />
+        {trading && (
+          <>
+            <NumberRow
+              title={t('sd.defaultLeverage')}
+              value={bot.defaultLeverage}
+              unit="x"
+              min={1}
+              max={settings.data!.risk.maxLeverage}
+              onCommit={(defaultLeverage) => settings.patchBot({ defaultLeverage })}
+            />
+            <NumberRow
+              title={t('sd.defaultNotional')}
+              sub={t('sd.defaultNotionalSub')}
+              value={bot.defaultNotionalUsdt}
+              unit="USDT"
+              min={5}
+              onCommit={(defaultNotionalUsdt) => settings.patchBot({ defaultNotionalUsdt })}
+            />
+          </>
+        )}
       </Section>
 
       <Section title={t('sd.funding')} hint={t('sd.fundingHint')}>
@@ -499,7 +511,10 @@ function SessionsView() {
           disabled={others === 0 || busy}
           onClick={() => setConfirm(true)}
         >
-          <span className="list__title" style={{ color: others ? 'var(--loss)' : 'var(--text-mute)' }}>
+          <span
+            className="list__title"
+            style={{ color: others ? 'var(--loss)' : 'var(--text-mute)' }}
+          >
             {t('sd.logoutOthers')}
           </span>
           <span />

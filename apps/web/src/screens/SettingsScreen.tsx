@@ -12,12 +12,19 @@ import type { SettingsView } from './SettingsDetail';
 
 export function SettingsScreen({
   settings,
+  trading,
   onOpen,
 }: {
   settings: SettingsController;
+  /** false — этап «только скринер»: торговые разделы показаны, но заперты. */
+  trading: boolean;
   onOpen: (view: SettingsView) => void;
 }) {
   const { t } = useTranslation();
+
+  // Раздел, доступный только с торговлей: без неё — бейдж «Скоро» и никакой реакции.
+  const locked = (view: SettingsView) =>
+    trading ? { onClick: () => onOpen(view) } : { badge: t('settings.soon'), disabled: true };
   const [sounds, setSounds] = useState(true);
   const [logoutAsk, setLogoutAsk] = useState(false);
   const [logoutBusy, setLogoutBusy] = useState(false);
@@ -58,7 +65,7 @@ export function SettingsScreen({
           sub={t('settings.generalSub')}
           meta={modeLabel}
           metaGreen
-          onClick={() => onOpen('general')}
+          {...locked('general')}
         />
         <Row
           title={t('settings.opportunitiesTitle')}
@@ -71,20 +78,20 @@ export function SettingsScreen({
           sub={t('settings.notificationsSub')}
           meta={data ? t(data.notifications.enabled ? 'sd.on' : 'sd.off') : undefined}
           metaGreen={data?.notifications.enabled}
-          onClick={() => onOpen('notifications')}
+          {...locked('notifications')}
         />
         <Row
           title={t('settings.riskTitle')}
           sub={t('settings.riskSub')}
           meta={data ? `${data.risk.maxOpenPairs} / ${data.risk.maxLeverage}x` : undefined}
-          onClick={() => onOpen('risk')}
+          {...locked('risk')}
         />
         <Row
           title={t('settings.subscriptionTitle')}
           sub={t('settings.subscriptionSub')}
           meta={data ? t(`sd.plan_${data.plan}`) : undefined}
           metaGreen
-          onClick={() => onOpen('subscription')}
+          {...locked('subscription')}
         />
         {/* Задел под ТЗ §7.2 — стратегия появится позже, но место в UI занято сразу. */}
         <Row
@@ -102,7 +109,7 @@ export function SettingsScreen({
           sub={t('settings.apiKeysSub')}
           meta={t('settings.apiKeysMeta', { count: connectedKeys })}
           metaGreen
-          onClick={() => onOpen('apikeys')}
+          {...locked('apikeys')}
         />
         <Row
           title={t('settings.sessionsTitle')}
