@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { AppHeader } from './components/AppHeader';
 import { BottomNav, type Tab } from './components/BottomNav';
 import { api } from './lib/api';
-import { backButton, initTelegram, isBrowserFallback } from './lib/telegram';
+import { backButton, initTelegram, isBrowserFallback, isTelegram } from './lib/telegram';
 import { useSettings } from './lib/useSettings';
 import { CoinDetailScreen } from './screens/CoinDetailScreen';
 import { PositionDetailScreen, type PositionView } from './screens/PositionDetail';
@@ -83,7 +83,9 @@ export function App() {
       <AppHeader title={headerTitle} onBack={route.kind === 'tab' ? undefined : goBack} />
 
       <main
-        className={`app__body${fixedLayout ? ' app__body--fixed' : ''}`}
+        className={`app__body${fixedLayout ? ' app__body--fixed' : ''}${
+          isTelegram && !headerTitle ? ' app__body--bare' : ''
+        }`}
         ref={scrollRef}
         key={`${tab}:${route.kind}`}
       >
