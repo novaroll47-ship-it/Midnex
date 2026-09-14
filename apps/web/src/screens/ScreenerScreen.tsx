@@ -37,7 +37,7 @@ interface ExtraFilters {
 }
 
 /** Порядок переключения сортировок по нажатию на ссылку над таблицей. */
-const SORT_ORDER: SortKey[] = ['spread', 'net', 'name', 'price'];
+const SORT_ORDER: SortKey[] = ['spread', 'name', 'price'];
 
 /** Подписи сортировок для ссылки над таблицей. */
 const SORT_LABEL: Record<SortKey, string> = {
