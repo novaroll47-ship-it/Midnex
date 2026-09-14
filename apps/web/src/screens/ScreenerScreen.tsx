@@ -36,7 +36,10 @@ interface ExtraFilters {
   sort: SortKey;
 }
 
-/** Подписи сортировок: и в ссылке над таблицей, и в шторке выбора. */
+/** Порядок переключения сортировок по нажатию на ссылку над таблицей. */
+const SORT_ORDER: SortKey[] = ['spread', 'net', 'name', 'price'];
+
+/** Подписи сортировок для ссылки над таблицей. */
 const SORT_LABEL: Record<SortKey, string> = {
   spread: 'screener.sortBySpread',
   net: 'screener.sortNet',
@@ -73,7 +76,7 @@ export function ScreenerScreen({
   const [venues, setVenues] = useState<ExchangeId[]>([]);
   const [extra, setExtra] = useState<ExtraFilters>(DEFAULT_EXTRA);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [sheet, setSheet] = useState<'filters' | 'sort' | null>(null);
+  const [sheet, setSheet] = useState<'filters' | null>(null);
 
   // Вотчлист хранится на сервере: закреплённые монеты переживают перезапуск
   // приложения и одинаковы на телефоне и на компьютере.
@@ -258,7 +261,11 @@ export function ScreenerScreen({
             className="list-head__sort"
             onClick={() => {
               haptic('tap');
-              setSheet('sort');
+              // Каждое нажатие — следующая сортировка по кругу, без меню.
+              setExtra((e) => ({
+                ...e,
+                sort: SORT_ORDER[(SORT_ORDER.indexOf(e.sort) + 1) % SORT_ORDER.length]!,
+              }));
             }}
           >
             {t(SORT_LABEL[extra.sort])}
@@ -312,13 +319,6 @@ export function ScreenerScreen({
         </button>
       </section>
 
-      {sheet === 'sort' && (
-        <SortSheet
-          value={extra.sort}
-          onChange={(sort) => setExtra((e) => ({ ...e, sort }))}
-          onClose={() => setSheet(null)}
-        />
-      )}
       {sheet === 'filters' && (
         <FiltersSheet
           value={extra}
@@ -334,44 +334,6 @@ export function ScreenerScreen({
         />
       )}
     </div>
-  );
-}
-
-/** Сортировка списка — своя шторка, открывается ссылкой над таблицей. */
-function SortSheet({
-  value,
-  onChange,
-  onClose,
-}: {
-  value: SortKey;
-  onChange: (next: SortKey) => void;
-  onClose: () => void;
-}) {
-  const { t } = useTranslation();
-  const keys: SortKey[] = ['spread', 'net', 'name', 'price'];
-
-  return (
-    <Sheet title={t('screener.sortBy')} onClose={onClose}>
-      <div className="sheet__group">
-        {keys.map((key) => (
-          <button
-            key={key}
-            type="button"
-            className="sheet__row sheet__row--tap"
-            onClick={() => {
-              haptic('tap');
-              onChange(key);
-              onClose();
-            }}
-          >
-            <span className="sheet__row-title">{t(SORT_LABEL[key])}</span>
-            <span style={{ color: value === key ? 'var(--green)' : 'transparent' }}>
-              <CheckIcon size={14} />
-            </span>
-          </button>
-        ))}
-      </div>
-    </Sheet>
   );
 }
 
