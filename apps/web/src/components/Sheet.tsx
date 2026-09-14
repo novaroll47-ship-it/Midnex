@@ -47,7 +47,7 @@ export function Sheet({
           )}
         </DrawerHeader>
 
-        <div className="flex max-h-[62vh] flex-col gap-2.5 overflow-y-auto px-[13px] pb-3">
+        <div className="flex max-h-[62vh] flex-col gap-2.5 overflow-y-auto px-[13px] pb-3 [&>*]:shrink-0">
           {children}
         </div>
 

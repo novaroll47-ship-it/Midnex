@@ -1,5 +1,6 @@
 /** Экран «Скринер» — макет docs/mockup-screener.png. */
 import {
+  DEFAULT_BOT,
   EXCHANGES,
   PLAN_WATCHLIST_LIMIT,
   exchange,
@@ -21,15 +22,7 @@ import { Switch } from '@/components/ui/switch';
 import { CoinIcon } from '../components/CoinIcon';
 import { ExchangeLogo } from '../components/ExchangeLogo';
 import { Sheet } from '../components/Sheet';
-import {
-  BoltIcon,
-  CheckIcon,
-  ChevronRightIcon,
-  SearchIcon,
-  SlidersIcon,
-  SwapIcon,
-  XIcon,
-} from '../icons';
+import { BoltIcon, CheckIcon, ChevronRightIcon, SearchIcon, SlidersIcon, XIcon } from '../icons';
 import { ApiError, api } from '../lib/api';
 import { haptic } from '../lib/telegram';
 import { usePolling } from '../lib/usePolling';
@@ -72,7 +65,7 @@ export function ScreenerScreen({
   const [venues, setVenues] = useState<ExchangeId[]>([]);
   const [extra, setExtra] = useState<ExtraFilters>(DEFAULT_EXTRA);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [sheet, setSheet] = useState<'venues' | 'filters' | 'threshold' | null>(null);
+  const [sheet, setSheet] = useState<'filters' | null>(null);
 
   // Вотчлист хранится на сервере: закреплённые монеты переживают перезапуск
   // приложения и одинаковы на телефоне и на компьютере.
@@ -176,6 +169,7 @@ export function ScreenerScreen({
       : t('app.loadError');
 
   const extraCount =
+    (venues.length === 2 ? 1 : 0) +
     (extra.onlyPositiveNet ? 1 : 0) +
     (extra.onlyProfitableFunding ? 1 : 0) +
     (extra.maxSpreadPct > 0 ? 1 : 0) +
@@ -250,31 +244,6 @@ export function ScreenerScreen({
           </button>
         </section>
 
-        <section className="chips">
-          <button
-            className={`chip chip--pill${venues.length ? ' chip--active' : ''}`}
-            type="button"
-            onClick={() => setSheet('venues')}
-          >
-            {venues.length === 2 ? (
-              <>
-                <ExchangeLogo id={venues[0]!} size={13} />
-                <SwapIcon size={11} />
-                <ExchangeLogo id={venues[1]!} size={13} />
-              </>
-            ) : (
-              t('screener.allExchanges')
-            )}
-          </button>
-          <button
-            className="chip chip--pill chip--active num"
-            type="button"
-            onClick={() => setSheet('threshold')}
-          >
-            {t('screener.spreadAtLeast', { value: minSpread })}
-          </button>
-        </section>
-
         <div className="list-head">
           <span className="list-head__title">{t('screener.spreadsNow')}</span>
           <button
@@ -336,19 +305,17 @@ export function ScreenerScreen({
         </button>
       </section>
 
-      {sheet === 'venues' && (
-        <VenuePairSheet value={venues} onChange={setVenues} onClose={() => setSheet(null)} />
-      )}
       {sheet === 'filters' && (
-        <FiltersSheet value={extra} onChange={setExtra} onClose={() => setSheet(null)} />
-      )}
-      {sheet === 'threshold' && (
-        <ThresholdSheet
-          value={minSpread}
-          onChange={(v) => {
+        <FiltersSheet
+          value={extra}
+          onChange={setExtra}
+          minSpread={minSpread}
+          onMinSpread={(v) => {
             touched.current = true;
             setMinSpread(v);
           }}
+          venues={venues}
+          onVenues={setVenues}
           onClose={() => setSheet(null)}
         />
       )}
@@ -356,153 +323,46 @@ export function ScreenerScreen({
   );
 }
 
-/** Порог спреда: чип открывает шторку с полем и быстрыми значениями. */
-function ThresholdSheet({
-  value,
-  onChange,
-  onClose,
-}: {
-  value: string;
-  onChange: (next: string) => void;
-  onClose: () => void;
-}) {
-  const { t } = useTranslation();
-  const [draft, setDraft] = useState(value);
-  const presets = ['0.10', '0.25', '0.50', '1.00', '2.00'];
-
-  return (
-    <Sheet
-      title={t('screener.minSpread')}
-      description={t('screener.thresholdHint')}
-      onClose={onClose}
-      footer={
-        <Button
-          onClick={() => {
-            const n = Number(draft.replace(',', '.'));
-            onChange(Number.isFinite(n) && n >= 0 ? n.toFixed(2) : value);
-            onClose();
-          }}
-        >
-          {t('app.apply')}
-        </Button>
-      }
-    >
-      <div className="sheet__group">
-        <label className="sheet__row">
-          <span className="sheet__row-title">{t('screener.minSpread')}</span>
-          <input
-            className="sheet__input num"
-            inputMode="decimal"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            aria-label={t('screener.minSpread')}
-          />
-          <span className="sheet__row-title">%</span>
-        </label>
-      </div>
-      <div className="grid grid-cols-5 gap-2">
-        {presets.map((p) => (
-          <Button
-            key={p}
-            variant={Number(draft) === Number(p) ? 'default' : 'secondary'}
-            className="num h-10 px-0"
-            onClick={() => setDraft(p)}
-          >
-            {p}%
-          </Button>
-        ))}
-      </div>
-    </Sheet>
-  );
-}
-
-/**
- * Выбор конкретной пары бирж.
- *
- * Пока выбрана пара, спред считается именно между этими двумя биржами, а не
- * между лучшими из восьми — иначе выбор ничего не значил бы.
- */
-function VenuePairSheet({
-  value,
-  onChange,
-  onClose,
-}: {
-  value: ExchangeId[];
-  onChange: (next: ExchangeId[]) => void;
-  onClose: () => void;
-}) {
-  const { t } = useTranslation();
-  const [pair, setPair] = useState<ExchangeId[]>(value);
-
-  function pick(id: ExchangeId) {
-    haptic('tap');
-    setPair((prev) => {
-      if (prev.includes(id)) return prev.filter((x) => x !== id);
-      // Третий выбор вытесняет самый ранний — пара всегда из двух бирж.
-      return prev.length < 2 ? [...prev, id] : [prev[1]!, id];
-    });
-  }
-
-  return (
-    <Sheet
-      title={t('screener.venuePairTitle')}
-      description={t('screener.venuePairHint')}
-      onClose={onClose}
-      footer={
-        <div className="grid grid-cols-2 gap-2">
-          <Button
-            variant="secondary"
-            onClick={() => {
-              onChange([]);
-              onClose();
-            }}
-          >
-            {t('screener.allExchanges')}
-          </Button>
-          <Button
-            disabled={pair.length !== 2}
-            onClick={() => {
-              onChange(pair);
-              onClose();
-            }}
-          >
-            {t('app.apply')}
-          </Button>
-        </div>
-      }
-    >
-      <div className="venue-grid">
-        {EXCHANGES.map((ex) => {
-          const index = pair.indexOf(ex.id);
-          return (
-            <button
-              key={ex.id}
-              type="button"
-              className={`venue-tile${index >= 0 ? ' venue-tile--on' : ''}`}
-              onClick={() => pick(ex.id)}
-            >
-              <ExchangeLogo id={ex.id} size={20} />
-              <span>{ex.name}</span>
-              {index >= 0 && <span className="venue-tile__order">{index + 1}</span>}
-            </button>
-          );
-        })}
-      </div>
-    </Sheet>
-  );
-}
-
 function FiltersSheet({
   value,
   onChange,
+  minSpread,
+  onMinSpread,
+  venues,
+  onVenues,
   onClose,
 }: {
   value: ExtraFilters;
   onChange: (next: ExtraFilters) => void;
+  minSpread: string;
+  onMinSpread: (next: string) => void;
+  venues: ExchangeId[];
+  onVenues: (next: ExchangeId[]) => void;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState(value);
+  const [minDraft, setMinDraft] = useState(minSpread);
+  const [pair, setPair] = useState<ExchangeId[]>(venues);
+
+  // Пара бирж: третий выбор вытесняет самый ранний, пара всегда из двух.
+  // Пока выбрана пара, спред считается именно между ними, а не между
+  // лучшими из восьми — иначе выбор ничего не значил бы.
+  function pick(id: ExchangeId) {
+    haptic('tap');
+    setPair((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      return prev.length < 2 ? [...prev, id] : [prev[1]!, id];
+    });
+  }
+
+  function apply() {
+    const n = Number(minDraft.replace(',', '.'));
+    onMinSpread(Number.isFinite(n) && n >= 0 ? n.toFixed(2) : minSpread);
+    onVenues(pair.length === 2 ? pair : []);
+    onChange(draft);
+    onClose();
+  }
 
   const sorts: { key: SortKey; label: string }[] = [
     { key: 'spread', label: t('screener.sortSpread') },
@@ -521,22 +381,56 @@ function FiltersSheet({
             variant="secondary"
             onClick={() => {
               onChange(DEFAULT_EXTRA);
+              onMinSpread(DEFAULT_BOT.minSpreadPct.toFixed(2));
+              onVenues([]);
               onClose();
             }}
           >
             {t('screener.resetFilters')}
           </Button>
-          <Button
-            onClick={() => {
-              onChange(draft);
-              onClose();
-            }}
-          >
-            {t('app.apply')}
-          </Button>
+          <Button onClick={apply}>{t('app.apply')}</Button>
         </div>
       }
     >
+      <div className="sheet__group">
+        <label className="sheet__row">
+          <span>
+            <span className="sheet__row-title">{t('screener.minSpread')}</span>
+            <span className="sheet__row-sub">{t('screener.thresholdHint')}</span>
+          </span>
+          <span className="num-field">
+            <input
+              className="num-field__input num"
+              inputMode="decimal"
+              value={minDraft}
+              onChange={(e) => setMinDraft(e.target.value)}
+            />
+            <span className="num-field__unit">%</span>
+          </span>
+        </label>
+      </div>
+
+      <div className="section-label section-label--sheet">{t('screener.venuePairTitle')}</div>
+      <div className="venue-grid">
+        {EXCHANGES.map((ex) => {
+          const index = pair.indexOf(ex.id);
+          return (
+            <button
+              key={ex.id}
+              type="button"
+              className={`venue-tile${index >= 0 ? ' venue-tile--on' : ''}`}
+              onClick={() => pick(ex.id)}
+            >
+              <ExchangeLogo id={ex.id} size={20} />
+              <span>{ex.name}</span>
+              {index >= 0 && <span className="venue-tile__order">{index + 1}</span>}
+            </button>
+          );
+        })}
+      </div>
+      <p className="hint hint--sheet">{t('screener.venuePairHint')}</p>
+
+      <div className="section-label section-label--sheet">{t('screener.moreFilters')}</div>
       <div className="sheet__group">
         <label className="sheet__row">
           <span>
