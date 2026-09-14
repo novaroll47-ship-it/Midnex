@@ -36,6 +36,14 @@ interface ExtraFilters {
   sort: SortKey;
 }
 
+/** Подписи сортировок: и в ссылке над таблицей, и в шторке выбора. */
+const SORT_LABEL: Record<SortKey, string> = {
+  spread: 'screener.sortBySpread',
+  net: 'screener.sortNet',
+  name: 'screener.sortAlpha',
+  price: 'screener.sortPrice',
+};
+
 const DEFAULT_EXTRA: ExtraFilters = {
   onlyPositiveNet: false,
   onlyProfitableFunding: false,
@@ -65,7 +73,7 @@ export function ScreenerScreen({
   const [venues, setVenues] = useState<ExchangeId[]>([]);
   const [extra, setExtra] = useState<ExtraFilters>(DEFAULT_EXTRA);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [sheet, setSheet] = useState<'filters' | null>(null);
+  const [sheet, setSheet] = useState<'filters' | 'sort' | null>(null);
 
   // Вотчлист хранится на сервере: закреплённые монеты переживают перезапуск
   // приложения и одинаковы на телефоне и на компьютере.
@@ -172,8 +180,7 @@ export function ScreenerScreen({
     (venues.length === 2 ? 1 : 0) +
     (extra.onlyPositiveNet ? 1 : 0) +
     (extra.onlyProfitableFunding ? 1 : 0) +
-    (extra.maxSpreadPct > 0 ? 1 : 0) +
-    (extra.sort !== 'spread' ? 1 : 0);
+    (extra.maxSpreadPct > 0 ? 1 : 0);
 
   return (
     <div className="screener">
@@ -251,10 +258,10 @@ export function ScreenerScreen({
             className="list-head__sort"
             onClick={() => {
               haptic('tap');
-              setExtra((e) => ({ ...e, sort: e.sort === 'name' ? 'spread' : 'name' }));
+              setSheet('sort');
             }}
           >
-            {t(extra.sort === 'name' ? 'screener.sortAlpha' : 'screener.sortBySpread')}
+            {t(SORT_LABEL[extra.sort])}
           </button>
         </div>
       </div>
@@ -305,6 +312,13 @@ export function ScreenerScreen({
         </button>
       </section>
 
+      {sheet === 'sort' && (
+        <SortSheet
+          value={extra.sort}
+          onChange={(sort) => setExtra((e) => ({ ...e, sort }))}
+          onClose={() => setSheet(null)}
+        />
+      )}
       {sheet === 'filters' && (
         <FiltersSheet
           value={extra}
@@ -320,6 +334,44 @@ export function ScreenerScreen({
         />
       )}
     </div>
+  );
+}
+
+/** Сортировка списка — своя шторка, открывается ссылкой над таблицей. */
+function SortSheet({
+  value,
+  onChange,
+  onClose,
+}: {
+  value: SortKey;
+  onChange: (next: SortKey) => void;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const keys: SortKey[] = ['spread', 'net', 'name', 'price'];
+
+  return (
+    <Sheet title={t('screener.sortBy')} onClose={onClose}>
+      <div className="sheet__group">
+        {keys.map((key) => (
+          <button
+            key={key}
+            type="button"
+            className="sheet__row sheet__row--tap"
+            onClick={() => {
+              haptic('tap');
+              onChange(key);
+              onClose();
+            }}
+          >
+            <span className="sheet__row-title">{t(SORT_LABEL[key])}</span>
+            <span style={{ color: value === key ? 'var(--green)' : 'transparent' }}>
+              <CheckIcon size={14} />
+            </span>
+          </button>
+        ))}
+      </div>
+    </Sheet>
   );
 }
 
@@ -364,13 +416,6 @@ function FiltersSheet({
     onClose();
   }
 
-  const sorts: { key: SortKey; label: string }[] = [
-    { key: 'spread', label: t('screener.sortSpread') },
-    { key: 'net', label: t('screener.sortNet') },
-    { key: 'name', label: t('screener.sortName') },
-    { key: 'price', label: t('screener.sortPrice') },
-  ];
-
   return (
     <Sheet
       title={t('screener.moreFilters')}
@@ -380,7 +425,7 @@ function FiltersSheet({
           <Button
             variant="secondary"
             onClick={() => {
-              onChange(DEFAULT_EXTRA);
+              onChange({ ...DEFAULT_EXTRA, sort: value.sort });
               onMinSpread(DEFAULT_BOT.minSpreadPct.toFixed(2));
               onVenues([]);
               onClose();
@@ -477,23 +522,6 @@ function FiltersSheet({
             <span className="num-field__unit">%</span>
           </span>
         </label>
-      </div>
-
-      <div className="section-label section-label--sheet">{t('screener.sortBy')}</div>
-      <div className="sheet__group">
-        {sorts.map((s) => (
-          <button
-            key={s.key}
-            type="button"
-            className="sheet__row sheet__row--tap"
-            onClick={() => setDraft((d) => ({ ...d, sort: s.key }))}
-          >
-            <span className="sheet__row-title">{s.label}</span>
-            <span style={{ color: draft.sort === s.key ? 'var(--green)' : 'transparent' }}>
-              <CheckIcon size={14} />
-            </span>
-          </button>
-        ))}
       </div>
     </Sheet>
   );
