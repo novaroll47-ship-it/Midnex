@@ -1430,4 +1430,179 @@
     font-size: 10px;
     margin-top: 2px;
   }
+
+  /* ---------- Панель состояния: бот + две цифры одной карточкой ---------- */
+
+  .panel {
+    padding: 14px 16px 12px;
+    border-radius: 18px;
+  }
+
+  .panel__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .panel__status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 17px;
+    font-weight: 600;
+  }
+
+  .panel__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+  }
+
+  .panel__dot--off {
+    background: var(--text-mute);
+    box-shadow: none;
+  }
+
+  .panel__sub {
+    margin-top: 3px;
+    font-size: 13px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .panel__head > div:first-child {
+    min-width: 0;
+  }
+
+  .panel__btn {
+    flex-shrink: 0;
+    height: 38px;
+    padding: 0 16px;
+    border-radius: 999px;
+    background: var(--surface-3);
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .panel__stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    padding-top: 12px;
+  }
+
+  .panel__stat + .panel__stat {
+    border-left: 1px solid var(--border);
+    padding-left: 18px;
+  }
+
+  .panel__value {
+    font-size: 30px;
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+  }
+
+  .panel__value--green {
+    color: var(--green);
+  }
+
+  .panel__label {
+    margin-top: 2px;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+
+  /* ---------- Поиск-пилюля и круглая кнопка фильтров ---------- */
+
+  .filters--pill {
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+  }
+
+  .search--pill .search__input {
+    height: 44px;
+    padding-left: 40px;
+    border-radius: 999px;
+    border-color: transparent;
+    background: var(--surface);
+    font-size: 15px;
+  }
+
+  .search--pill .search__icon {
+    left: 14px;
+  }
+
+  .search--pill .search__clear {
+    right: 12px;
+  }
+
+  .icon-btn-round {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--surface);
+    color: var(--text);
+  }
+
+  .icon-btn-round--active {
+    color: var(--blue);
+  }
+
+  .chips {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .chips::-webkit-scrollbar {
+    display: none;
+  }
+
+  .chip--pill {
+    flex-shrink: 0;
+    height: 36px;
+    padding: 0 16px;
+    border-radius: 999px;
+    font-size: 14px;
+    color: var(--text);
+  }
+
+  .chip--pill.chip--active {
+    color: var(--blue);
+    background: var(--blue-soft);
+  }
+
+  /* ---------- Заголовок списка с быстрой сортировкой ---------- */
+
+  .list-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 4px 0;
+  }
+
+  .list-head__title {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  .list-head__sort {
+    font-size: 15px;
+    color: var(--blue);
+  }
 }

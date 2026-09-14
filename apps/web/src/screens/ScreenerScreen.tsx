@@ -25,7 +25,6 @@ import {
   BoltIcon,
   CheckIcon,
   ChevronRightIcon,
-  GearIcon,
   SearchIcon,
   SlidersIcon,
   SwapIcon,
@@ -73,7 +72,7 @@ export function ScreenerScreen({
   const [venues, setVenues] = useState<ExchangeId[]>([]);
   const [extra, setExtra] = useState<ExtraFilters>(DEFAULT_EXTRA);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [sheet, setSheet] = useState<'venues' | 'filters' | null>(null);
+  const [sheet, setSheet] = useState<'venues' | 'filters' | 'threshold' | null>(null);
 
   // Вотчлист хранится на сервере: закреплённые монеты переживают перезапуск
   // приложения и одинаковы на телефоне и на компьютере.
@@ -185,45 +184,43 @@ export function ScreenerScreen({
   return (
     <div className="screener">
       <div className="screener__top">
-        {/* Статус бота */}
-        <section className="card bot-card">
-          <div>
-            <div className="bot-card__status">
-              {t('screener.bot')}{' '}
-              <span
-                className={data?.botRunning === false ? 'bot-card__state--off' : 'bot-card__state'}
-              >
-                {data?.botRunning === false ? t('screener.stopped') : t('screener.active')}
-                <i className="bot-card__dot" />
-              </span>
+        {/* Одна панель: состояние бота и две сводные цифры. */}
+        <section className="card panel">
+          <div className="panel__head">
+            <div>
+              <div className="panel__status">
+                <i
+                  className={`panel__dot${data?.botRunning === false ? ' panel__dot--off' : ''}`}
+                />
+                {data?.botRunning === false ? t('screener.botStopped') : t('screener.botActive')}
+              </div>
+              <div className="panel__sub">
+                {data?.botRunning === false ? t('screener.idle') : t('screener.scanningShort')} ·{' '}
+                <span className="num">{formatClock(data?.updatedAt ?? Date.now())}</span>
+              </div>
             </div>
-            <div className="bot-card__activity">
-              {data?.botRunning === false ? t('screener.idle') : t('screener.scanning')}
+            <button className="panel__btn" type="button" onClick={onOpenSettings}>
+              {t('screener.configure')}
+            </button>
+          </div>
+          <div className="panel__stats">
+            <div className="panel__stat">
+              <div className="panel__value num">{data?.opportunities ?? '—'}</div>
+              <div className="panel__label">{t('screener.opportunities')}</div>
+            </div>
+            <div className="panel__stat">
+              <div className="panel__value panel__value--green num">
+                {data ? formatPct(data.avgSpreadPct) : '—'}
+              </div>
+              <div className="panel__label">{t('screener.avgSpreadLower')}</div>
             </div>
           </div>
-          <button className="btn-ghost" type="button" onClick={onOpenSettings}>
-            <GearIcon size={15} />
-            {t('screener.botSettings')}
-          </button>
         </section>
 
-        {/* Две сводные цифры. Частота обновления убрана — она и так написана
-            в подвале, а спарклайн ничего не добавлял к самому числу. */}
-        <section className="stats stats--two">
-          <div className="card stat">
-            <div className="stat__label">{t('screener.found')}</div>
-            <div className="stat__value num">{data?.opportunities ?? '—'}</div>
-          </div>
-          <div className="card stat">
-            <div className="stat__label">{t('screener.avgSpread')}</div>
-            <div className="stat__value num">{data ? formatPct(data.avgSpreadPct) : '—'}</div>
-          </div>
-        </section>
-
-        {/* Фильтры */}
-        <section className="filters">
-          <div className="search">
-            <SearchIcon className="search__icon" />
+        {/* Поиск и фильтры */}
+        <section className="filters filters--pill">
+          <div className="search search--pill">
+            <SearchIcon className="search__icon" size={16} />
             <input
               className="search__input"
               value={search}
@@ -242,9 +239,20 @@ export function ScreenerScreen({
               </button>
             )}
           </div>
-
           <button
-            className={`chip${venues.length ? ' chip--active' : ''}`}
+            className={`icon-btn-round${extraCount ? ' icon-btn-round--active' : ''}`}
+            type="button"
+            aria-label={t('screener.moreFilters')}
+            onClick={() => setSheet('filters')}
+          >
+            <SlidersIcon size={18} />
+            {extraCount > 0 && <span className="icon-btn-square__badge">{extraCount}</span>}
+          </button>
+        </section>
+
+        <section className="chips">
+          <button
+            className={`chip chip--pill${venues.length ? ' chip--active' : ''}`}
             type="button"
             onClick={() => setSheet('venues')}
           >
@@ -258,38 +266,27 @@ export function ScreenerScreen({
               t('screener.allExchanges')
             )}
           </button>
-
-          <div className="field">
-            <span className="field__label">{t('screener.minSpread')}</span>
-            <input
-              className="input num"
-              inputMode="decimal"
-              value={`${minSpread}%`}
-              onChange={(e) => {
-                touched.current = true;
-                setMinSpread(e.target.value.replace('%', ''));
-              }}
-            />
-          </div>
-
           <button
-            className={`icon-btn-square${extraCount ? ' icon-btn-square--active' : ''}`}
+            className="chip chip--pill chip--active num"
             type="button"
-            aria-label={t('screener.moreFilters')}
-            onClick={() => setSheet('filters')}
+            onClick={() => setSheet('threshold')}
           >
-            <SlidersIcon size={17} />
-            {extraCount > 0 && <span className="icon-btn-square__badge">{extraCount}</span>}
+            {t('screener.spreadAtLeast', { value: minSpread })}
           </button>
         </section>
 
-        <div className="table-head">
-          <span />
-          <span>{t('screener.colCoin')}</span>
-          <span>{t('screener.colVenue1')}</span>
-          <span>{t('screener.colVenue2')}</span>
-          <span>{t('screener.colSpread')}</span>
-          <span />
+        <div className="list-head">
+          <span className="list-head__title">{t('screener.spreadsNow')}</span>
+          <button
+            type="button"
+            className="list-head__sort"
+            onClick={() => {
+              haptic('tap');
+              setExtra((e) => ({ ...e, sort: e.sort === 'name' ? 'spread' : 'name' }));
+            }}
+          >
+            {t(extra.sort === 'name' ? 'screener.sortAlpha' : 'screener.sortBySpread')}
+          </button>
         </div>
       </div>
 
@@ -345,7 +342,77 @@ export function ScreenerScreen({
       {sheet === 'filters' && (
         <FiltersSheet value={extra} onChange={setExtra} onClose={() => setSheet(null)} />
       )}
+      {sheet === 'threshold' && (
+        <ThresholdSheet
+          value={minSpread}
+          onChange={(v) => {
+            touched.current = true;
+            setMinSpread(v);
+          }}
+          onClose={() => setSheet(null)}
+        />
+      )}
     </div>
+  );
+}
+
+/** Порог спреда: чип открывает шторку с полем и быстрыми значениями. */
+function ThresholdSheet({
+  value,
+  onChange,
+  onClose,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const [draft, setDraft] = useState(value);
+  const presets = ['0.10', '0.25', '0.50', '1.00', '2.00'];
+
+  return (
+    <Sheet
+      title={t('screener.minSpread')}
+      description={t('screener.thresholdHint')}
+      onClose={onClose}
+      footer={
+        <Button
+          onClick={() => {
+            const n = Number(draft.replace(',', '.'));
+            onChange(Number.isFinite(n) && n >= 0 ? n.toFixed(2) : value);
+            onClose();
+          }}
+        >
+          {t('app.apply')}
+        </Button>
+      }
+    >
+      <div className="sheet__group">
+        <label className="sheet__row">
+          <span className="sheet__row-title">{t('screener.minSpread')}</span>
+          <input
+            className="sheet__input num"
+            inputMode="decimal"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            aria-label={t('screener.minSpread')}
+          />
+          <span className="sheet__row-title">%</span>
+        </label>
+      </div>
+      <div className="grid grid-cols-5 gap-2">
+        {presets.map((p) => (
+          <Button
+            key={p}
+            variant={Number(draft) === Number(p) ? 'default' : 'secondary'}
+            className="num h-10 px-0"
+            onClick={() => setDraft(p)}
+          >
+            {p}%
+          </Button>
+        ))}
+      </div>
+    </Sheet>
   );
 }
 

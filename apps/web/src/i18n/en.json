@@ -63,7 +63,18 @@
     "sortName": "Name",
     "sortPrice": "Price",
     "resetFilters": "Reset",
-    "fundingUnknown": "net {{value}} ?"
+    "fundingUnknown": "net {{value}} ?",
+    "botActive": "Bot active",
+    "botStopped": "Bot stopped",
+    "configure": "Configure",
+    "opportunities": "opportunities",
+    "avgSpreadLower": "average spread",
+    "spreadAtLeast": "Spread ≥ {{value}}%",
+    "spreadsNow": "Spreads now",
+    "sortAlpha": "Alphabetical",
+    "sortBySpread": "By spread",
+    "thresholdHint": "Show only coins whose spread between venues is at least the threshold.",
+    "scanningShort": "Scanning markets"
   },
   "positions": {
     "title": "Positions",

@@ -64,7 +64,18 @@
     "sortName": "По названию",
     "sortPrice": "По цене",
     "resetFilters": "Сбросить",
-    "fundingUnknown": "чист. {{value}} ?"
+    "fundingUnknown": "чист. {{value}} ?",
+    "botActive": "Бот активен",
+    "botStopped": "Бот остановлен",
+    "configure": "Настроить",
+    "opportunities": "возможностей",
+    "avgSpreadLower": "средний спред",
+    "spreadAtLeast": "Спред ≥ {{value}}%",
+    "spreadsNow": "Спреды сейчас",
+    "sortAlpha": "По алфавиту",
+    "sortBySpread": "По спреду",
+    "thresholdHint": "Показывать только монеты, у которых спред между биржами не меньше порога.",
+    "scanningShort": "Сканирование рынков"
   },
   "positions": {
     "title": "Позиции",
