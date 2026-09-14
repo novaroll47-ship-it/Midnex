@@ -1,6 +1,9 @@
 /** Клиент бэкенда. initData уходит в заголовке — сервер проверяет подпись. */
 import type {
   ApiKeyStatus,
+  BillingMonths,
+  PaymentInfo,
+  SubscriptionInfo,
   ExchangeId,
   BotSettings,
   CoinDetail,
@@ -95,6 +98,17 @@ export interface SettingsResponse {
   storage: 'postgres' | 'memory';
   /** Что включено на этом этапе релиза. */
   features: { trading: boolean };
+  subscription: SubscriptionInfo;
+}
+
+export interface BillingResponse {
+  subscription: SubscriptionInfo;
+  pending: PaymentInfo | null;
+  purchasable: PlanId[];
+  starsPerUsd: number;
+  /** Сети, на которые принимается USDT. */
+  wallets: string[];
+  starsAvailable: boolean;
 }
 
 export type ExchangeKeyStatus = 'unverified' | 'ok' | 'invalid' | 'withdrawal_enabled';
@@ -191,6 +205,19 @@ export const api = {
       `/api/keys/${exchange}/verify`,
     ),
   deleteKey: (exchange: ExchangeId) => request<{ ok: true }>('DELETE', `/api/keys/${exchange}`),
+
+  billing: () => get<BillingResponse>('/api/billing'),
+  starsInvoice: (plan: PlanId, months: BillingMonths) =>
+    request<{ link: string; payment: PaymentInfo }>('POST', '/api/billing/stars', { plan, months }),
+  cryptoRequest: (plan: PlanId, months: BillingMonths, network: string) =>
+    request<{ payment: PaymentInfo; address: string }>('POST', '/api/billing/crypto', {
+      plan,
+      months,
+      network,
+    }),
+  cryptoSubmit: (id: string, txHash: string) =>
+    request<{ payment: PaymentInfo }>('POST', `/api/billing/crypto/${id}/tx`, { txHash }),
+  cryptoCancel: (id: string) => request<{ ok: true }>('POST', `/api/billing/crypto/${id}/cancel`),
 
   sessions: () => get<{ sessions: SessionInfo[] }>('/api/sessions'),
   logoutOthers: () => request<{ removed: number }>('POST', '/api/sessions/logout-others'),

@@ -1637,4 +1637,36 @@
     line-height: 1.45;
     color: var(--text-dim);
   }
+
+  /* ---------- Пейволл в скринере ---------- */
+
+  .paywall {
+    display: block;
+    width: 100%;
+    padding: 16px;
+    text-align: center;
+  }
+
+  .paywall__title {
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .paywall__text {
+    margin-top: 4px;
+    font-size: 12.5px;
+    line-height: 1.4;
+    color: var(--text-dim);
+  }
+
+  .paywall__cta {
+    display: inline-block;
+    margin-top: 12px;
+    padding: 9px 18px;
+    border-radius: 999px;
+    background: var(--blue);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+  }
 }

@@ -56,6 +56,7 @@ const DEFAULT_EXTRA: ExtraFilters = {
 
 interface Props {
   onOpenSettings: () => void;
+  onOpenSubscription: () => void;
   onOpenCoin: (base: string) => void;
   plan: keyof typeof PLAN_WATCHLIST_LIMIT;
   /** Без торговли закреплённые монеты — избранное без лимитов тарифа. */
@@ -66,6 +67,7 @@ interface Props {
 
 export function ScreenerScreen({
   onOpenSettings,
+  onOpenSubscription,
   onOpenCoin,
   plan,
   trading,
@@ -288,6 +290,17 @@ export function ScreenerScreen({
             onOpen={() => onOpenCoin(row.base)}
           />
         ))}
+        {data?.preview && (
+          <button type="button" className="card paywall" onClick={onOpenSubscription}>
+            <div className="paywall__title">
+              {t('screener.paywallTitle', {
+                count: Math.max(0, (data.totalRows ?? 0) - visible.length),
+              })}
+            </div>
+            <div className="paywall__text">{t('screener.paywallText')}</div>
+            <div className="paywall__cta">{t('screener.paywallCta')}</div>
+          </button>
+        )}
         {visible.length === 0 && (
           <div className="card empty">
             {errorText ??

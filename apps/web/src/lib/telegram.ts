@@ -31,6 +31,7 @@ interface TelegramWebApp {
   ready(): void;
   expand(): void;
   close?(): void;
+  openInvoice?(url: string, callback?: (status: string) => void): void;
   disableVerticalSwipes?(): void;
   setHeaderColor(color: string): void;
   setBackgroundColor(color: string): void;
@@ -103,4 +104,20 @@ export function backButton(visible: boolean, onClick?: () => void): () => void {
 export function closeApp(): void {
   if (webApp?.close) webApp.close();
   else window.location.reload();
+}
+
+/**
+ * Инвойс Telegram (звёзды) внутри мини-приложения. Статусы: paid, cancelled,
+ * failed, pending. Вне Telegram открываем ссылку в новой вкладке — оплатить
+ * там нельзя, но хотя бы видно, что происходит.
+ */
+export function openInvoice(url: string): Promise<string> {
+  return new Promise((resolve) => {
+    if (webApp?.openInvoice) {
+      webApp.openInvoice(url, (status) => resolve(status));
+    } else {
+      window.open(url, '_blank', 'noopener');
+      resolve('pending');
+    }
+  });
 }

@@ -110,6 +110,10 @@ export function App() {
             minSpreadPct={settings.data?.bot.minSpreadPct}
             refreshMs={settings.data?.bot.refreshMs ?? 1000}
             onOpenCoin={(base) => setRoute({ kind: 'coin', base })}
+            onOpenSubscription={() => {
+              setTab('settings');
+              setRoute({ kind: 'settings', view: 'subscription' });
+            }}
             onOpenSettings={() => {
               setTab('settings');
               // Без торговли настраивать бота нечего — ведём к настройкам скринера.

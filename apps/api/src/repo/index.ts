@@ -15,8 +15,10 @@ export type { Repo } from './types.js';
 export type {
   ExchangeKeyRecord,
   KeyStatus,
+  PaymentRecord,
   PositionRecord,
   SessionRecord,
+  SubscriptionRecord,
   UserRecord,
   UserSettings,
 } from './types.js';

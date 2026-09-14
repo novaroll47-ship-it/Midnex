@@ -25,6 +25,7 @@ import { usePolling } from '../lib/usePolling';
 import { haptic, platform, tgVersion } from '../lib/telegram';
 import type { SettingsController } from '../lib/useSettings';
 import { ApiKeysView } from './ApiKeysView';
+import { SubscriptionView } from './SubscriptionView';
 
 export type SettingsView =
   | 'general'
@@ -403,41 +404,6 @@ function RiskView({ settings }: { settings: SettingsController }) {
 }
 
 // ------------------------------------------------------------- подписка
-
-const PLANS: PlanId[] = ['screener', 'limited', 'unlimited'];
-
-function SubscriptionView({ settings }: { settings: SettingsController }) {
-  const { t } = useTranslation();
-  const current = settings.data!.plan;
-
-  return (
-    <div className="stack">
-      <Section title={t('sd.currentPlan')}>
-        <InfoRow label={t(`sd.plan_${current}`)} value={t('sd.planActive')} tone="green" />
-        <InfoRow
-          label={t('sd.watchlistLimitLabel')}
-          value={
-            PLAN_WATCHLIST_LIMIT[current] === null
-              ? t('sd.unlimited')
-              : String(PLAN_WATCHLIST_LIMIT[current])
-          }
-        />
-      </Section>
-
-      <Section title={t('sd.changePlan')} hint={t('sd.paymentsHint')}>
-        {PLANS.map((plan) => (
-          <RadioRow
-            key={plan}
-            title={t(`sd.plan_${plan}`)}
-            sub={t(`sd.plan_${plan}_sub`)}
-            selected={current === plan}
-            onSelect={() => settings.patchPlan(plan)}
-          />
-        ))}
-      </Section>
-    </div>
-  );
-}
 
 // ------------------------------------------------------------- API-ключи
 

@@ -6,9 +6,12 @@
  * поэтому включение базы — это одна переменная окружения, а не правки.
  */
 import type {
+  BillingMonths,
   BotSettings,
   ExchangeId,
   NotificationSettings,
+  PaymentMethod,
+  PaymentStatus,
   PlanId,
   RiskSettings,
 } from '@cs/shared';
@@ -79,6 +82,36 @@ export interface SessionRecord {
   lastSeenAt: number;
 }
 
+/** Подписка: один тариф на пользователя, срок продлевается покупками. */
+export interface SubscriptionRecord {
+  userId: number;
+  plan: PlanId;
+  expiresAt: number;
+  /** Откуда последнее продление: stars | crypto | manual. */
+  source: string;
+  updatedAt: number;
+  /** Когда последний раз напоминали об окончании, чтобы не спамить. */
+  remindedAt: number | null;
+}
+
+/** Заявка на оплату. Для звёзд закрывается автоматически, для крипты — админом. */
+export interface PaymentRecord {
+  id: string;
+  userId: number;
+  plan: PlanId;
+  months: BillingMonths;
+  method: PaymentMethod;
+  amount: number;
+  currency: 'XTR' | 'USDT';
+  status: PaymentStatus;
+  network: string | null;
+  txHash: string | null;
+  telegramChargeId: string | null;
+  note: string | null;
+  createdAt: number;
+  resolvedAt: number | null;
+}
+
 export interface Repo {
   readonly kind: 'memory' | 'postgres';
 
@@ -106,6 +139,29 @@ export interface Repo {
   touchSession(userId: number, platform: string, tgVersion: string): Promise<void>;
   listSessions(userId: number): Promise<SessionRecord[]>;
   deleteOtherSessions(userId: number, platform: string, tgVersion: string): Promise<number>;
+
+  getUser(userId: number): Promise<UserRecord | null>;
+  findUserByUsername(username: string): Promise<UserRecord | null>;
+  countUsers(): Promise<number>;
+
+  getSubscription(userId: number): Promise<SubscriptionRecord | null>;
+  /** Продлить от текущего конца (если он в будущем) или от сейчас; вернуть новую запись. */
+  extendSubscription(
+    userId: number,
+    plan: PlanId,
+    days: number,
+    source: string,
+  ): Promise<SubscriptionRecord>;
+  revokeSubscription(userId: number): Promise<void>;
+  markReminded(userId: number): Promise<void>;
+  /** Подписки, истекающие в окне [from, to]. */
+  listSubscriptionsExpiring(from: number, to: number): Promise<SubscriptionRecord[]>;
+  countActiveSubscriptions(): Promise<number>;
+
+  createPayment(record: PaymentRecord): Promise<void>;
+  getPayment(id: string): Promise<PaymentRecord | null>;
+  updatePayment(record: PaymentRecord): Promise<void>;
+  listPendingPayments(userId?: number): Promise<PaymentRecord[]>;
 
   close(): Promise<void>;
 }

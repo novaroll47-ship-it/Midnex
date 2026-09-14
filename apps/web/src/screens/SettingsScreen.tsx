@@ -89,9 +89,15 @@ export function SettingsScreen({
         <Row
           title={t('settings.subscriptionTitle')}
           sub={t('settings.subscriptionSub')}
-          meta={data ? t(`sd.plan_${data.plan}`) : undefined}
-          metaGreen
-          {...locked('subscription')}
+          meta={
+            data
+              ? data.subscription.active
+                ? t('sub.metaActive', { days: data.subscription.daysLeft })
+                : t('sub.metaInactive')
+              : undefined
+          }
+          metaGreen={data?.subscription.active}
+          onClick={() => onOpen('subscription')}
         />
         {/* Задел под ТЗ §7.2 — стратегия появится позже, но место в UI занято сразу. */}
         <Row

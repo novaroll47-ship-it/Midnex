@@ -24,6 +24,7 @@ dotenv.config({ path: join(here, '../../../.env') });
 
 import {
   APP_VERSION,
+  purchasablePlans,
   EXCHANGES,
   PLAN_WATCHLIST_LIMIT,
   type ApiKeyStatus,
@@ -32,7 +33,8 @@ import {
 } from '@cs/shared';
 
 import { AuthError, DEV_USER, verifyInitData, type TelegramUser } from './auth.js';
-import { startBot } from './bot.js';
+import { Billing, toPaymentInfo } from './billing.js';
+import { startBot, type BotHandle } from './bot.js';
 import { decrypt, encrypt, encryptionReady, initEncryption, keyHint } from './crypto.js';
 import { coinIcon } from './icons.js';
 import { verifyExchangeKey } from './keys.js';
@@ -61,6 +63,23 @@ const WEB_ORIGIN = process.env.WEB_ORIGIN ?? process.env.PUBLIC_URL ?? 'http://l
  * TRADING_ENABLED=1 включает торговые разделы обратно.
  */
 const TRADING_ENABLED = process.env.TRADING_ENABLED === '1';
+
+/** Telegram ID владельца: админ-команды в боте и доступ без подписки. */
+const ADMIN_TELEGRAM_ID = Number(process.env.ADMIN_TELEGRAM_ID) || null;
+/** Курс звёзд Telegram к доллару для инвойсов. */
+const STARS_PER_USD = Number(process.env.STARS_PER_USD) || 50;
+/** Кошельки для USDT: USDT_WALLETS="TRC20:Txxx,TON:UQxxx". */
+const USDT_WALLETS = (process.env.USDT_WALLETS ?? '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean)
+  .map((s) => {
+    const i = s.indexOf(':');
+    return { network: s.slice(0, i).trim(), address: s.slice(i + 1).trim() };
+  })
+  .filter((w) => w.network && w.address);
+/** Сколько строк скринера видно без подписки. */
+const FREE_PREVIEW_ROWS = 3;
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 const DEV_FAKE_USER = process.env.DEV_FAKE_USER === '1';
 const IS_PROD = process.env.NODE_ENV === 'production';
@@ -84,6 +103,16 @@ if (initEncryption(process.env.KEY_ENCRYPTION_KEY)) {
 const market = createMarketSource(app.log);
 const repo = await createRepo(app.log);
 const state = new StateService(repo, market);
+const billing = new Billing({
+  repo,
+  log: app.log,
+  botToken: BOT_TOKEN || undefined,
+  adminId: ADMIN_TELEGRAM_ID,
+  starsPerUsd: STARS_PER_USD,
+  wallets: USDT_WALLETS,
+  trading: TRADING_ENABLED,
+});
+let bot: BotHandle | null = null;
 
 await app.register(cors, {
   origin: IS_PROD ? WEB_ORIGIN : true,
@@ -192,11 +221,26 @@ app.get('/api/screener', async (req) => {
     min !== undefined && Number.isFinite(min) ? min : bot.minSpreadPct,
     venues.length ? venues : undefined,
   );
+
+  // Без подписки — только верхушка списка: видно, что есть, но не всё.
+  if (!(await billing.hasAccess(req.state!.userId))) {
+    return {
+      ...snapshot,
+      rows: snapshot.rows.slice(0, FREE_PREVIEW_ROWS),
+      totalRows: snapshot.rows.length,
+      preview: true,
+      refreshMs: bot.refreshMs,
+      botRunning: bot.running,
+    };
+  }
   return { ...snapshot, refreshMs: bot.refreshMs, botRunning: bot.running };
 });
 
 app.get('/api/coin/:base', async (req, reply) => {
   const { base } = req.params as { base: string };
+  if (!(await billing.hasAccess(req.state!.userId))) {
+    return reply.code(402).send({ error: 'subscription required' });
+  }
   const detail = market.coinDetail(base);
   if (!detail) return reply.code(404).send({ error: 'not found' });
   return detail;
@@ -278,6 +322,7 @@ async function settingsPayload(s: UserState) {
     version: APP_VERSION,
     storage: repo.kind,
     features: { trading: TRADING_ENABLED },
+    subscription: await billing.info(s.userId),
   };
 }
 
@@ -335,6 +380,71 @@ app.patch('/api/settings/plan', async (req) => {
     await state.setPlan(s, body.plan as PlanId);
   }
   return settingsPayload(s);
+});
+
+// ---------------------------------------------------------------- подписка и оплата
+
+app.get('/api/billing', async (req) => {
+  const userId = req.state!.userId;
+  return {
+    subscription: await billing.info(userId),
+    pending: await billing.pendingFor(userId),
+    purchasable: purchasablePlans(TRADING_ENABLED),
+    starsPerUsd: STARS_PER_USD,
+    wallets: billing.wallets.map((w) => w.network),
+    starsAvailable: Boolean(BOT_TOKEN),
+  };
+});
+
+app.post('/api/billing/stars', async (req, reply) => {
+  const body = req.body as { plan?: string; months?: number };
+  const r = await billing.createStarsInvoice(
+    req.state!.userId,
+    String(body?.plan ?? ''),
+    Number(body?.months),
+  );
+  if ('error' in r) return reply.code(400).send({ error: r.error });
+  return { link: r.link, payment: toPaymentInfo(r.payment) };
+});
+
+app.post('/api/billing/crypto', async (req, reply) => {
+  const body = req.body as { plan?: string; months?: number; network?: string };
+  const r = await billing.createCryptoRequest(
+    req.state!.userId,
+    String(body?.plan ?? ''),
+    Number(body?.months),
+    String(body?.network ?? ''),
+  );
+  if ('error' in r) return reply.code(400).send({ error: r.error });
+  return { payment: toPaymentInfo(r.payment), address: r.wallet.address };
+});
+
+app.post('/api/billing/crypto/:id/tx', async (req, reply) => {
+  const { id } = req.params as { id: string };
+  const body = req.body as { txHash?: string };
+  const hash = String(body?.txHash ?? '').trim();
+  if (hash.length < 10) return reply.code(400).send({ error: 'tx hash required' });
+  const p = await billing.submitTxHash(req.state!.userId, id, hash);
+  if (!p) return reply.code(404).send({ error: 'not found' });
+
+  // Админ узнаёт о заявке сразу — подтверждать удобнее по горячим следам.
+  const u = req.tgUser!;
+  const who = u.username ? `@${u.username}` : `${u.firstName} (id ${u.id})`;
+  if (bot && billing.adminId !== null) {
+    void bot.send(
+      billing.adminId,
+      `💵 Заявка #${p.id}: ${who} · ${p.plan} ${p.months} мес · ${p.amount} USDT (${p.network})\n` +
+        `hash: ${p.txHash}\n\n/approve ${p.id}  или  /reject ${p.id} причина`,
+    );
+  }
+  return { payment: toPaymentInfo(p) };
+});
+
+app.post('/api/billing/crypto/:id/cancel', async (req, reply) => {
+  const { id } = req.params as { id: string };
+  const ok = await billing.cancel(req.state!.userId, id);
+  if (!ok) return reply.code(404).send({ error: 'not found' });
+  return { ok: true };
 });
 
 // ---------------------------------------------------------------- ключи бирж
@@ -581,6 +691,7 @@ app.setErrorHandler((err, _req, reply) => {
 });
 
 app.addHook('onClose', async () => {
+  bot?.stop();
   await market.stop();
   await repo.close();
 });
@@ -593,7 +704,16 @@ app.log.info(
 // Бот живёт в этом же процессе: пока нагрузка — одно long-polling соединение,
 // отдельный сервис только добавил бы точку отказа.
 if (BOT_TOKEN) {
-  startBot({ token: BOT_TOKEN, publicUrl: process.env.PUBLIC_URL, log: app.log });
+  bot = startBot({
+    token: BOT_TOKEN,
+    publicUrl: process.env.PUBLIC_URL,
+    log: app.log,
+    billing,
+    repo,
+  });
+  if (ADMIN_TELEGRAM_ID === null) {
+    app.log.warn('ADMIN_TELEGRAM_ID не задан — админ-команды бота выключены');
+  }
 } else {
   app.log.warn('TELEGRAM_BOT_TOKEN не задан — бот не запущен');
 }

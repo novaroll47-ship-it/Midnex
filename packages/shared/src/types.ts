@@ -61,6 +61,10 @@ export interface ScreenerSnapshot {
   refreshMs: number;
   updatedAt: number;
   botRunning: boolean;
+  /** Без подписки: отдана только верхушка списка. */
+  preview?: boolean;
+  /** Сколько строк всего, когда отдано превью. */
+  totalRows?: number;
 }
 
 export type PositionStatus = 'open' | 'closed';

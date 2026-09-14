@@ -6,12 +6,14 @@
  * между соединениями.
  */
 import postgres, { type Sql } from 'postgres';
-import type { ExchangeId, PlanId } from '@cs/shared';
+import type { BillingMonths, ExchangeId, PaymentMethod, PaymentStatus, PlanId } from '@cs/shared';
 
 import type {
   ExchangeKeyRecord,
   KeyStatus,
+  PaymentRecord,
   PositionRecord,
+  SubscriptionRecord,
   Repo,
   SessionRecord,
   UserRecord,
@@ -243,6 +245,151 @@ export class PostgresRepo implements Repo {
       returning id
     `;
     return rows.length;
+  }
+
+  // ---------------------------------------------------------------- users (поиск)
+
+  private userFromRow(r: Record<string, unknown>): UserRecord {
+    return {
+      id: Number(r['id']),
+      username: (r['username'] as string | null) ?? null,
+      firstName: r['first_name'] as string,
+      language: r['language'] as string,
+      plan: r['plan'] as PlanId,
+      createdAt: ts(r['created_at']),
+      lastSeenAt: ts(r['last_seen_at']),
+    };
+  }
+
+  async getUser(userId: number): Promise<UserRecord | null> {
+    const rows = await this.sql`select * from users where id = ${userId}`;
+    return rows[0] ? this.userFromRow(rows[0]) : null;
+  }
+
+  async findUserByUsername(username: string): Promise<UserRecord | null> {
+    const wanted = username.replace(/^@/, '');
+    const rows = await this
+      .sql`select * from users where lower(username) = lower(${wanted}) limit 1`;
+    return rows[0] ? this.userFromRow(rows[0]) : null;
+  }
+
+  async countUsers(): Promise<number> {
+    const rows = await this.sql`select count(*)::int as n from users`;
+    return Number(rows[0]?.['n'] ?? 0);
+  }
+
+  // ---------------------------------------------------------------- subscriptions
+
+  private subFromRow(r: Record<string, unknown>): SubscriptionRecord {
+    return {
+      userId: Number(r['user_id']),
+      plan: r['plan'] as PlanId,
+      expiresAt: ts(r['expires_at']),
+      source: r['source'] as string,
+      updatedAt: ts(r['updated_at']),
+      remindedAt: tsOrNull(r['reminded_at']),
+    };
+  }
+
+  async getSubscription(userId: number): Promise<SubscriptionRecord | null> {
+    const rows = await this.sql`select * from subscriptions where user_id = ${userId}`;
+    return rows[0] ? this.subFromRow(rows[0]) : null;
+  }
+
+  async extendSubscription(
+    userId: number,
+    plan: PlanId,
+    days: number,
+    source: string,
+  ): Promise<SubscriptionRecord> {
+    // Продление от текущего конца, если подписка ещё жива, иначе от сейчас.
+    const rows = await this.sql`
+      insert into subscriptions (user_id, plan, expires_at, source)
+      values (${userId}, ${plan}, now() + make_interval(days => ${days}), ${source})
+      on conflict (user_id) do update set
+        plan = excluded.plan,
+        expires_at = greatest(subscriptions.expires_at, now()) + make_interval(days => ${days}),
+        source = excluded.source,
+        updated_at = now(),
+        reminded_at = null
+      returning *
+    `;
+    return this.subFromRow(rows[0]!);
+  }
+
+  async revokeSubscription(userId: number): Promise<void> {
+    await this
+      .sql`update subscriptions set expires_at = now(), updated_at = now() where user_id = ${userId}`;
+  }
+
+  async markReminded(userId: number): Promise<void> {
+    await this.sql`update subscriptions set reminded_at = now() where user_id = ${userId}`;
+  }
+
+  async listSubscriptionsExpiring(from: number, to: number): Promise<SubscriptionRecord[]> {
+    const rows = await this.sql`
+      select * from subscriptions
+      where expires_at >= ${new Date(from)} and expires_at <= ${new Date(to)}
+    `;
+    return rows.map((r) => this.subFromRow(r));
+  }
+
+  async countActiveSubscriptions(): Promise<number> {
+    const rows = await this
+      .sql`select count(*)::int as n from subscriptions where expires_at > now()`;
+    return Number(rows[0]?.['n'] ?? 0);
+  }
+
+  // ---------------------------------------------------------------- payments
+
+  private paymentFromRow(r: Record<string, unknown>): PaymentRecord {
+    return {
+      id: r['id'] as string,
+      userId: Number(r['user_id']),
+      plan: r['plan'] as PlanId,
+      months: Number(r['months']) as BillingMonths,
+      method: r['method'] as PaymentMethod,
+      amount: Number(r['amount']),
+      currency: r['currency'] as 'XTR' | 'USDT',
+      status: r['status'] as PaymentStatus,
+      network: (r['network'] as string | null) ?? null,
+      txHash: (r['tx_hash'] as string | null) ?? null,
+      telegramChargeId: (r['telegram_charge_id'] as string | null) ?? null,
+      note: (r['note'] as string | null) ?? null,
+      createdAt: ts(r['created_at']),
+      resolvedAt: tsOrNull(r['resolved_at']),
+    };
+  }
+
+  async createPayment(p: PaymentRecord): Promise<void> {
+    await this.sql`
+      insert into payments (id, user_id, plan, months, method, amount, currency, status, network, tx_hash, telegram_charge_id, note)
+      values (${p.id}, ${p.userId}, ${p.plan}, ${p.months}, ${p.method}, ${p.amount}, ${p.currency}, ${p.status},
+              ${p.network}, ${p.txHash}, ${p.telegramChargeId}, ${p.note})
+    `;
+  }
+
+  async getPayment(id: string): Promise<PaymentRecord | null> {
+    const rows = await this.sql`select * from payments where id = ${id}`;
+    return rows[0] ? this.paymentFromRow(rows[0]) : null;
+  }
+
+  async updatePayment(p: PaymentRecord): Promise<void> {
+    await this.sql`
+      update payments set status = ${p.status}, tx_hash = ${p.txHash}, network = ${p.network},
+        telegram_charge_id = ${p.telegramChargeId}, note = ${p.note},
+        resolved_at = ${p.resolvedAt == null ? null : new Date(p.resolvedAt)}
+      where id = ${p.id}
+    `;
+  }
+
+  async listPendingPayments(userId?: number): Promise<PaymentRecord[]> {
+    const rows =
+      userId === undefined
+        ? await this.sql`select * from payments where status = 'pending' order by created_at`
+        : await this
+            .sql`select * from payments where status = 'pending' and user_id = ${userId} order by created_at`;
+    return rows.map((r) => this.paymentFromRow(r));
   }
 
   async close(): Promise<void> {
