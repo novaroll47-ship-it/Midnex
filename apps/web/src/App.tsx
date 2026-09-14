@@ -114,6 +114,10 @@ export function App() {
               setTab('settings');
               setRoute({ kind: 'settings', view: 'subscription' });
             }}
+            onOpenBot={(view) => {
+              setTab('settings');
+              setRoute({ kind: 'settings', view });
+            }}
           />
         )}
 

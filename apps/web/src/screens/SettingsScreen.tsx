@@ -62,58 +62,18 @@ export function SettingsScreen({
           каждый бот получит свой экран настроек, когда появится. */}
       <div className="section-label">{t('settings.botsSection')}</div>
       <section className="card list">
-        {trading ? (
-          <>
-            <Row
-              title={t('settings.generalTitle')}
-              sub={t('settings.generalSub')}
-              meta={modeLabel}
-              metaGreen
-              {...locked('general')}
-            />
-            <Row
-              title={t('settings.opportunitiesTitle')}
-              sub={t('settings.opportunitiesSub')}
-              meta={data ? `${data.bot.enabledExchanges.length}/8` : undefined}
-              onClick={() => onOpen('opportunities')}
-            />
-            <Row
-              title={t('settings.notificationsTitle')}
-              sub={t('settings.notificationsSub')}
-              meta={data ? t(data.notifications.enabled ? 'sd.on' : 'sd.off') : undefined}
-              metaGreen={data?.notifications.enabled}
-              {...locked('notifications')}
-            />
-            <Row
-              title={t('settings.riskTitle')}
-              sub={t('settings.riskSub')}
-              meta={data ? `${data.risk.maxOpenPairs} / ${data.risk.maxLeverage}x` : undefined}
-              {...locked('risk')}
-            />
-            {/* Задел под ТЗ §7.2 — стратегия появится позже, но место в UI занято сразу. */}
-            <Row
-              title={t('settings.fundingTitle')}
-              sub={t('settings.fundingSub')}
-              badge={t('settings.soon')}
-              disabled
-            />
-          </>
-        ) : (
-          <>
-            <Row
-              title={t('settings.botTrading')}
-              sub={t('settings.botTradingSub')}
-              badge={t('settings.soon')}
-              disabled
-            />
-            <Row
-              title={t('settings.botFunding')}
-              sub={t('settings.botFundingSub')}
-              badge={t('settings.soon')}
-              disabled
-            />
-          </>
-        )}
+        <Row
+          title={t('bots.spreadName')}
+          sub={t('settings.botTradingSub')}
+          meta={trading ? undefined : t('settings.soon')}
+          onClick={() => onOpen('botSpread')}
+        />
+        <Row
+          title={t('bots.fundingName')}
+          sub={t('settings.botFundingSub')}
+          meta={t('settings.soon')}
+          onClick={() => onOpen('botFunding')}
+        />
       </section>
 
       <div className="section-label">{t('settings.accountSection')}</div>

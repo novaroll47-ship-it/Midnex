@@ -223,3 +223,27 @@ export interface PositionFunding {
   /** Сколько выплат уже прошло с момента входа. */
   periodsElapsed: number;
 }
+
+/**
+ * Бот «Фандинг»: дельта-нейтральная пара ради разницы ставок фандинга.
+ * Лонг там, где ставка ниже (или отрицательная), шорт — где выше; доход
+ * капает каждую выплату, пока разница держится.
+ */
+export interface FundingBotSettings {
+  running: boolean;
+  executionMode: ExecutionMode;
+  exchanges: ExchangeId[];
+  /** Минимальная разница ставок за период выплаты, %. */
+  minRateDiffPct: number;
+  /** Минимальная годовая доходность разницы, %. */
+  minAprPct: number;
+  /** Максимальный ценовой спред при входе, % — иначе вход съест доход. */
+  maxEntrySpreadPct: number;
+  /** Минимум выплат, которые нужно пересидеть, прежде чем выходить. */
+  minPayouts: number;
+  /** Выход, когда разница ставок падает ниже этого, %. */
+  exitBelowPct: number;
+  notionalUsdt: number;
+  leverage: number;
+  maxPositions: number;
+}

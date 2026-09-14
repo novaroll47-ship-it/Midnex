@@ -25,6 +25,7 @@ import { usePolling } from '../lib/usePolling';
 import { haptic, platform, tgVersion } from '../lib/telegram';
 import type { SettingsController } from '../lib/useSettings';
 import { ApiKeysView } from './ApiKeysView';
+import { BotFundingView, BotSpreadView } from './BotViews';
 import { SubscriptionView } from './SubscriptionView';
 
 export type SettingsView =
@@ -38,7 +39,9 @@ export type SettingsView =
   | 'theme'
   | 'language'
   | 'about'
-  | 'market';
+  | 'market'
+  | 'botSpread'
+  | 'botFunding';
 
 export function settingsViewTitle(view: SettingsView, t: (k: string) => string): string {
   const map: Record<SettingsView, string> = {
@@ -53,6 +56,8 @@ export function settingsViewTitle(view: SettingsView, t: (k: string) => string):
     language: 'settings.languageTitle',
     about: 'settings.aboutTitle',
     market: 'settings.marketTitle',
+    botSpread: 'bots.spreadName',
+    botFunding: 'bots.fundingName',
   };
   return t(map[view]);
 }
@@ -93,12 +98,16 @@ export function SettingsDetail({
       return <AboutView settings={settings} />;
     case 'market':
       return <MarketView />;
+    case 'botSpread':
+      return <BotSpreadView settings={settings} />;
+    case 'botFunding':
+      return <BotFundingView settings={settings} />;
   }
 }
 
 // ------------------------------------------------------------- основные
 
-function GeneralView({ settings }: { settings: SettingsController }) {
+export function GeneralView({ settings }: { settings: SettingsController }) {
   const { t } = useTranslation();
   const bot = settings.data!.bot;
 
@@ -176,10 +185,8 @@ function GeneralView({ settings }: { settings: SettingsController }) {
 
 // ------------------------------------------------------------- возможности
 
-function OpportunitiesView({ settings }: { settings: SettingsController }) {
+export function OpportunitiesView({ settings }: { settings: SettingsController }) {
   const { t } = useTranslation();
-  // Плечо и объём — параметры сделки; на этапе «только скринер» их не показываем.
-  const trading = settings.data?.features?.trading ?? false;
   const bot = settings.data!.bot;
   const enabled = new Set(bot.enabledExchanges);
 
@@ -216,7 +223,7 @@ function OpportunitiesView({ settings }: { settings: SettingsController }) {
           step={0.05}
           onCommit={(minSpreadPct) => settings.patchBot({ minSpreadPct })}
         />
-        {trading && (
+        {
           <>
             <NumberRow
               title={t('sd.defaultLeverage')}
@@ -235,7 +242,7 @@ function OpportunitiesView({ settings }: { settings: SettingsController }) {
               onCommit={(defaultNotionalUsdt) => settings.patchBot({ defaultNotionalUsdt })}
             />
           </>
-        )}
+        }
       </Section>
 
       <Section title={t('sd.funding')} hint={t('sd.fundingHint')}>
@@ -252,7 +259,7 @@ function OpportunitiesView({ settings }: { settings: SettingsController }) {
 
 // ------------------------------------------------------------- уведомления
 
-function NotificationsView({ settings }: { settings: SettingsController }) {
+export function NotificationsView({ settings }: { settings: SettingsController }) {
   const { t } = useTranslation();
   const n = settings.data!.notifications;
 
@@ -319,7 +326,7 @@ function NotificationsView({ settings }: { settings: SettingsController }) {
 
 // ------------------------------------------------------------- риск
 
-function RiskView({ settings }: { settings: SettingsController }) {
+export function RiskView({ settings }: { settings: SettingsController }) {
   const { t } = useTranslation();
   const r = settings.data!.risk;
 

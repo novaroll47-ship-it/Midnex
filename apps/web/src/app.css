@@ -1669,4 +1669,51 @@
     font-size: 14px;
     font-weight: 600;
   }
+
+  /* ---------- Боты на панели скринера ---------- */
+
+  .panel__bot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 0;
+  }
+
+  .panel__bot + .panel__bot {
+    border-top: 1px solid var(--border);
+  }
+
+  .panel__bot:last-of-type {
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .panel__bot > div:first-child {
+    min-width: 0;
+  }
+
+  .panel {
+    padding-top: 4px;
+  }
+
+  /* ---------- Запертые настройки ботов ---------- */
+
+  .locked {
+    pointer-events: none;
+    opacity: 0.55;
+    user-select: none;
+  }
+
+  .bot-about__title {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .bot-about__text {
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--text-dim);
+  }
 }

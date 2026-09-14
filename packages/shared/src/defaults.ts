@@ -1,4 +1,9 @@
-import type { BotSettings, NotificationSettings, RiskSettings } from './types.js';
+import type {
+  BotSettings,
+  FundingBotSettings,
+  NotificationSettings,
+  RiskSettings,
+} from './types.js';
 
 /**
  * Котировка старше этого возраста не участвует в расчёте спреда.
@@ -54,3 +59,17 @@ export const DEFAULT_NOTIFICATIONS: NotificationSettings = {
 };
 
 export const APP_VERSION = '0.2.0';
+
+export const DEFAULT_FUNDING_BOT: FundingBotSettings = {
+  running: false,
+  executionMode: 'paper',
+  exchanges: ['binance', 'bybit', 'okx', 'bitget', 'bingx', 'gate'],
+  minRateDiffPct: 0.03,
+  minAprPct: 20,
+  maxEntrySpreadPct: 0.15,
+  minPayouts: 3,
+  exitBelowPct: 0.005,
+  notionalUsdt: 200,
+  leverage: 2,
+  maxPositions: 3,
+};

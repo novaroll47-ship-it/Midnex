@@ -56,6 +56,7 @@ const DEFAULT_EXTRA: ExtraFilters = {
 
 interface Props {
   onOpenSubscription: () => void;
+  onOpenBot: (view: 'botSpread' | 'botFunding') => void;
   onOpenCoin: (base: string) => void;
   plan: keyof typeof PLAN_WATCHLIST_LIMIT;
   /** Без торговли закреплённые монеты — избранное без лимитов тарифа. */
@@ -66,6 +67,7 @@ interface Props {
 
 export function ScreenerScreen({
   onOpenSubscription,
+  onOpenBot,
   onOpenCoin,
   plan,
   trading,
@@ -193,18 +195,28 @@ export function ScreenerScreen({
       <div className="screener__top">
         {/* Одна панель: состояние бота и две сводные цифры. */}
         <section className="card panel">
-          <div className="panel__head">
+          {/* Боты: пока не запущены — серые, «Скоро»; «Настроить» открывает их экраны. */}
+          <div className="panel__bot">
             <div>
               <div className="panel__status">
-                <i className={`panel__dot${data ? '' : ' panel__dot--off'}`} />
-                {data ? t('screener.screenerActive') : t('screener.screenerStarting')}
+                <i className="panel__dot panel__dot--off" />
+                {t('bots.spreadName')}
               </div>
-              <div className="panel__sub">
-                {t('screener.scanningShort')} ·{' '}
-                <span className="num">{formatClock(data?.updatedAt ?? Date.now())}</span>
-              </div>
+              <div className="panel__sub">{t('bots.spreadPanelSub')}</div>
             </div>
-            <button className="panel__btn" type="button" onClick={() => setSheet('filters')}>
+            <button className="panel__btn" type="button" onClick={() => onOpenBot('botSpread')}>
+              {t('screener.configure')}
+            </button>
+          </div>
+          <div className="panel__bot">
+            <div>
+              <div className="panel__status">
+                <i className="panel__dot panel__dot--off" />
+                {t('bots.fundingName')}
+              </div>
+              <div className="panel__sub">{t('bots.fundingPanelSub')}</div>
+            </div>
+            <button className="panel__btn" type="button" onClick={() => onOpenBot('botFunding')}>
               {t('screener.configure')}
             </button>
           </div>
