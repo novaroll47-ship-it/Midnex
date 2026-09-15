@@ -22,7 +22,7 @@ import { CheckRow, InfoRow, NumberRow, RadioRow, Section, ToggleRow } from '../c
 import { LANGUAGES, currentLanguage, setLanguage } from '../i18n';
 import { api, type MarketStatus } from '../lib/api';
 import { usePolling } from '../lib/usePolling';
-import { haptic, platform, tgVersion } from '../lib/telegram';
+import { haptic, openTelegramLink, platform, tgVersion } from '../lib/telegram';
 import type { SettingsController } from '../lib/useSettings';
 import { ApiKeysView } from './ApiKeysView';
 import { BotFundingView, BotSpreadView } from './BotViews';
@@ -577,6 +577,22 @@ function AboutView({ settings }: { settings: SettingsController }) {
           value={storage === 'postgres' ? t('sd.storagePostgres') : t('sd.storageMemory')}
           tone={storage === 'postgres' ? 'green' : 'red'}
         />
+      </Section>
+      <Section title={t('sd.links')}>
+        <button
+          type="button"
+          className="list__item"
+          onClick={() => openTelegramLink('https://t.me/midnexio')}
+        >
+          <span>
+            <span className="list__title">{t('sd.channel')}</span>
+            <span className="list__sub">@midnexio · {t('sd.channelSub')}</span>
+          </span>
+          <span />
+          <span className="list__meta" style={{ color: 'var(--blue)' }}>
+            {t('sd.open')}
+          </span>
+        </button>
       </Section>
       <p className="hint">{t('sd.aboutDisclaimer')}</p>
     </div>

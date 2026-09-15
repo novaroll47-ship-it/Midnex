@@ -17,6 +17,9 @@ import type { Repo } from './repo/index.js';
 
 const API = 'https://api.telegram.org';
 
+/** Канал проекта: анонсы, разборы спредов, новости о ботах. */
+export const CHANNEL_URL = 'https://t.me/midnexio';
+
 interface TgUpdate {
   update_id: number;
   message?: {
@@ -113,6 +116,7 @@ function greeting(appUrl: string | undefined, name: string): string {
     'на восьми биржах и показывает, где одну и ту же монету можно купить дешевле ' +
     'и продать дороже — уже за вычетом комиссий.\n\n' +
     'Автоматическая торговля по этим спредам — в разработке.\n\n' +
+    `Новости и разборы — в канале ${CHANNEL_URL}\n\n` +
     'Нажми кнопку ниже, чтобы открыть скринер.'
   );
 }
@@ -436,7 +440,12 @@ export function startBot({ token, publicUrl, log, billing, repo }: BotOptions): 
       chat_id: msg.chat.id,
       text: greeting(appUrl, name),
       reply_markup: appUrl
-        ? { inline_keyboard: [[{ text: 'Открыть MIDNEX', web_app: { url: appUrl } }]] }
+        ? {
+            inline_keyboard: [
+              [{ text: 'Открыть MIDNEX', web_app: { url: appUrl } }],
+              [{ text: 'Канал MIDNEX', url: CHANNEL_URL }],
+            ],
+          }
         : undefined,
     });
 

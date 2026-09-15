@@ -261,7 +261,7 @@
     "aboutApp": "Application",
     "version": "Version",
     "stage": "Stage",
-    "stageValue": "M3 — storage, exchange keys, sessions",
+    "stageValue": "Screener · paid subscription",
     "platform": "Platform",
     "aboutDisclaimer": "This app does not provide investment advice. Leveraged futures trading carries a risk of losing funds.",
     "on": "On",
@@ -275,7 +275,11 @@
     "platformUnknown": "Unknown",
     "storage": "Storage",
     "storagePostgres": "Database",
-    "storageMemory": "Process memory"
+    "storageMemory": "Process memory",
+    "links": "Links",
+    "channel": "MIDNEX channel",
+    "channelSub": "announcements, spread breakdowns, bot news",
+    "open": "Open"
   },
   "pd": {
     "instrument": "Instrument",
