@@ -23,7 +23,7 @@ import { InfoRow, RadioRow, Section } from '../components/Form';
 import { Sheet } from '../components/Sheet';
 import { AlertIcon, CheckIcon, ClockIcon } from '../icons';
 import { api, type BillingResponse } from '../lib/api';
-import { haptic, openInvoice } from '../lib/telegram';
+import { haptic, openInvoice, openTelegramLink } from '../lib/telegram';
 import type { SettingsController } from '../lib/useSettings';
 
 /** Подписи сетей: пользователь должен выбрать ту же сеть, что в своём кошельке. */
@@ -225,14 +225,21 @@ function StarsSheet({
   const [error, setError] = useState<string | null>(null);
   const stars = Math.max(1, Math.round(usd * starsPerUsd));
 
+  const [fallback, setFallback] = useState<{ link: string; sentToChat: boolean } | null>(null);
+
   async function start() {
     setBusy(true);
     setError(null);
     try {
-      const { link } = await api.starsInvoice(plan, months);
+      const { link, sentToChat } = await api.starsInvoice(plan, months);
       const status = await openInvoice(link);
       // 'paid' — Telegram списал звёзды; подписку продлит бот по successful_payment.
-      onDone(status === 'paid');
+      if (status === 'paid') return onDone(true);
+      if (status === 'cancelled' || status === 'failed') return onDone(false);
+      // Окно не открылось (или клиент не сообщил результат): счёт уже лежит
+      // в чате с ботом — ведём туда.
+      setFallback({ link, sentToChat });
+      setBusy(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setBusy(false);
@@ -245,11 +252,26 @@ function StarsSheet({
       description={t('sub.starsHint')}
       onClose={() => !busy && onClose()}
       footer={
-        <Button disabled={busy} onClick={start}>
-          {busy ? t('app.working') : t('sub.payAmount', { amount: `${stars} ⭐` })}
-        </Button>
+        fallback ? (
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="secondary" onClick={() => openTelegramLink(fallback.link)}>
+              {t('sub.openInvoice')}
+            </Button>
+            <Button onClick={() => onDone(true)}>{t('sub.iPaidStars')}</Button>
+          </div>
+        ) : (
+          <Button disabled={busy} onClick={start}>
+            {busy ? t('app.working') : t('sub.payAmount', { amount: `${stars} ⭐` })}
+          </Button>
+        )
       }
     >
+      {fallback && (
+        <section className="card notice">
+          <ClockIcon className="notice__icon" />
+          <span>{t(fallback.sentToChat ? 'sub.starsFallbackChat' : 'sub.starsFallbackLink')}</span>
+        </section>
+      )}
       <section className="card list">
         <InfoRow
           label={t(`sd.plan_${plan}`)}

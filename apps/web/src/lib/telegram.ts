@@ -32,6 +32,7 @@ interface TelegramWebApp {
   expand(): void;
   close?(): void;
   openInvoice?(url: string, callback?: (status: string) => void): void;
+  openTelegramLink?(url: string): void;
   disableVerticalSwipes?(): void;
   setHeaderColor(color: string): void;
   setBackgroundColor(color: string): void;
@@ -111,13 +112,33 @@ export function closeApp(): void {
  * failed, pending. Вне Telegram открываем ссылку в новой вкладке — оплатить
  * там нельзя, но хотя бы видно, что происходит.
  */
-export function openInvoice(url: string): Promise<string> {
+export function openInvoice(url: string, timeoutMs = 6000): Promise<string> {
   return new Promise((resolve) => {
     if (webApp?.openInvoice) {
-      webApp.openInvoice(url, (status) => resolve(status));
+      // На части клиентов окно оплаты не открывается и колбэк не приходит —
+      // тогда через таймаут отдаём 'timeout', и экран предложит счёт в чате.
+      let done = false;
+      const timer = setTimeout(() => {
+        if (!done) {
+          done = true;
+          resolve('timeout');
+        }
+      }, timeoutMs);
+      webApp.openInvoice(url, (status) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve(status);
+      });
     } else {
       window.open(url, '_blank', 'noopener');
       resolve('pending');
     }
   });
+}
+
+/** Открыть ссылку t.me внутри Telegram (чат с ботом, счёт). */
+export function openTelegramLink(url: string): void {
+  if (webApp?.openTelegramLink) webApp.openTelegramLink(url);
+  else window.open(url, '_blank', 'noopener');
 }

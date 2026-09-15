@@ -411,7 +411,7 @@ app.post('/api/billing/stars', async (req, reply) => {
     Number(body?.months),
   );
   if ('error' in r) return reply.code(400).send({ error: r.error });
-  return { link: r.link, payment: toPaymentInfo(r.payment) };
+  return { link: r.link, sentToChat: r.sentToChat, payment: toPaymentInfo(r.payment) };
 });
 
 app.post('/api/billing/crypto', async (req, reply) => {

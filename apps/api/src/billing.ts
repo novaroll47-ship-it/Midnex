@@ -110,7 +110,7 @@ export class Billing {
     userId: number,
     planRaw: string,
     monthsRaw: number,
-  ): Promise<{ payment: PaymentRecord; link: string } | { error: string }> {
+  ): Promise<{ payment: PaymentRecord; link: string; sentToChat: boolean } | { error: string }> {
     const v = this.validate(planRaw, monthsRaw);
     if (!v) return { error: 'bad plan or term' };
     if (!this.o.botToken) return { error: 'bot not configured' };
@@ -152,7 +152,30 @@ export class Billing {
       return { error: body.description ?? 'invoice failed' };
     }
     await this.o.repo.createPayment(payment);
-    return { payment, link: body.result };
+
+    // Тот же счёт — сообщением в чат с ботом. Это основной способ по
+    // документации Telegram, и он работает, даже если окно оплаты внутри
+    // мини-приложения не открылось (такое бывает на части клиентов).
+    let sentToChat = false;
+    try {
+      const sent = await fetch(`https://api.telegram.org/bot${this.o.botToken}/sendInvoice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: userId,
+          title: `MIDNEX · ${planTitle(v.plan)} · ${v.months} мес.`,
+          description: `Доступ к скринеру спредов на ${v.months * MONTH_DAYS} дней`,
+          payload: payment.id,
+          currency: 'XTR',
+          prices: [{ label: `${planTitle(v.plan)} ${v.months} мес.`, amount: stars }],
+        }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      sentToChat = ((await sent.json()) as { ok: boolean }).ok;
+    } catch (err) {
+      this.o.log.warn({ err: String(err) }, 'оплата: счёт в чат не ушёл');
+    }
+    return { payment, link: body.result, sentToChat };
   }
 
   /** Telegram спрашивает перед списанием — проверяем, что заявка живая. */

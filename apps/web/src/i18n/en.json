@@ -454,7 +454,11 @@
     "cryptoHint": "Transfers are confirmed manually — usually within a few hours. The bot will message you when access opens.",
     "cryptoSubmitted": "Request sent. Access opens after the transfer is confirmed — the bot will notify you.",
     "copy": "Copy address",
-    "copied": "Copied"
+    "copied": "Copied",
+    "openInvoice": "Open invoice",
+    "iPaidStars": "I have paid",
+    "starsFallbackChat": "The payment window did not open. The invoice was sent to the bot chat — open it and tap Pay, or tap “Open invoice”. Access activates automatically after payment.",
+    "starsFallbackLink": "The payment window did not open. Tap “Open invoice” — Telegram will show the Stars payment. Access activates automatically after payment."
   },
   "bots": {
     "spreadName": "Spread bot",
