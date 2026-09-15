@@ -391,9 +391,26 @@ app.patch('/api/settings/plan', async (req) => {
 
 // ---------------------------------------------------------------- подписка и оплата
 
+/** Имя бота для ссылок «Открыть чат» — узнаём один раз у Telegram. */
+let botUsername: string | null = null;
+async function resolveBotUsername(): Promise<string | null> {
+  if (botUsername || !BOT_TOKEN) return botUsername;
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getMe`, {
+      signal: AbortSignal.timeout(10_000),
+    });
+    const body = (await res.json()) as { ok: boolean; result?: { username?: string } };
+    botUsername = body.result?.username ?? null;
+  } catch {
+    // Сеть моргнула — попробуем при следующем запросе.
+  }
+  return botUsername;
+}
+
 app.get('/api/billing', async (req) => {
   const userId = req.state!.userId;
   return {
+    botUsername: await resolveBotUsername(),
     subscription: await billing.info(userId),
     pending: await billing.pendingFor(userId),
     purchasable: purchasablePlans(TRADING_ENABLED),

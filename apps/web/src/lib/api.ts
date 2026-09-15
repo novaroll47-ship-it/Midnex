@@ -102,6 +102,7 @@ export interface SettingsResponse {
 }
 
 export interface BillingResponse {
+  botUsername: string | null;
   subscription: SubscriptionInfo;
   pending: PaymentInfo | null;
   purchasable: PlanId[];

@@ -172,6 +172,7 @@ export function SubscriptionView({ settings }: { settings: SettingsController })
           months={months}
           usd={usd}
           starsPerUsd={billing.starsPerUsd}
+          botUsername={billing.botUsername}
           onClose={() => setPay(null)}
           onDone={(ok) => {
             setPay(null);
@@ -210,6 +211,7 @@ function StarsSheet({
   months,
   usd,
   starsPerUsd,
+  botUsername,
   onClose,
   onDone,
 }: {
@@ -217,6 +219,7 @@ function StarsSheet({
   months: BillingMonths;
   usd: number;
   starsPerUsd: number;
+  botUsername: string | null;
   onClose: () => void;
   onDone: (ok: boolean) => void;
 }) {
@@ -225,6 +228,22 @@ function StarsSheet({
   const [error, setError] = useState<string | null>(null);
   const stars = Math.max(1, Math.round(usd * starsPerUsd));
 
+  // Пока счёт выставлен, раз в 4 секунды спрашиваем сервер: как только
+  // Telegram подтвердит оплату (в чате или в окне), подписка появится сама.
+  const [waiting, setWaiting] = useState(false);
+  useEffect(() => {
+    if (!waiting) return;
+    const timer = setInterval(() => {
+      api
+        .billing()
+        .then((b) => {
+          if (b.subscription.active) onDone(true);
+        })
+        .catch(() => {});
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [waiting, onDone]);
+
   const [fallback, setFallback] = useState<{ link: string; sentToChat: boolean } | null>(null);
 
   async function start() {
@@ -232,7 +251,8 @@ function StarsSheet({
     setError(null);
     try {
       const { link, sentToChat } = await api.starsInvoice(plan, months);
-      const status = await openInvoice(link);
+      setWaiting(true);
+      const status = await openInvoice(link, 2500);
       // 'paid' — Telegram списал звёзды; подписку продлит бот по successful_payment.
       if (status === 'paid') return onDone(true);
       if (status === 'cancelled' || status === 'failed') return onDone(false);
@@ -257,7 +277,13 @@ function StarsSheet({
             <Button variant="secondary" onClick={() => openTelegramLink(fallback.link)}>
               {t('sub.openInvoice')}
             </Button>
-            <Button onClick={() => onDone(true)}>{t('sub.iPaidStars')}</Button>
+            <Button
+              onClick={() =>
+                openTelegramLink(botUsername ? `https://t.me/${botUsername}` : fallback.link)
+              }
+            >
+              {t('sub.openChat')}
+            </Button>
           </div>
         ) : (
           <Button disabled={busy} onClick={start}>

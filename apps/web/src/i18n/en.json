@@ -457,8 +457,9 @@
     "copied": "Copied",
     "openInvoice": "Open invoice",
     "iPaidStars": "I have paid",
-    "starsFallbackChat": "The payment window did not open. The invoice was sent to the bot chat — open it and tap Pay, or tap “Open invoice”. Access activates automatically after payment.",
-    "starsFallbackLink": "The payment window did not open. Tap “Open invoice” — Telegram will show the Stars payment. Access activates automatically after payment."
+    "starsFallbackChat": "The invoice was sent to the bot chat. Open the chat, tap Pay and confirm — access activates by itself and this sheet closes automatically.",
+    "starsFallbackLink": "The payment window did not open. Tap “Open invoice” — Telegram will show the Stars payment. Access activates automatically after payment.",
+    "openChat": "Open chat"
   },
   "bots": {
     "spreadName": "Spread bot",
