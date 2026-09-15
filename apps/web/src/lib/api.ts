@@ -40,10 +40,13 @@ function headers(): Record<string, string> {
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  // POST без тела некоторые вебвью отправляют с content-type, который сервер
+  // не знает, и получают 415. Поэтому у изменяющих запросов тело есть всегда.
+  const withBody = method !== 'GET';
   const res = await fetch(path, {
     method,
-    headers: body ? { ...headers(), 'Content-Type': 'application/json' } : headers(),
-    body: body ? JSON.stringify(body) : undefined,
+    headers: withBody ? { ...headers(), 'Content-Type': 'application/json' } : headers(),
+    body: withBody ? JSON.stringify(body ?? {}) : undefined,
   });
 
   if (!res.ok) {
