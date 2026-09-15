@@ -110,10 +110,20 @@ export class Billing {
     userId: number,
     planRaw: string,
     monthsRaw: number,
-  ): Promise<{ payment: PaymentRecord; link: string; sentToChat: boolean } | { error: string }> {
+  ): Promise<{ payment: PaymentRecord; link: string } | { error: string }> {
     const v = this.validate(planRaw, monthsRaw);
     if (!v) return { error: 'bad plan or term' };
     if (!this.o.botToken) return { error: 'bot not configured' };
+
+    // Одна живая заявка в звёздах: прежние счета в чате Telegram отклонит на
+    // pre_checkout («заявка уже закрыта»), и двойного списания не будет.
+    for (const old of await this.o.repo.listPendingPayments(userId)) {
+      if (old.method === 'stars') {
+        old.status = 'cancelled';
+        old.resolvedAt = Date.now();
+        await this.o.repo.updatePayment(old);
+      }
+    }
 
     const usd = PRICING[v.plan][v.months];
     const stars = this.starsFor(usd);
@@ -153,29 +163,37 @@ export class Billing {
     }
     await this.o.repo.createPayment(payment);
 
-    // Тот же счёт — сообщением в чат с ботом. Это основной способ по
-    // документации Telegram, и он работает, даже если окно оплаты внутри
-    // мини-приложения не открылось (такое бывает на части клиентов).
-    let sentToChat = false;
+    return { payment, link: body.result };
+  }
+
+  /**
+   * Тот же счёт сообщением в чат — запасной путь, когда окно оплаты внутри
+   * мини-приложения не открылось. Отдельным вызовом, чтобы не засорять чат
+   * счетами при каждой попытке.
+   */
+  async sendInvoiceToChat(userId: number, paymentId: string): Promise<boolean> {
+    const p = await this.o.repo.getPayment(paymentId);
+    if (!p || p.userId !== userId || p.method !== 'stars' || p.status !== 'pending') return false;
+    if (!this.o.botToken) return false;
     try {
       const sent = await fetch(`https://api.telegram.org/bot${this.o.botToken}/sendInvoice`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chat_id: userId,
-          title: `MIDNEX · ${planTitle(v.plan)} · ${v.months} мес.`,
-          description: `Доступ к скринеру спредов на ${v.months * MONTH_DAYS} дней`,
-          payload: payment.id,
+          title: `MIDNEX · ${planTitle(p.plan)} · ${p.months} мес.`,
+          description: `Доступ к скринеру спредов на ${p.months * MONTH_DAYS} дней`,
+          payload: p.id,
           currency: 'XTR',
-          prices: [{ label: `${planTitle(v.plan)} ${v.months} мес.`, amount: stars }],
+          prices: [{ label: `${planTitle(p.plan)} ${p.months} мес.`, amount: p.amount }],
         }),
         signal: AbortSignal.timeout(15_000),
       });
-      sentToChat = ((await sent.json()) as { ok: boolean }).ok;
+      return ((await sent.json()) as { ok: boolean }).ok;
     } catch (err) {
       this.o.log.warn({ err: String(err) }, 'оплата: счёт в чат не ушёл');
+      return false;
     }
-    return { payment, link: body.result, sentToChat };
   }
 
   /** Telegram спрашивает перед списанием — проверяем, что заявка живая. */

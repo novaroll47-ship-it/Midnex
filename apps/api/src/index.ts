@@ -428,7 +428,14 @@ app.post('/api/billing/stars', async (req, reply) => {
     Number(body?.months),
   );
   if ('error' in r) return reply.code(400).send({ error: r.error });
-  return { link: r.link, sentToChat: r.sentToChat, payment: toPaymentInfo(r.payment) };
+  return { link: r.link, payment: toPaymentInfo(r.payment) };
+});
+
+app.post('/api/billing/stars/:id/chat', async (req, reply) => {
+  const { id } = req.params as { id: string };
+  const ok = await billing.sendInvoiceToChat(req.state!.userId, id);
+  if (!ok) return reply.code(404).send({ error: 'not found' });
+  return { ok: true };
 });
 
 app.post('/api/billing/crypto', async (req, reply) => {

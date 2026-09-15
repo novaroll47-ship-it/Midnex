@@ -209,14 +209,8 @@ export const api = {
 
   billing: () => get<BillingResponse>('/api/billing'),
   starsInvoice: (plan: PlanId, months: BillingMonths) =>
-    request<{ link: string; sentToChat: boolean; payment: PaymentInfo }>(
-      'POST',
-      '/api/billing/stars',
-      {
-        plan,
-        months,
-      },
-    ),
+    request<{ link: string; payment: PaymentInfo }>('POST', '/api/billing/stars', { plan, months }),
+  starsToChat: (id: string) => request<{ ok: true }>('POST', `/api/billing/stars/${id}/chat`),
   cryptoRequest: (plan: PlanId, months: BillingMonths, network: string) =>
     request<{ payment: PaymentInfo; address: string }>('POST', '/api/billing/crypto', {
       plan,

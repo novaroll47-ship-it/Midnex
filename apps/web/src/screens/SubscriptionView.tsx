@@ -250,14 +250,18 @@ function StarsSheet({
     setBusy(true);
     setError(null);
     try {
-      const { link, sentToChat } = await api.starsInvoice(plan, months);
+      const { link, payment } = await api.starsInvoice(plan, months);
       setWaiting(true);
       const status = await openInvoice(link, 2500);
       // 'paid' — Telegram списал звёзды; подписку продлит бот по successful_payment.
       if (status === 'paid') return onDone(true);
       if (status === 'cancelled' || status === 'failed') return onDone(false);
-      // Окно не открылось (или клиент не сообщил результат): счёт уже лежит
-      // в чате с ботом — ведём туда.
+      // Окно не открылось (или клиент не сообщил результат): шлём счёт в чат
+      // с ботом и ведём туда.
+      const sentToChat = await api
+        .starsToChat(payment.id)
+        .then(() => true)
+        .catch(() => false);
       setFallback({ link, sentToChat });
       setBusy(false);
     } catch (err) {
