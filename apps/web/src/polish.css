@@ -43,6 +43,8 @@
     --red-line: rgba(255, 69, 58, 0.4);
     --yellow: #ffd60a;
 
+    --nav-bg: rgba(20, 20, 21, 0.94);
+
     /* Синий Wallet — цвет действия. */
     --blue: #3e8bff;
     --blue-soft: rgba(62, 139, 255, 0.14);
@@ -58,6 +60,33 @@
   }
 
   /* ---------- Карточки ---------- */
+
+  /* Светлая тема: те же роли, палитра iOS light. */
+  :root[data-theme='light'] {
+    --bg: #f2f2f7;
+    --surface: #ffffff;
+    --surface-2: #f2f2f7;
+    --surface-3: #e5e5ea;
+    --border: rgba(0, 0, 0, 0.08);
+    --border-strong: rgba(0, 0, 0, 0.16);
+
+    --text: #000000;
+    --text-dim: #6e6e73;
+    --text-mute: #aeaeb2;
+
+    --green: #1f9d47;
+    --green-soft: rgba(52, 199, 89, 0.14);
+    --green-line: rgba(52, 199, 89, 0.45);
+    --red: #e0342c;
+    --red-soft: rgba(255, 59, 48, 0.12);
+    --red-line: rgba(255, 59, 48, 0.4);
+    --yellow: #b8860b;
+
+    --blue: #007aff;
+    --blue-soft: rgba(0, 122, 255, 0.12);
+    --blue-line: rgba(0, 122, 255, 0.35);
+    --nav-bg: rgba(249, 249, 249, 0.94);
+  }
 
   /* Плоские карточки: ровный графит, без рамки, блика и тени. */
   .card,
@@ -234,7 +263,7 @@
   /* ---------- Нижняя навигация ---------- */
 
   .nav {
-    background: rgba(20, 20, 21, 0.94);
+    background: var(--nav-bg);
     border-top-color: var(--border);
   }
 
@@ -364,4 +393,34 @@
   --text-mute: #636366;
   --border-strong: rgba(255, 255, 255, 0.14);
   --surface-2: #2c2c2e;
+}
+
+:root[data-theme='light'] {
+  --background: #f2f2f7;
+  --foreground: #000000;
+  --card: #ffffff;
+  --card-foreground: #000000;
+  --popover: #ffffff;
+  --popover-foreground: #000000;
+  --primary: #007aff;
+  --primary-foreground: #ffffff;
+  --secondary: #e5e5ea;
+  --secondary-foreground: #000000;
+  --muted: #f2f2f7;
+  --muted-foreground: #6e6e73;
+  --accent: #e5e5ea;
+  --accent-foreground: #000000;
+  --destructive: #e0342c;
+  --destructive-foreground: #ffffff;
+  --border: rgba(0, 0, 0, 0.08);
+  --input: #e5e5ea;
+  --ring: #007aff;
+  --profit: #1f9d47;
+  --loss: #e0342c;
+  --warning: #b8860b;
+  --link: #007aff;
+  --text-mute: #aeaeb2;
+  --border-strong: rgba(0, 0, 0, 0.16);
+  --surface-2: #f2f2f7;
+  color-scheme: light;
 }

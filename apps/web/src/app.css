@@ -570,7 +570,7 @@
     grid-template-columns: repeat(3, 1fr);
     height: var(--h-nav);
     padding-bottom: env(safe-area-inset-bottom);
-    background: rgba(6, 10, 13, 0.94);
+    background: var(--nav-bg, rgba(6, 10, 13, 0.94));
     backdrop-filter: blur(12px);
     border-top: 1px solid var(--border);
   }
@@ -1715,5 +1715,37 @@
     font-size: 13px;
     line-height: 1.45;
     color: var(--text-dim);
+  }
+
+  /* ---------- Подписка в панели скринера ---------- */
+
+  .panel__sub-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+  }
+
+  .panel__sub-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: var(--text-dim);
+  }
+
+  .panel__sub-status--on {
+    color: var(--text);
+  }
+
+  .panel__sub-cta {
+    flex-shrink: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--blue);
   }
 }

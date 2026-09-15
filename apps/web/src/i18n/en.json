@@ -79,7 +79,12 @@
     "paywallText": "Without a subscription you see the top three pairs. Screener unlocks the full list, coin screen, filters and one-second refresh.",
     "paywallCta": "Unlock screener — $25/mo",
     "screenerActive": "Screener is live",
-    "screenerStarting": "Connecting to exchanges…"
+    "screenerStarting": "Connecting to exchanges…",
+    "subInactive": "No subscription",
+    "subActive": "Subscription active",
+    "subActiveUntil": "Subscription until {{date}}",
+    "subBuy": "Subscribe",
+    "subManage": "Extend"
   },
   "positions": {
     "title": "Positions",
@@ -255,7 +260,7 @@
     "tgVersion": "Telegram version",
     "sessionCurrent": "Active",
     "theme": "Theme",
-    "themeHint": "A light theme comes after the dark one is signed off.",
+    "themeHint": "Applies immediately and is remembered on this device.",
     "themeLight": "Light theme",
     "languageHint": "The language switches instantly and is remembered on this device.",
     "aboutApp": "Application",
@@ -279,7 +284,11 @@
     "links": "Links",
     "channel": "MIDNEX channel",
     "channelSub": "announcements, spread breakdowns, bot news",
-    "open": "Open"
+    "open": "Open",
+    "theme_system": "Match Telegram",
+    "theme_system_sub": "Follows the client theme",
+    "theme_dark": "Dark",
+    "theme_light": "Light"
   },
   "pd": {
     "instrument": "Instrument",
@@ -414,7 +423,8 @@
       "riskSub": "Limits on positions, leverage and daily loss",
       "keys": "Exchange connections",
       "keysSub": "Trade-only API keys, no withdrawal rights"
-    }
+    },
+    "seeBots": "What exactly arrives and with which settings — Settings → Bots."
   },
   "sub": {
     "statusTitle": "Subscription",

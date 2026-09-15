@@ -5,6 +5,7 @@ import { AppHeader } from './components/AppHeader';
 import { BottomNav, type Tab } from './components/BottomNav';
 import { api } from './lib/api';
 import { backButton, initTelegram, isBrowserFallback, isTelegram } from './lib/telegram';
+import { initTheme } from './lib/theme';
 import { useSettings } from './lib/useSettings';
 import { CoinDetailScreen } from './screens/CoinDetailScreen';
 import { ComingSoonScreen } from './screens/ComingSoonScreen';
@@ -41,6 +42,7 @@ export function App() {
 
   useEffect(() => {
     initTelegram();
+    initTheme();
     api
       .health()
       .then((h) => setDevBypass(h.devFakeUser))
@@ -107,6 +109,7 @@ export function App() {
           <ScreenerScreen
             plan={settings.data?.plan ?? 'unlimited'}
             trading={trading}
+            subscription={settings.data?.subscription}
             minSpreadPct={settings.data?.bot.minSpreadPct}
             refreshMs={settings.data?.bot.refreshMs ?? 1000}
             onOpenCoin={(base) => setRoute({ kind: 'coin', base })}

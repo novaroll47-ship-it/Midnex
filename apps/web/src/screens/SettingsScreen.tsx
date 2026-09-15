@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { ChevronRightIcon, LogoutIcon } from '../icons';
 import { LANGUAGES, currentLanguage } from '../i18n';
 import { api } from '../lib/api';
+import { currentThemeMode } from '../lib/theme';
 import { closeApp, haptic } from '../lib/telegram';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import type { SettingsController } from '../lib/useSettings';
@@ -58,6 +59,23 @@ export function SettingsScreen({
 
   return (
     <div className="stack">
+      <div className="section-label">{t('settings.accountSection')}</div>
+      <section className="card list">
+        <Row
+          title={t('settings.subscriptionTitle')}
+          sub={t('settings.subscriptionSub')}
+          meta={
+            data
+              ? data.subscription.active
+                ? t('sub.metaActive', { days: data.subscription.daysLeft })
+                : t('sub.metaInactive')
+              : undefined
+          }
+          metaGreen={data?.subscription.active}
+          onClick={() => onOpen('subscription')}
+        />
+      </section>
+
       {/* Модуль ботов. Пока торговля выключена — это список того, что будет:
           каждый бот получит свой экран настроек, когда появится. */}
       <div className="section-label">{t('settings.botsSection')}</div>
@@ -73,23 +91,6 @@ export function SettingsScreen({
           sub={t('settings.botFundingSub')}
           meta={t('settings.soon')}
           onClick={() => onOpen('botFunding')}
-        />
-      </section>
-
-      <div className="section-label">{t('settings.accountSection')}</div>
-      <section className="card list">
-        <Row
-          title={t('settings.subscriptionTitle')}
-          sub={t('settings.subscriptionSub')}
-          meta={
-            data
-              ? data.subscription.active
-                ? t('sub.metaActive', { days: data.subscription.daysLeft })
-                : t('sub.metaInactive')
-              : undefined
-          }
-          metaGreen={data?.subscription.active}
-          onClick={() => onOpen('subscription')}
         />
       </section>
 
@@ -114,7 +115,7 @@ export function SettingsScreen({
         <Row
           title={t('settings.themeTitle')}
           sub={t('settings.themeSub')}
-          meta={t('settings.themeDark')}
+          meta={t(`sd.theme_${currentThemeMode()}`)}
           metaGreen
           onClick={() => onOpen('theme')}
         />

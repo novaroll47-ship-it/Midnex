@@ -13,6 +13,7 @@ import {
   type ExchangeId,
   type ScreenerSnapshot,
   type SpreadRow,
+  type SubscriptionInfo,
 } from '@cs/shared';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -22,7 +23,7 @@ import { Switch } from '@/components/ui/switch';
 import { CoinIcon } from '../components/CoinIcon';
 import { ExchangeLogo } from '../components/ExchangeLogo';
 import { Sheet } from '../components/Sheet';
-import { BoltIcon, CheckIcon, ChevronRightIcon, SearchIcon, SlidersIcon, XIcon } from '../icons';
+import { CheckIcon, ChevronRightIcon, SearchIcon, SlidersIcon, XIcon } from '../icons';
 import { ApiError, api } from '../lib/api';
 import { haptic } from '../lib/telegram';
 import { usePolling } from '../lib/usePolling';
@@ -56,6 +57,7 @@ const DEFAULT_EXTRA: ExtraFilters = {
 
 interface Props {
   onOpenSubscription: () => void;
+  subscription?: SubscriptionInfo;
   onOpenBot: (view: 'botSpread' | 'botFunding') => void;
   onOpenCoin: (base: string) => void;
   plan: keyof typeof PLAN_WATCHLIST_LIMIT;
@@ -67,6 +69,7 @@ interface Props {
 
 export function ScreenerScreen({
   onOpenSubscription,
+  subscription,
   onOpenBot,
   onOpenCoin,
   plan,
@@ -195,6 +198,23 @@ export function ScreenerScreen({
       <div className="screener__top">
         {/* Одна панель: состояние бота и две сводные цифры. */}
         <section className="card panel">
+          {/* Подписка — первой строкой: это главный вопрос нового пользователя. */}
+          <button type="button" className="panel__sub-row" onClick={onOpenSubscription}>
+            <span
+              className={`panel__sub-status${subscription?.active ? ' panel__sub-status--on' : ''}`}
+            >
+              <i className={`panel__dot${subscription?.active ? '' : ' panel__dot--off'}`} />
+              {subscription?.active
+                ? subscription.expiresAt
+                  ? t('screener.subActiveUntil', { date: fmtShort(subscription.expiresAt) })
+                  : t('screener.subActive')
+                : t('screener.subInactive')}
+            </span>
+            <span className="panel__sub-cta">
+              {subscription?.active ? t('screener.subManage') : t('screener.subBuy')}
+            </span>
+          </button>
+
           {/* Боты: пока не запущены — серые, «Скоро»; «Настроить» открывает их экраны. */}
           <div className="panel__bot">
             <div>
@@ -326,22 +346,6 @@ export function ScreenerScreen({
           </div>
         )}
       </div>
-
-      <section className="card autorefresh screener__footer">
-        <BoltIcon size={17} className="autorefresh__icon" />
-        <div className="autorefresh__text">
-          <div className="autorefresh__title">
-            {t('screener.autoRefresh', { count: refreshSeconds })}
-          </div>
-          <div className="autorefresh__sub">
-            {errorText ??
-              t('screener.lastUpdate', { time: formatClock(data?.updatedAt ?? Date.now()) })}
-          </div>
-        </div>
-        <button className="btn-ghost btn-ghost--green" type="button" onClick={refresh}>
-          {t('screener.refreshNow')}
-        </button>
-      </section>
 
       {sheet === 'filters' && (
         <FiltersSheet
@@ -627,4 +631,8 @@ function Venue({
       <div className="venue__quote">{t('app.usdt')}</div>
     </div>
   );
+}
+
+function fmtShort(ms: number): string {
+  return new Date(ms).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
 }

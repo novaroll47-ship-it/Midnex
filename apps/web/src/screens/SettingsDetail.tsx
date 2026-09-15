@@ -23,6 +23,7 @@ import { LANGUAGES, currentLanguage, setLanguage } from '../i18n';
 import { api, type MarketStatus } from '../lib/api';
 import { usePolling } from '../lib/usePolling';
 import { haptic, openTelegramLink, platform, tgVersion } from '../lib/telegram';
+import { currentThemeMode, setThemeMode, type ThemeMode } from '../lib/theme';
 import type { SettingsController } from '../lib/useSettings';
 import { ApiKeysView } from './ApiKeysView';
 import { BotFundingView, BotSpreadView } from './BotViews';
@@ -528,17 +529,23 @@ function platformName(p: string, t: (k: string) => string): string {
 
 function ThemeView() {
   const { t } = useTranslation();
+  const [mode, setMode] = useState<ThemeMode>(currentThemeMode);
+  const modes: ThemeMode[] = ['system', 'dark', 'light'];
   return (
     <div className="stack">
       <Section title={t('sd.theme')} hint={t('sd.themeHint')}>
-        <RadioRow title={t('settings.themeDark')} selected onSelect={() => {}} />
-        <RadioRow
-          title={t('sd.themeLight')}
-          selected={false}
-          onSelect={() => {}}
-          badge={t('settings.soon')}
-          disabled
-        />
+        {modes.map((m) => (
+          <RadioRow
+            key={m}
+            title={t(`sd.theme_${m}`)}
+            sub={m === 'system' ? t('sd.theme_system_sub') : undefined}
+            selected={mode === m}
+            onSelect={() => {
+              setMode(m);
+              setThemeMode(m);
+            }}
+          />
+        ))}
       </Section>
     </div>
   );

@@ -36,6 +36,7 @@ interface TelegramWebApp {
   disableVerticalSwipes?(): void;
   setHeaderColor(color: string): void;
   setBackgroundColor(color: string): void;
+  onEvent?(event: string, handler: () => void): void;
   BackButton: TgBackButton;
   HapticFeedback?: TgHaptic;
 }
@@ -46,7 +47,7 @@ declare global {
   }
 }
 
-const webApp = typeof window !== 'undefined' ? window.Telegram?.WebApp : undefined;
+export const webApp = typeof window !== 'undefined' ? window.Telegram?.WebApp : undefined;
 
 /**
  * Скрипт telegram-web-app.js подключается и в обычном браузере, поэтому
@@ -71,12 +72,7 @@ export function initTelegram(): void {
   webApp.expand();
   // Мешает скроллу длинных списков на мобильных клиентах.
   webApp.disableVerticalSwipes?.();
-  try {
-    webApp.setHeaderColor('#010408');
-    webApp.setBackgroundColor('#010408');
-  } catch {
-    // Старые клиенты Telegram не поддерживают — не критично.
-  }
+  // Цвета шапки и фона задаёт тема — см. lib/theme.ts.
 }
 
 export function haptic(kind: 'tap' | 'success' | 'warning' | 'error' = 'tap'): void {

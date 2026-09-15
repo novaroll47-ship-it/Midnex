@@ -23,19 +23,7 @@ export function ComingSoonScreen({ what }: { what: 'positions' }) {
         <div className="soon__text">{t(`soon.${what}Text`)}</div>
       </section>
 
-      <div className="section-label">{t('soon.plannedTitle')}</div>
-      <section className="card list">
-        {(['paper', 'auto', 'risk', 'keys'] as const).map((item) => (
-          <div className="list__item list__item--disabled" key={item}>
-            <span>
-              <span className="list__title">{t(`soon.planned.${item}`)}</span>
-              <span className="list__sub">{t(`soon.planned.${item}Sub`)}</span>
-            </span>
-            <span />
-            <span className="badge badge--soon">{t('settings.soon')}</span>
-          </div>
-        ))}
-      </section>
+      <p className="hint">{t('soon.seeBots')}</p>
     </div>
   );
 }
