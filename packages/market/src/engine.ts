@@ -225,6 +225,28 @@ export class MarketEngine {
     this.rebuildUniverse();
   }
 
+  /** ccxt-клиент биржи — для фоновых REST-задач (история фандинга). */
+  clientFor(exchange: ExchangeId): Exchange | undefined {
+    return this.clients.get(exchange);
+  }
+
+  /** Ноги монеты во вселенной (только сверенные, если сверка включена). */
+  legsOf(base: string): { exchange: ExchangeId; symbol: string }[] {
+    return (this.universe.byBase.get(base) ?? []).map((m) => ({
+      exchange: m.exchange,
+      symbol: m.symbol,
+    }));
+  }
+
+  /** Все ноги вселенной — для фоновой загрузки истории. */
+  allLegs(): { exchange: ExchangeId; symbol: string }[] {
+    const out: { exchange: ExchangeId; symbol: string }[] = [];
+    for (const list of this.universe.byBase.values()) {
+      for (const m of list) out.push({ exchange: m.exchange, symbol: m.symbol });
+    }
+    return out;
+  }
+
   /** Все рынки всех подключённых бирж — для создания кандидатов на сверку. */
   allMarkets(): VenueMarket[] {
     return [...this.marketsByExchange.values()].flat();

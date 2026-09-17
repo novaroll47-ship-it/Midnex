@@ -42,6 +42,7 @@ import { createMarketSource, type MarketHooks } from './market.js';
 import type { VenueMarket } from '@cs/market';
 import { PairsService } from './pairs.js';
 import { HistoryCollector } from './history/collector.js';
+import { FUNDING_PERIODS, FundingHistory, type FundingPeriod } from './history/funding.js';
 import { SqliteHistoryStore } from './history/sqlite.js';
 import type { Timeframe } from './history/store.js';
 import { createRepo, type ExchangeKeyRecord } from './repo/index.js';
@@ -186,6 +187,16 @@ const collector = new HistoryCollector({
   minuteDays: HISTORY_MINUTE_DAYS,
 });
 if (market.mode === 'live') collector.start();
+
+// История фандинга: биржи хранят её сами — грузим 180 дней по сверенным ногам.
+const fundingHistory = new FundingHistory({
+  store: history,
+  engine: market.engine,
+  log: app.log,
+  legs: () => market.engine?.allLegs() ?? [],
+  backfillDays: 180,
+});
+if (market.mode === 'live') fundingHistory.start();
 
 await app.register(cors, {
   origin: IS_PROD ? WEB_ORIGIN : true,
@@ -364,6 +375,34 @@ app.get('/api/history/:base', async (req, reply) => {
     to,
     candles: [...best.values()].sort((a, b) => a.ts - b.ts),
   };
+});
+
+/**
+ * Накопленный фандинг по монете за период, по каждой бирже: лонг платит,
+ * шорт получает. Лучшая пара — шорт там, где ставка выше, лонг — где ниже.
+ */
+app.get('/api/coin/:base/funding', async (req, reply) => {
+  if (!(await billing.hasAccess(req.state!.userId))) {
+    return reply.code(402).send({ error: 'subscription required' });
+  }
+  const { base } = req.params as { base: string };
+  const q = req.query as { period?: string };
+  const period = (
+    FUNDING_PERIODS.includes(q.period as FundingPeriod) ? q.period : '7d'
+  ) as FundingPeriod;
+  const canonical = base.toUpperCase();
+  const legs = market.engine?.legsOf(canonical) ?? [];
+  const venues = fundingHistory.aggregate(legs, period);
+  const sorted = [...venues].sort((a, b) => a.avgRatePct - b.avgRatePct);
+  const best =
+    sorted.length >= 2
+      ? {
+          longExchange: sorted[0]!.exchange,
+          shortExchange: sorted[sorted.length - 1]!.exchange,
+          netPct: sorted[sorted.length - 1]!.shortPct + sorted[0]!.longPct,
+        }
+      : null;
+  return { base: canonical, period, venues, best };
 });
 
 /** Состояние сборщика истории — только администратору. */
@@ -868,6 +907,7 @@ app.setErrorHandler((err, _req, reply) => {
 app.addHook('onClose', async () => {
   bot?.stop();
   collector.stop();
+  fundingHistory.stop();
   history.close();
   await market.stop();
   await repo.close();

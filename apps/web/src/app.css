@@ -1871,4 +1871,13 @@
     font-size: 12px;
     text-align: right;
   }
+
+  .funding-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    font-size: 12px;
+    font-weight: 600;
+  }
 }

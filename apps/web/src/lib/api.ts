@@ -139,6 +139,24 @@ export interface LegView {
   peers: number;
 }
 
+export type FundingPeriod = '1d' | '7d' | '30d' | '180d';
+
+export interface FundingVenue {
+  exchange: ExchangeId;
+  symbol: string;
+  longPct: number;
+  shortPct: number;
+  payouts: number;
+  avgRatePct: number;
+}
+
+export interface FundingResponse {
+  base: string;
+  period: FundingPeriod;
+  venues: FundingVenue[];
+  best: { longExchange: ExchangeId; shortExchange: ExchangeId; netPct: number } | null;
+}
+
 export interface BillingResponse {
   botUsername: string | null;
   subscription: SubscriptionInfo;
@@ -263,6 +281,9 @@ export const api = {
       'POST',
       '/api/admin/pairs/verify-matching',
     ),
+
+  coinFunding: (base: string, period: FundingPeriod) =>
+    get<FundingResponse>(`/api/coin/${encodeURIComponent(base)}/funding`, { period }),
 
   billing: () => get<BillingResponse>('/api/billing'),
   starsInvoice: (plan: PlanId, months: BillingMonths) =>

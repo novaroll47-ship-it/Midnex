@@ -539,5 +539,18 @@
     "verify": "Verify",
     "reject": "Reject",
     "reset": "To candidates"
+  },
+  "funding": {
+    "title": "Funding over period",
+    "period_1d": "Day",
+    "period_7d": "Week",
+    "period_30d": "Month",
+    "period_180d": "6 months",
+    "payouts": "payouts: {{count}}",
+    "avg": "avg",
+    "long": "Long",
+    "short": "Short",
+    "noData": "Funding history is still loading — check back in a few minutes",
+    "bestHint": "Best pair over the period: long on {{long}}, short on {{short}} — funding {{net}} of position."
   }
 }

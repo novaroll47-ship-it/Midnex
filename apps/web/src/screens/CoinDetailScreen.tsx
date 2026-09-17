@@ -20,6 +20,7 @@ import { useTranslation } from 'react-i18next';
 
 import { CoinIcon } from '../components/CoinIcon';
 import { ExchangeLogo } from '../components/ExchangeLogo';
+import { FundingHistory } from '../components/FundingHistory';
 import { SpreadChart } from '../components/SpreadChart';
 import { InfoRow, Section } from '../components/Form';
 import { ArrowDownIcon, ArrowUpIcon, ClockIcon } from '../icons';
@@ -78,6 +79,8 @@ export function CoinDetailScreen({ base }: { base: string }) {
           tone={data.best.netPct > 0 ? 'green' : 'red'}
         />
       </Section>
+
+      <FundingHistory base={data.base} />
 
       <div className="section-label">{t('coin.pricesByVenue')}</div>
       <section className="card list">
