@@ -1909,4 +1909,52 @@
     font-weight: 700;
     vertical-align: 2px;
   }
+
+  /* ---------- Обучение (coach marks) ---------- */
+
+  .coach {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+  }
+
+  .coach__mask {
+    position: absolute;
+    inset: 0;
+  }
+
+  .coach__card {
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    padding: 14px 16px;
+    background: var(--surface);
+    border-radius: 14px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  }
+
+  .coach__step {
+    font-size: 11px;
+    color: var(--text-mute);
+    margin-bottom: 4px;
+  }
+
+  .coach__title {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .coach__text {
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--text-dim);
+  }
+
+  .coach__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+  }
 }

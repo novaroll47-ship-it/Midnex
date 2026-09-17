@@ -8,6 +8,8 @@ import { api } from '../lib/api';
 import { currentThemeMode } from '../lib/theme';
 import { closeApp, haptic } from '../lib/telegram';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { Sheet } from '../components/Sheet';
+import { TOUR_MODULES } from '../onboarding/modules';
 import type { SettingsController } from '../lib/useSettings';
 import type { SettingsView } from './SettingsDetail';
 
@@ -15,11 +17,13 @@ export function SettingsScreen({
   settings,
   trading,
   onOpen,
+  onReplayTour,
 }: {
   settings: SettingsController;
   /** false — этап «только скринер»: торговые разделы показаны, но заперты. */
   trading: boolean;
   onOpen: (view: SettingsView) => void;
+  onReplayTour: (moduleId: string) => void;
 }) {
   const { t } = useTranslation();
 
@@ -28,6 +32,7 @@ export function SettingsScreen({
     trading ? { onClick: () => onOpen(view) } : { badge: t('settings.soon'), disabled: true };
   const [sounds, setSounds] = useState(true);
   const [logoutAsk, setLogoutAsk] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [logoutBusy, setLogoutBusy] = useState(false);
 
   // Личность в мини-приложении даёт Telegram, «выйти» из неё нельзя. Что
@@ -157,6 +162,11 @@ export function SettingsScreen({
           onClick={() => onOpen('market')}
         />
         <Row
+          title={t('settings.helpTitle')}
+          sub={t('settings.helpSub')}
+          onClick={() => setHelpOpen(true)}
+        />
+        <Row
           title={t('settings.aboutTitle')}
           sub={t('settings.aboutSub')}
           onClick={() => onOpen('about')}
@@ -167,6 +177,38 @@ export function SettingsScreen({
         {t('settings.logout')}
         <LogoutIcon />
       </button>
+
+      {helpOpen && (
+        <Sheet
+          title={t('settings.helpTitle')}
+          description={t('settings.helpHint')}
+          onClose={() => setHelpOpen(false)}
+        >
+          <div className="sheet__group">
+            {TOUR_MODULES.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                className="sheet__row sheet__row--tap"
+                onClick={() => {
+                  setHelpOpen(false);
+                  onReplayTour(m.id);
+                }}
+              >
+                <span>
+                  <span className="sheet__row-title">{t(`tour.${m.id}.name`)}</span>
+                  <span className="sheet__row-sub">
+                    {data?.onboarding?.completed.includes(m.id)
+                      ? t('settings.tourDone')
+                      : t('settings.tourNew')}
+                  </span>
+                </span>
+                <span style={{ color: 'var(--blue)' }}>{t('settings.tourReplay')}</span>
+              </button>
+            ))}
+          </div>
+        </Sheet>
+      )}
 
       {logoutAsk && (
         <ConfirmDialog

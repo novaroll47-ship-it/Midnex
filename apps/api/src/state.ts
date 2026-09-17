@@ -84,6 +84,7 @@ export class StateService {
         bot: { ...DEFAULT_BOT },
         risk: { ...DEFAULT_RISK },
         notifications: { ...DEFAULT_NOTIFICATIONS },
+        onboarding: { completed: [] },
       };
       await this.repo.saveSettings(userId, settings);
     } else {
@@ -92,6 +93,7 @@ export class StateService {
         bot: { ...DEFAULT_BOT, ...settings.bot },
         risk: { ...DEFAULT_RISK, ...settings.risk },
         notifications: { ...DEFAULT_NOTIFICATIONS, ...settings.notifications },
+        onboarding: { completed: [...(settings.onboarding?.completed ?? [])] },
       };
     }
 

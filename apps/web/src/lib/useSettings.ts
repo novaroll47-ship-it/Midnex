@@ -19,6 +19,8 @@ export interface SettingsController {
   patchRisk: (body: Partial<RiskSettings>) => void;
   patchNotifications: (body: Partial<NotificationSettings>) => void;
   patchPlan: (plan: PlanId) => void;
+  /** Пройденные модули обучения — замена целиком. */
+  setOnboarding: (completed: string[]) => void;
 }
 
 export function useSettings(): SettingsController {
@@ -67,6 +69,13 @@ export function useSettings(): SettingsController {
     patchBot: (body) => apply('bot', body, () => api.patchBot(body)),
     patchRisk: (body) => apply('risk', body, () => api.patchRisk(body)),
     patchNotifications: (body) => apply('notifications', body, () => api.patchNotifications(body)),
+    setOnboarding: (completed) => {
+      setData((d) => (d ? { ...d, onboarding: { completed } } : d));
+      api
+        .patchOnboarding(completed)
+        .then(setData)
+        .catch(() => {});
+    },
     patchPlan: (plan) => {
       const previous = data;
       if (previous) setData({ ...previous, plan });

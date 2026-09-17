@@ -94,6 +94,7 @@ export interface SettingsResponse {
   bot: BotSettings;
   risk: RiskSettings;
   notifications: NotificationSettings;
+  onboarding: { completed: string[] };
   plan: PlanId;
   apiKeys: ApiKeyStatus[];
   version: string;
@@ -249,6 +250,8 @@ export const api = {
   patchNotifications: (body: Partial<NotificationSettings>) =>
     request<SettingsResponse>('PATCH', '/api/settings/notifications', body),
   patchPlan: (plan: PlanId) => request<SettingsResponse>('PATCH', '/api/settings/plan', { plan }),
+  patchOnboarding: (completed: string[]) =>
+    request<SettingsResponse>('PATCH', '/api/settings/onboarding', { completed }),
 
   positions: (tab: string) => get<PositionsResponse>('/api/positions', { tab }),
   position: (id: string) => get<PositionDetail>(`/api/positions/${id}`),

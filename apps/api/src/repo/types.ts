@@ -10,6 +10,7 @@ import type {
   BotSettings,
   ExchangeId,
   NotificationSettings,
+  OnboardingState,
   PaymentMethod,
   PaymentStatus,
   PlanId,
@@ -32,6 +33,7 @@ export interface UserSettings {
   bot: BotSettings;
   risk: RiskSettings;
   notifications: NotificationSettings;
+  onboarding: OnboardingState;
 }
 
 export interface PositionRecord {

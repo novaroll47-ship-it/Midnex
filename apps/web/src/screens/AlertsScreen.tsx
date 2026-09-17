@@ -65,7 +65,12 @@ export function AlertsScreen({
     <div className="stack">
       <div className="screen-title">
         <h1>{t('alerts.title')}</h1>
-        <button className="btn-ghost" type="button" onClick={() => setAdding({ base: null })}>
+        <button
+          className="btn-ghost"
+          type="button"
+          data-tour="alerts-add"
+          onClick={() => setAdding({ base: null })}
+        >
           <PlusIcon size={15} />
           {t('alerts.add')}
         </button>
@@ -78,7 +83,9 @@ export function AlertsScreen({
         </button>
       )}
 
-      <p className="hint">{t('alerts.hint')}</p>
+      <p className="hint" data-tour="alerts-list">
+        {t('alerts.hint')}
+      </p>
 
       {rules === null && <div className="empty">{t('app.loading')}</div>}
       {rules && rules.length === 0 && (

@@ -249,3 +249,8 @@ export interface FundingBotSettings {
   leverage: number;
   maxPositions: number;
 }
+
+/** Прогресс обучения: какие модули пройдены (или пропущены). */
+export interface OnboardingState {
+  completed: string[];
+}

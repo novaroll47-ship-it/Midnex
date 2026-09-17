@@ -8,6 +8,8 @@ import { backButton, initTelegram, isBrowserFallback, isTelegram } from './lib/t
 import { initTheme } from './lib/theme';
 import { useSettings } from './lib/useSettings';
 import { CoinDetailScreen } from './screens/CoinDetailScreen';
+import { CoachMarks } from './components/CoachMarks';
+import { pendingModules } from './onboarding/modules';
 import { AlertsScreen } from './screens/AlertsScreen';
 import { ComingSoonScreen } from './screens/ComingSoonScreen';
 import { PositionDetailScreen, type PositionView } from './screens/PositionDetail';
@@ -87,6 +89,20 @@ export function App() {
   // Монета, для которой открыть форму алерта (переход с экрана монеты).
   const [alertPreset, setAlertPreset] = useState<string | null>(null);
 
+  // Обучение: первый непройденный модуль показываем, когда открыта вкладка.
+  // Ручной перезапуск из настроек кладёт id модуля в replayModule.
+  const [replayModule, setReplayModule] = useState<string | null>(null);
+  const completedModules = settings.data?.onboarding?.completed;
+  const tourModule = useMemo(() => {
+    if (replayModule) return pendingModules([]).find((m) => m.id === replayModule) ?? null;
+    if (!completedModules || route.kind !== 'tab') return null;
+    return pendingModules(completedModules)[0] ?? null;
+  }, [replayModule, completedModules, route.kind]);
+  const switchTabForTour = useCallback((next: Tab) => {
+    setRoute({ kind: 'tab' });
+    setTab(next);
+  }, []);
+
   return (
     <div className="app">
       <AppHeader title={headerTitle} onBack={route.kind === 'tab' ? undefined : goBack} />
@@ -163,11 +179,29 @@ export function App() {
             settings={settings}
             trading={trading}
             onOpen={(view) => setRoute({ kind: 'settings', view })}
+            onReplayTour={(id) => {
+              setRoute({ kind: 'tab' });
+              setReplayModule(id);
+            }}
           />
         )}
       </main>
 
       <BottomNav active={tab} trading={trading} onChange={switchTab} />
+
+      {tourModule && (
+        <CoachMarks
+          key={tourModule.id}
+          module={tourModule}
+          onSwitchTab={switchTabForTour}
+          onDone={() => {
+            setReplayModule(null);
+            if (!completedModules?.includes(tourModule.id)) {
+              settings.setOnboarding([...(completedModules ?? []), tourModule.id]);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

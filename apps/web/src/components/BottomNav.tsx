@@ -31,6 +31,7 @@ export function BottomNav({
           key={id}
           type="button"
           className={`nav__item${active === id ? ' nav__item--active' : ''}`}
+          data-tour={`nav-${id}`}
           onClick={() => {
             haptic('tap');
             onChange(id);

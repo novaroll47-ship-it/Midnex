@@ -166,7 +166,13 @@
     "botTrading": "Trading bot",
     "botTradingSub": "Opens and closes pairs on spread",
     "botFunding": "Funding bot",
-    "botFundingSub": "Collects funding-rate differences between exchanges"
+    "botFundingSub": "Collects funding-rate differences between exchanges",
+    "helpTitle": "Help & tour",
+    "helpSub": "Replay the guided tour",
+    "helpHint": "The tour highlights elements right on screen and explains what is where.",
+    "tourDone": "Completed",
+    "tourNew": "Not yet",
+    "tourReplay": "Start"
   },
   "sd": {
     "botState": "Bot state",
@@ -581,5 +587,52 @@
     "thresholdSub": "Fires when the spread reaches at least",
     "save": "Save",
     "tileFull": "Alert on {{base}}"
+  },
+  "tour": {
+    "next": "Next",
+    "finish": "Done",
+    "skip": "Skip",
+    "screener_basics_v1": {
+      "name": "Screener basics",
+      "panel": {
+        "title": "Panel",
+        "text": "How many pairs pass the threshold now and the average spread. Bots will live here too."
+      },
+      "subscription": {
+        "title": "Subscription",
+        "text": "Access status and payment. Everything is available during the trial."
+      },
+      "search": {
+        "title": "Coin search",
+        "text": "Type a ticker or name — the list filters as you type."
+      },
+      "filters": {
+        "title": "Filters",
+        "text": "Spread threshold, exchange pair, profitable only, favourable funding only."
+      },
+      "sort": {
+        "title": "Sorting",
+        "text": "Tap to cycle: by spread → alphabetical → by price."
+      },
+      "row": {
+        "title": "Coin row",
+        "text": "Where to buy cheaper (long), where to sell dearer (short), the spread and net profit after fees. Tap to open the coin screen with history."
+      },
+      "alertsTab": {
+        "title": "Alerts",
+        "text": "The bot messages you on Telegram when a coin’s spread crosses your threshold."
+      }
+    },
+    "alerts_v1": {
+      "name": "Alerts",
+      "add": {
+        "title": "New rule",
+        "text": "For a specific coin or any coin: set the threshold in percent."
+      },
+      "list": {
+        "title": "How it works",
+        "text": "A rule fires once when the threshold is crossed and re-arms once the spread drops. Notifications arrive in the bot chat."
+      }
+    }
   }
 }

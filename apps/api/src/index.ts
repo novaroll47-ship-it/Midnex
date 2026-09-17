@@ -558,6 +558,22 @@ app.patch('/api/settings/notifications', async (req) => {
   return settingsPayload(s);
 });
 
+/** Прогресс обучения: список пройденных модулей; сброс — пустой список или без модуля. */
+app.patch('/api/settings/onboarding', async (req, reply) => {
+  const s = req.state!;
+  const body = req.body as { completed?: unknown };
+  if (!Array.isArray(body?.completed))
+    return reply.code(400).send({ error: 'completed[] required' });
+  s.settings.onboarding = {
+    completed: [...new Set(body.completed.filter((x): x is string => typeof x === 'string'))].slice(
+      0,
+      50,
+    ),
+  };
+  await state.saveSettings(s);
+  return settingsPayload(s);
+});
+
 app.patch('/api/settings/plan', async (req) => {
   const s = req.state!;
   const body = req.body as { plan?: string };

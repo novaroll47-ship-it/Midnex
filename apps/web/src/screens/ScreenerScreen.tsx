@@ -197,9 +197,14 @@ export function ScreenerScreen({
     <div className="screener">
       <div className="screener__top">
         {/* Одна панель: состояние бота и две сводные цифры. */}
-        <section className="card panel">
+        <section className="card panel" data-tour="panel">
           {/* Подписка — первой строкой: это главный вопрос нового пользователя. */}
-          <button type="button" className="panel__sub-row" onClick={onOpenSubscription}>
+          <button
+            type="button"
+            className="panel__sub-row"
+            data-tour="subscription"
+            onClick={onOpenSubscription}
+          >
             <span
               className={`panel__sub-status${subscription?.active ? ' panel__sub-status--on' : ''}`}
             >
@@ -263,7 +268,7 @@ export function ScreenerScreen({
 
         {/* Поиск и фильтры */}
         <section className="filters filters--pill">
-          <div className="search search--pill">
+          <div className="search search--pill" data-tour="search">
             <SearchIcon className="search__icon" size={16} />
             <input
               className="search__input"
@@ -285,6 +290,7 @@ export function ScreenerScreen({
           </div>
           <button
             className={`icon-btn-round${extraCount ? ' icon-btn-round--active' : ''}`}
+            data-tour="filters"
             type="button"
             aria-label={t('screener.moreFilters')}
             onClick={() => setSheet('filters')}
@@ -299,6 +305,7 @@ export function ScreenerScreen({
           <button
             type="button"
             className="list-head__sort"
+            data-tour="sort"
             onClick={() => {
               haptic('tap');
               // Каждое нажатие — следующая сортировка по кругу, без меню.
@@ -315,10 +322,11 @@ export function ScreenerScreen({
 
       {/* Скроллится только список монет — шапка и подвал стоят на месте. */}
       <div className="screener__list">
-        {visible.map((row) => (
+        {visible.map((row, i) => (
           <CoinRow
             key={row.symbol}
             row={row}
+            first={i === 0}
             checked={selected.has(row.base)}
             disabled={!selected.has(row.base) && limitReached}
             onToggle={() => toggle(row.base)}
@@ -526,12 +534,14 @@ function FiltersSheet({
 
 function CoinRow({
   row,
+  first,
   checked,
   disabled,
   onToggle,
   onOpen,
 }: {
   row: SpreadRow;
+  first?: boolean;
   checked: boolean;
   disabled: boolean;
   onToggle: () => void;
@@ -545,6 +555,7 @@ function CoinRow({
   return (
     <div
       className={`coin-row${row.stale ? ' coin-row--stale' : ''}${checked ? ' coin-row--pinned' : ''}`}
+      data-tour={first ? 'row' : undefined}
     >
       <button
         type="button"
