@@ -16,7 +16,7 @@ import {
   type ExchangeId,
   type ScreenerSnapshot,
 } from '@cs/shared';
-import { MarketEngine, type VenueMarket, type EngineStatus } from '@cs/market';
+import { MarketEngine, type GapReason, type VenueMarket, type EngineStatus } from '@cs/market';
 
 import * as mock from './mock.js';
 
@@ -37,6 +37,7 @@ export interface MarketSource {
 /** Колбэки, которые подключаются после создания источника (сверка ног, листинги). */
 export interface MarketHooks {
   onMarketsChanged?: (exchange: ExchangeId, markets: VenueMarket[]) => void;
+  onGap?: (exchange: ExchangeId, reason: GapReason | null) => void;
 }
 
 export function createMarketSource(log: FastifyBaseLogger, hooks: MarketHooks = {}): MarketSource {
@@ -67,6 +68,7 @@ export function createMarketSource(log: FastifyBaseLogger, hooks: MarketHooks = 
     holdMinutes: 240,
     httpsProxy: process.env.EXCHANGE_HTTPS_PROXY || undefined,
     onMarketsChanged: (exchange, markets) => hooks.onMarketsChanged?.(exchange, markets),
+    onGap: (exchange, reason) => hooks.onGap?.(exchange, reason),
     log: {
       info: (m) => log.info(`рынок: ${m}`),
       warn: (m) => log.warn(`рынок: ${m}`),

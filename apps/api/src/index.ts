@@ -187,6 +187,11 @@ const collector = new HistoryCollector({
   minuteDays: HISTORY_MINUTE_DAYS,
 });
 if (market.mode === 'live') collector.start();
+// Обрывы и лимиты из потоков — в журнал дыр с причиной.
+marketHooks.onGap = (exchange, reason) => {
+  if (reason) collector.gapOpen(exchange, reason);
+  else collector.gapClose(exchange);
+};
 
 // История фандинга: биржи хранят её сами — грузим 180 дней по сверенным ногам.
 const fundingHistory = new FundingHistory({

@@ -13,7 +13,7 @@
 import ccxt, { type Exchange } from 'ccxt';
 import type { CoinDetail, ExchangeId, ScreenerSnapshot, SpreadRow, VenueQuote } from '@cs/shared';
 
-import { Feed, type FeedLogger, type FeedState, type Quote } from './feed.js';
+import { Feed, type FeedLogger, type FeedState, type GapReason, type Quote } from './feed.js';
 import { FundingTracker } from './funding.js';
 import { coinName } from './names.js';
 import {
@@ -79,6 +79,8 @@ export interface EngineOptions {
   log: FeedLogger;
   /** Вызывается, когда меняется набор рынков (подключилась биржа, перезагрузка). */
   onMarketsChanged?: (exchange: ExchangeId, markets: VenueMarket[]) => void;
+  /** Биржа замолчала (reason) или снова заговорила (null). */
+  onGap?: (exchange: ExchangeId, reason: GapReason | null) => void;
 }
 
 export interface EngineStatus {
@@ -199,6 +201,7 @@ export class MarketEngine {
       pollMs: this.opts.pollMs,
       log,
       onQuote: (market, quote) => this.onQuote(market, quote),
+      onGap: (ex, reason) => this.opts.onGap?.(ex, reason),
     });
     this.feeds.set(id, feed);
     feed.start();
