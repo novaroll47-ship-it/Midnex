@@ -87,7 +87,8 @@
     "subActiveUntil": "Подписка до {{date}}",
     "subBuy": "Оформить",
     "subManage": "Продлить",
-    "trialUntil": "Пробный период до {{date}}"
+    "trialUntil": "Пробный период до {{date}}",
+    "newPair": "NEW"
   },
   "positions": {
     "title": "Позиции",

@@ -47,6 +47,8 @@ export interface SpreadRow {
    * монета). Такая строка в возможности не попадает и уходит в конец списка.
    */
   suspect?: boolean;
+  /** Одна из ног сверена меньше недели назад — свежий листинг. */
+  isNew?: boolean;
 }
 
 export interface ScreenerSnapshot {

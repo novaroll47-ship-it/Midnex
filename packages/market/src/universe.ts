@@ -25,6 +25,8 @@ export interface VenueMarket {
   contractSize: number;
   /** Шаг цены, если биржа его сообщает. */
   pricePrecision: number | undefined;
+  /** Когда нога сверена (из таблицы сверки). */
+  verifiedAt?: number;
 }
 
 /** Множители, которые биржи приклеивают к тикеру. */
@@ -91,6 +93,8 @@ export interface LegVerification {
   status: LegStatus;
   /** Множитель, подтверждённый вручную; перекрывает вычисленный из тикера. */
   multiplier: number;
+  /** Когда нога была сверена — для пометки «новая пара». */
+  verifiedAt?: number;
 }
 
 /** Ключ ноги в таблице сверки. */
@@ -115,7 +119,7 @@ export function buildUniverse(
     if (verify) {
       const v = verify(raw);
       if (!v || v.status !== 'verified') continue;
-      if (v.multiplier !== raw.multiplier) m = { ...raw, multiplier: v.multiplier };
+      m = { ...raw, multiplier: v.multiplier, verifiedAt: v.verifiedAt };
     }
     // Одна биржа иногда листит и PEPE, и 1000PEPE — берём тот, у которого
     // множитель меньше: он ближе к «настоящей» монете.

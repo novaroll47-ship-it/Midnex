@@ -124,6 +124,8 @@ export interface VerifiedSymbolRecord {
   note: string | null;
   updatedAt: number;
   updatedBy: string | null;
+  /** Когда нога стала verified; null — ещё не была. */
+  verifiedAt: number | null;
 }
 
 /** Правило алерта: по монете (base) или общее (любая монета выше порога). */

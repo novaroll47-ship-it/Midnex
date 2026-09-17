@@ -1898,4 +1898,15 @@
     height: 40px;
     font-size: 14px;
   }
+
+  .badge--new {
+    margin-left: 4px;
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: var(--blue-soft);
+    color: var(--blue);
+    font-size: 9px;
+    font-weight: 700;
+    vertical-align: 2px;
+  }
 }

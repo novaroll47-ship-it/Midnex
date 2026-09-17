@@ -559,7 +559,10 @@ function CoinRow({
       <div className="coin-id">
         <CoinIcon base={row.base} size={20} />
         <div className="coin-id__text">
-          <div className={`coin-id__ticker${tickerSizeClass(row.base)}`}>{row.base}</div>
+          <div className={`coin-id__ticker${tickerSizeClass(row.base)}`}>
+            {row.base}
+            {row.isNew && <span className="badge badge--new">{t('screener.newPair')}</span>}
+          </div>
           {row.name !== row.base && <div className="coin-id__name">{row.name}</div>}
         </div>
       </div>

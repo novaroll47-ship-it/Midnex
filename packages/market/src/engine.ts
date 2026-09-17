@@ -66,6 +66,9 @@ const MARKET_SCOPE: Record<ExchangeId, Record<string, unknown>> = {
   kucoin: {},
 };
 
+/** Столько после сверки нога считается «новой» в ленте. */
+const NEW_LISTING_MS = 7 * 86_400_000;
+
 export interface EngineOptions {
   exchanges: ExchangeId[];
   /** Котировка старше этого — не участвует в расчёте. */
@@ -137,6 +140,40 @@ export class MarketEngine {
 
   /** Биржи, у которых загрузка рынков уже идёт — чтобы не запускать вторую. */
   private readonly connecting = new Set<ExchangeId>();
+
+  /**
+   * Перечитать список инструментов подключённой биржи (мониторинг листингов).
+   * Поток не пересоздаётся: новые символы попадут в ленту после сверки, а
+   * подписка на них — при следующем переподключении сокета. Возвращает
+   * добавленные и исчезнувшие символы.
+   */
+  async refreshMarkets(
+    id: ExchangeId,
+  ): Promise<{ added: VenueMarket[]; removed: VenueMarket[] } | null> {
+    const client = this.clients.get(id);
+    if (!client || !this.running) return null;
+    await Promise.race([
+      client.loadMarkets(true),
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error(`loadMarkets дольше ${MarketEngine.LOAD_MARKETS_DEADLINE_MS}мс`)),
+          MarketEngine.LOAD_MARKETS_DEADLINE_MS,
+        ),
+      ),
+    ]);
+    const fresh = venueMarkets(id, client);
+    const before = this.marketsByExchange.get(id) ?? [];
+    const beforeKeys = new Set(before.map((m) => m.symbol));
+    const freshKeys = new Set(fresh.map((m) => m.symbol));
+    const added = fresh.filter((m) => !beforeKeys.has(m.symbol));
+    const removed = before.filter((m) => !freshKeys.has(m.symbol));
+    if (added.length || removed.length) {
+      this.marketsByExchange.set(id, fresh);
+      this.rebuildUniverse();
+      this.opts.onMarketsChanged?.(id, fresh);
+    }
+    return { added, removed };
+  }
 
   /**
    * Жёсткий предел на загрузку рынков. Таймаут ccxt действует на один запрос,
@@ -433,6 +470,10 @@ export class MarketEngine {
       stale,
       fundingKnown,
       suspect,
+      isNew: all.some(
+        (v) =>
+          v.market.verifiedAt !== undefined && Date.now() - v.market.verifiedAt < NEW_LISTING_MS,
+      ),
     };
   }
 

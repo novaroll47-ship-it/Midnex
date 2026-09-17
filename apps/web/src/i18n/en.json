@@ -86,7 +86,8 @@
     "subActiveUntil": "Subscription until {{date}}",
     "subBuy": "Subscribe",
     "subManage": "Extend",
-    "trialUntil": "Trial until {{date}}"
+    "trialUntil": "Trial until {{date}}",
+    "newPair": "NEW"
   },
   "positions": {
     "title": "Positions",

@@ -55,7 +55,7 @@ export class PairsService {
     this.entries = new Map(
       rows.map((r) => [
         legKey(r.exchange, r.symbol),
-        { status: r.status, multiplier: r.multiplier },
+        { status: r.status, multiplier: r.multiplier, verifiedAt: r.verifiedAt ?? undefined },
       ]),
     );
     this.o.engine?.setVerification(this.entries);
@@ -90,6 +90,7 @@ export class PairsService {
         note: null,
         updatedAt: Date.now(),
         updatedBy: 'system',
+        verifiedAt: null,
       });
     }
     if (fresh.length === 0) return;
@@ -98,6 +99,7 @@ export class PairsService {
       this.entries.set(legKey(r.exchange, r.symbol), {
         status: r.status,
         multiplier: r.multiplier,
+        verifiedAt: r.verifiedAt ?? undefined,
       });
     }
     this.o.engine?.setVerification(this.entries);
@@ -140,6 +142,8 @@ export class PairsService {
             note: 'auto',
             updatedBy: 'bootstrap',
             updatedAt: Date.now(),
+            // Нулевая сверка — это не листинг: помечать сотни монет «новыми» незачем.
+            verifiedAt: Date.now() - 30 * 86_400_000,
           });
         }
       }
@@ -175,11 +179,13 @@ export class PairsService {
       multiplier: multiplier && multiplier > 0 ? multiplier : rec.multiplier,
       updatedAt: Date.now(),
       updatedBy: by,
+      verifiedAt: status === 'verified' ? (rec.verifiedAt ?? Date.now()) : rec.verifiedAt,
     };
     await this.o.repo.upsertVerifiedSymbols([next]);
     this.entries.set(legKey(exchange, symbol), {
       status: next.status,
       multiplier: next.multiplier,
+      verifiedAt: next.verifiedAt ?? undefined,
     });
     this.o.engine?.setVerification(this.entries);
     return next;
@@ -198,12 +204,14 @@ export class PairsService {
       note: 'auto-ratio',
       updatedAt: Date.now(),
       updatedBy: by,
+      verifiedAt: l.verifiedAt ?? Date.now(),
     }));
     await this.o.repo.upsertVerifiedSymbols(rows);
     for (const r of rows) {
       this.entries.set(legKey(r.exchange, r.symbol), {
         status: r.status,
         multiplier: r.multiplier,
+        verifiedAt: r.verifiedAt ?? undefined,
       });
     }
     this.o.engine?.setVerification(this.entries);
@@ -254,6 +262,7 @@ function toRecord(l: LegView): VerifiedSymbolRecord {
     note: l.note,
     updatedAt: l.updatedAt,
     updatedBy: l.updatedBy,
+    verifiedAt: l.verifiedAt,
   };
 }
 

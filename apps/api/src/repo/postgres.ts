@@ -414,6 +414,7 @@ export class PostgresRepo implements Repo {
       note: (r['note'] as string | null) ?? null,
       updatedAt: ts(r['updated_at']),
       updatedBy: (r['updated_by'] as string | null) ?? null,
+      verifiedAt: tsOrNull(r['verified_at']),
     }));
   }
 
@@ -429,12 +430,14 @@ export class PostgresRepo implements Repo {
         note: r.note,
         updated_at: new Date(r.updatedAt),
         updated_by: r.updatedBy,
+        verified_at: r.verifiedAt == null ? null : new Date(r.verifiedAt),
       }));
       await this.sql`
         insert into verified_symbols ${this.sql(chunk)}
         on conflict (exchange, symbol) do update set
           base = excluded.base, multiplier = excluded.multiplier, status = excluded.status,
-          note = excluded.note, updated_at = excluded.updated_at, updated_by = excluded.updated_by
+          note = excluded.note, updated_at = excluded.updated_at, updated_by = excluded.updated_by,
+          verified_at = excluded.verified_at
       `;
     }
   }

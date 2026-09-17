@@ -42,6 +42,7 @@ import { coinIcon } from './icons.js';
 import { verifyExchangeKey } from './keys.js';
 import { createMarketSource, type MarketHooks } from './market.js';
 import type { VenueMarket } from '@cs/market';
+import { ListingsMonitor } from './listings.js';
 import { PairsService } from './pairs.js';
 import { HistoryCollector } from './history/collector.js';
 import { FUNDING_PERIODS, FundingHistory, type FundingPeriod } from './history/funding.js';
@@ -170,6 +171,19 @@ setTimeout(() => {
 const notifications = new NotificationService(() => bot, app.log, process.env.PUBLIC_URL);
 const alerts = new AlertEngine(repo, market, notifications, billing, app.log);
 void alerts.start();
+
+// Листинги: раз в 10 минут diff инструментов; новые — в сверку, пропавшие — delisted.
+const listings = new ListingsMonitor({
+  engine: market.engine,
+  pairs,
+  repo,
+  notify: notifications,
+  log: app.log,
+  notifyAdmin: (text) => {
+    if (bot && billing.adminId !== null) void bot.send(billing.adminId, text);
+  },
+});
+if (market.mode === 'live') listings.start();
 
 // Новому пользователю — пробная неделя «Скринера» и сообщение об этом в чат.
 state.onNewUser = async (user) => {
@@ -987,6 +1001,7 @@ app.setErrorHandler((err, _req, reply) => {
 
 app.addHook('onClose', async () => {
   bot?.stop();
+  listings.stop();
   alerts.stop();
   collector.stop();
   fundingHistory.stop();
