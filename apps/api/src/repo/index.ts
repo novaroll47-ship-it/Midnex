@@ -21,6 +21,7 @@ export type {
   SubscriptionRecord,
   UserRecord,
   UserSettings,
+  VerifiedSymbolRecord,
 } from './types.js';
 
 export async function createRepo(log: FastifyBaseLogger): Promise<Repo> {

@@ -16,7 +16,7 @@ import {
   type ExchangeId,
   type ScreenerSnapshot,
 } from '@cs/shared';
-import { MarketEngine, type EngineStatus } from '@cs/market';
+import { MarketEngine, type VenueMarket, type EngineStatus } from '@cs/market';
 
 import * as mock from './mock.js';
 
@@ -29,10 +29,17 @@ export interface MarketSource {
   snapshot(minSpreadPct: number, venues?: ExchangeId[]): ScreenerSnapshot;
   coinDetail(base: string): CoinDetail | undefined;
   status(): EngineStatus | null;
+  /** Сам движок — для сверки ног и фоновых задач; null в мок-режиме. */
+  engine: MarketEngine | null;
   stop(): Promise<void>;
 }
 
-export function createMarketSource(log: FastifyBaseLogger): MarketSource {
+/** Колбэки, которые подключаются после создания источника (сверка ног, листинги). */
+export interface MarketHooks {
+  onMarketsChanged?: (exchange: ExchangeId, markets: VenueMarket[]) => void;
+}
+
+export function createMarketSource(log: FastifyBaseLogger, hooks: MarketHooks = {}): MarketSource {
   const mode: MarketMode = process.env.MARKET_MODE === 'mock' ? 'mock' : 'live';
 
   if (mode === 'mock') {
@@ -43,6 +50,7 @@ export function createMarketSource(log: FastifyBaseLogger): MarketSource {
       snapshot: (min, venues) => mock.screenerSnapshot(min, venues),
       coinDetail: (base) => mock.coinDetail(base),
       status: () => null,
+      engine: null,
       stop: async () => {},
     };
   }
@@ -58,6 +66,7 @@ export function createMarketSource(log: FastifyBaseLogger): MarketSource {
     // применится на M4, когда чистый профит будет считаться под конкретную сделку.
     holdMinutes: 240,
     httpsProxy: process.env.EXCHANGE_HTTPS_PROXY || undefined,
+    onMarketsChanged: (exchange, markets) => hooks.onMarketsChanged?.(exchange, markets),
     log: {
       info: (m) => log.info(`рынок: ${m}`),
       warn: (m) => log.warn(`рынок: ${m}`),
@@ -90,6 +99,7 @@ export function createMarketSource(log: FastifyBaseLogger): MarketSource {
       isLive() ? engine.snapshot(min, venues) : mock.screenerSnapshot(min, venues),
     coinDetail: (base) => (isLive() ? engine.coinDetail(base) : mock.coinDetail(base)),
     status: () => engine.status(),
+    engine,
     stop: () => engine.stop(),
   };
 }

@@ -38,7 +38,9 @@ import { startBot, type BotHandle } from './bot.js';
 import { decrypt, encrypt, encryptionReady, initEncryption, keyHint } from './crypto.js';
 import { coinIcon } from './icons.js';
 import { verifyExchangeKey } from './keys.js';
-import { createMarketSource } from './market.js';
+import { createMarketSource, type MarketHooks } from './market.js';
+import type { VenueMarket } from '@cs/market';
+import { PairsService } from './pairs.js';
 import { HistoryCollector } from './history/collector.js';
 import { SqliteHistoryStore } from './history/sqlite.js';
 import type { Timeframe } from './history/store.js';
@@ -110,7 +112,9 @@ if (initEncryption(process.env.KEY_ENCRYPTION_KEY)) {
 
 // Рыночный слой стартует сразу и грузит биржи параллельно с подъёмом HTTP:
 // первые секунды скринер отдаёт мок, потом сам переключается на живое.
-const market = createMarketSource(app.log);
+// Хуки движка заполняются ниже, когда появятся сервисы, которым они нужны.
+const marketHooks: MarketHooks = {};
+const market = createMarketSource(app.log, marketHooks);
 const repo = await createRepo(app.log);
 const state = new StateService(repo, market);
 const billing = new Billing({
@@ -123,6 +127,41 @@ const billing = new Billing({
   trading: TRADING_ENABLED,
 });
 let bot: BotHandle | null = null;
+
+// Сверка ног: таблица из базы → движок; новые рынки → кандидаты.
+const pairs = new PairsService({
+  repo,
+  engine: market.engine,
+  log: app.log,
+  onNewCandidates: (count) => {
+    if (bot && billing.adminId !== null) {
+      void bot.send(
+        billing.adminId,
+        `Сверка: появилось ${count} новых кандидатов — Настройки → Сверка пар.`,
+      );
+    }
+  },
+});
+await pairs.load();
+marketHooks.onMarketsChanged = (exchange, markets) => {
+  void pairs.syncMarkets(exchange, markets).catch((err: unknown) => {
+    app.log.warn({ err: String(err) }, 'сверка: кандидаты не записаны');
+  });
+};
+// Рынки, загруженные до подключения хука, тоже надо занести.
+if (market.engine) {
+  const byExchange = new Map<ExchangeId, VenueMarket[]>();
+  for (const m of market.engine.allMarkets()) {
+    byExchange.set(m.exchange, [...(byExchange.get(m.exchange) ?? []), m]);
+  }
+  for (const [exchange, markets] of byExchange) void pairs.syncMarkets(exchange, markets);
+}
+// Нулевая сверка — через две минуты, когда котировки уже идут.
+setTimeout(() => {
+  void pairs.bootstrapIfEmpty().catch((err: unknown) => {
+    app.log.warn({ err: String(err) }, 'сверка: нулевая сверка не удалась');
+  });
+}, 120_000);
 
 // Новому пользователю — пробная неделя «Скринера» и сообщение об этом в чат.
 state.onNewUser = async (user) => {
@@ -402,7 +441,7 @@ async function settingsPayload(s: UserState) {
     apiKeys: await keyStatuses(s.userId),
     version: APP_VERSION,
     storage: repo.kind,
-    features: { trading: TRADING_ENABLED },
+    features: { trading: TRADING_ENABLED, admin: billing.isAdmin(s.userId) },
     subscription: await billing.info(s.userId),
   };
 }
@@ -549,6 +588,38 @@ app.post('/api/billing/crypto/:id/cancel', async (req, reply) => {
   const ok = await billing.cancel(req.state!.userId, id);
   if (!ok) return reply.code(404).send({ error: 'not found' });
   return { ok: true };
+});
+
+// ---------------------------------------------------------------- сверка ног (админ)
+
+app.get('/api/admin/pairs', async (req, reply) => {
+  if (!billing.isAdmin(req.state!.userId)) return reply.code(403).send({ error: 'admin only' });
+  return { legs: await pairs.list(), counts: pairs.counts() };
+});
+
+app.post('/api/admin/pairs/:exchange/:symbol', async (req, reply) => {
+  if (!billing.isAdmin(req.state!.userId)) return reply.code(403).send({ error: 'admin only' });
+  const { exchange, symbol } = req.params as { exchange: string; symbol: string };
+  const body = req.body as { status?: string; multiplier?: number };
+  const status = body?.status;
+  if (status !== 'verified' && status !== 'rejected' && status !== 'candidate') {
+    return reply.code(400).send({ error: 'bad status' });
+  }
+  const rec = await pairs.setStatus(
+    exchange as ExchangeId,
+    decodeURIComponent(symbol),
+    status,
+    body.multiplier !== undefined ? Number(body.multiplier) : undefined,
+    `admin:${req.state!.userId}`,
+  );
+  if (!rec) return reply.code(404).send({ error: 'not found' });
+  return { leg: rec };
+});
+
+app.post('/api/admin/pairs/verify-matching', async (req, reply) => {
+  if (!billing.isAdmin(req.state!.userId)) return reply.code(403).send({ error: 'admin only' });
+  const n = await pairs.verifyAllMatching(`admin:${req.state!.userId}`);
+  return { verified: n, counts: pairs.counts() };
 });
 
 // ---------------------------------------------------------------- ключи бирж

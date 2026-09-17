@@ -16,7 +16,14 @@ import type { CoinDetail, ExchangeId, ScreenerSnapshot, SpreadRow, VenueQuote } 
 import { Feed, type FeedLogger, type FeedState, type Quote } from './feed.js';
 import { FundingTracker } from './funding.js';
 import { coinName } from './names.js';
-import { buildUniverse, venueMarkets, type Universe, type VenueMarket } from './universe.js';
+import {
+  buildUniverse,
+  legKey,
+  venueMarkets,
+  type LegVerification,
+  type Universe,
+  type VenueMarket,
+} from './universe.js';
 
 /** Идентификаторы ccxt отличаются от наших только у KuCoin: фьючерсы у неё отдельный класс. */
 const CCXT_ID: Record<ExchangeId, string> = {
@@ -70,6 +77,8 @@ export interface EngineOptions {
   /** Прокси до бирж, если они недоступны напрямую. */
   httpsProxy?: string;
   log: FeedLogger;
+  /** Вызывается, когда меняется набор рынков (подключилась биржа, перезагрузка). */
+  onMarketsChanged?: (exchange: ExchangeId, markets: VenueMarket[]) => void;
 }
 
 export interface EngineStatus {
@@ -155,7 +164,8 @@ export class MarketEngine {
         client.loadMarkets(),
         new Promise((_, reject) =>
           setTimeout(
-            () => reject(new Error(`loadMarkets дольше ${MarketEngine.LOAD_MARKETS_DEADLINE_MS}мс`)),
+            () =>
+              reject(new Error(`loadMarkets дольше ${MarketEngine.LOAD_MARKETS_DEADLINE_MS}мс`)),
             MarketEngine.LOAD_MARKETS_DEADLINE_MS,
           ),
         ),
@@ -177,6 +187,7 @@ export class MarketEngine {
     this.clients.set(id, client);
     this.marketsByExchange.set(id, markets);
     this.rebuildUniverse();
+    this.opts.onMarketsChanged?.(id, markets);
 
     // Поток следит за всеми рынками своей биржи, а не только за теми, что
     // сейчас во вселенной: когда позже подключится ещё одна биржа, часть монет
@@ -205,8 +216,38 @@ export class MarketEngine {
     }
   }
 
+  /** Таблица сверки ног: пока пуста — вселенная строится без фильтра. */
+  private verification: Map<string, LegVerification> | null = null;
+
+  /** Подставить таблицу сверки и пересобрать вселенную. */
+  setVerification(entries: Map<string, LegVerification>): void {
+    this.verification = entries;
+    this.rebuildUniverse();
+  }
+
+  /** Все рынки всех подключённых бирж — для создания кандидатов на сверку. */
+  allMarkets(): VenueMarket[] {
+    return [...this.marketsByExchange.values()].flat();
+  }
+
+  /**
+   * Цена ноги за одну «настоящую» монету при заданном множителе — для
+   * сравнения с другими биржами при сверке. null — котировки ещё нет.
+   */
+  legPrice(exchange: ExchangeId, symbol: string, multiplier: number): number | null {
+    const market = this.marketsByExchange.get(exchange)?.find((m) => m.symbol === symbol);
+    if (!market) return null;
+    const q = this.quotes.get(market.base)?.get(exchange);
+    if (!q) return null;
+    // Поток уже поделил цену на множитель из тикера; возвращаем сырую и делим на нужный.
+    return (q.last * market.multiplier) / multiplier;
+  }
+
   private rebuildUniverse(): void {
-    this.universe = buildUniverse([...this.marketsByExchange.values()].flat());
+    const verify = this.verification
+      ? (m: VenueMarket) => this.verification!.get(legKey(m.exchange, m.symbol))
+      : undefined;
+    this.universe = buildUniverse([...this.marketsByExchange.values()].flat(), verify);
   }
 
   async stop(): Promise<void> {

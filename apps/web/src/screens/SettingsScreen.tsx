@@ -148,6 +148,9 @@ export function SettingsScreen({
       </section>
 
       <section className="card list">
+        {data?.features.admin && (
+          <Row title={t('pairs.title')} sub={t('pairs.sub')} onClick={() => onOpen('pairs')} />
+        )}
         <Row
           title={t('settings.marketTitle')}
           sub={t('settings.marketSub')}

@@ -11,6 +11,7 @@ import type { ExchangeId, PlanId } from '@cs/shared';
 import type {
   PaymentRecord,
   SubscriptionRecord,
+  VerifiedSymbolRecord,
   ExchangeKeyRecord,
   PositionRecord,
   Repo,
@@ -30,6 +31,7 @@ export class MemoryRepo implements Repo {
   private sessions = new Map<number, Map<string, SessionRecord>>();
   private subscriptions = new Map<number, SubscriptionRecord>();
   private payments = new Map<string, PaymentRecord>();
+  private verified = new Map<string, VerifiedSymbolRecord>();
 
   async upsertUser(u: {
     id: number;
@@ -229,6 +231,14 @@ export class MemoryRepo implements Repo {
     return [...this.payments.values()]
       .filter((p) => p.status === 'pending' && (userId === undefined || p.userId === userId))
       .sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  async listVerifiedSymbols(): Promise<VerifiedSymbolRecord[]> {
+    return [...this.verified.values()];
+  }
+
+  async upsertVerifiedSymbols(rows: VerifiedSymbolRecord[]): Promise<void> {
+    for (const r of rows) this.verified.set(`${r.exchange}:${r.symbol}`, r);
   }
 
   async close(): Promise<void> {}

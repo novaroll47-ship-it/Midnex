@@ -114,6 +114,18 @@ export interface PaymentRecord {
   resolvedAt: number | null;
 }
 
+/** Нога сверки: символ на бирже, к какой монете относится и каким множителем. */
+export interface VerifiedSymbolRecord {
+  base: string;
+  exchange: ExchangeId;
+  symbol: string;
+  multiplier: number;
+  status: 'candidate' | 'verified' | 'rejected' | 'delisted';
+  note: string | null;
+  updatedAt: number;
+  updatedBy: string | null;
+}
+
 export interface Repo {
   readonly kind: 'memory' | 'postgres';
 
@@ -165,6 +177,9 @@ export interface Repo {
   getPayment(id: string): Promise<PaymentRecord | null>;
   updatePayment(record: PaymentRecord): Promise<void>;
   listPendingPayments(userId?: number): Promise<PaymentRecord[]>;
+
+  listVerifiedSymbols(): Promise<VerifiedSymbolRecord[]>;
+  upsertVerifiedSymbols(rows: VerifiedSymbolRecord[]): Promise<void>;
 
   close(): Promise<void>;
 }

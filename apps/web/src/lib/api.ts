@@ -100,7 +100,7 @@ export interface SettingsResponse {
   /** Где лежат данные пользователя: база или память процесса. */
   storage: 'postgres' | 'memory';
   /** Что включено на этом этапе релиза. */
-  features: { trading: boolean };
+  features: { trading: boolean; admin: boolean };
   subscription: SubscriptionInfo;
 }
 
@@ -123,6 +123,20 @@ export interface HistoryResponse {
   from: number;
   to: number;
   candles: HistoryCandle[];
+}
+
+export interface LegView {
+  base: string;
+  exchange: ExchangeId;
+  symbol: string;
+  multiplier: number;
+  status: 'candidate' | 'verified' | 'rejected' | 'delisted';
+  note: string | null;
+  updatedAt: number;
+  updatedBy: string | null;
+  price: number | null;
+  ratio: number | null;
+  peers: number;
 }
 
 export interface BillingResponse {
@@ -233,6 +247,22 @@ export const api = {
 
   history: (base: string, tf: '1m' | '5m' | '1h', from: number, to: number) =>
     get<HistoryResponse>(`/api/history/${encodeURIComponent(base)}`, { tf, from, to }),
+
+  adminPairs: () =>
+    get<{ legs: LegView[]; counts: { total: number; verified: number; candidate: number } }>(
+      '/api/admin/pairs',
+    ),
+  adminPairSet: (exchange: string, symbol: string, status: string, multiplier?: number) =>
+    request<{ leg: LegView }>(
+      'POST',
+      `/api/admin/pairs/${exchange}/${encodeURIComponent(symbol)}`,
+      { status, multiplier },
+    ),
+  adminPairsVerifyMatching: () =>
+    request<{ verified: number; counts: { total: number; verified: number; candidate: number } }>(
+      'POST',
+      '/api/admin/pairs/verify-matching',
+    ),
 
   billing: () => get<BillingResponse>('/api/billing'),
   starsInvoice: (plan: PlanId, months: BillingMonths) =>

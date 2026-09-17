@@ -84,10 +84,39 @@ export interface Universe {
   bySymbol: Map<string, VenueMarket>;
 }
 
-/** Пересечение: оставляем монеты, представленные хотя бы на двух биржах. */
-export function buildUniverse(all: VenueMarket[]): Universe {
+/** Статус ноги (рынка на бирже) по таблице сверки. */
+export type LegStatus = 'candidate' | 'verified' | 'rejected' | 'delisted';
+
+export interface LegVerification {
+  status: LegStatus;
+  /** Множитель, подтверждённый вручную; перекрывает вычисленный из тикера. */
+  multiplier: number;
+}
+
+/** Ключ ноги в таблице сверки. */
+export function legKey(exchange: ExchangeId, symbol: string): string {
+  return `${exchange}:${symbol}`;
+}
+
+/**
+ * Пересечение: оставляем монеты, представленные хотя бы на двух биржах.
+ *
+ * Если передана таблица сверки, во вселенную попадают только сверенные
+ * ноги — одинаковый тикер на двух биржах не доказывает, что это одна и та
+ * же монета, и такую пару без ручной проверки не показываем вовсе.
+ */
+export function buildUniverse(
+  all: VenueMarket[],
+  verify?: (m: VenueMarket) => LegVerification | undefined,
+): Universe {
   const grouped = new Map<string, VenueMarket[]>();
-  for (const m of all) {
+  for (const raw of all) {
+    let m = raw;
+    if (verify) {
+      const v = verify(raw);
+      if (!v || v.status !== 'verified') continue;
+      if (v.multiplier !== raw.multiplier) m = { ...raw, multiplier: v.multiplier };
+    }
     // Одна биржа иногда листит и PEPE, и 1000PEPE — берём тот, у которого
     // множитель меньше: он ближе к «настоящей» монете.
     const list = grouped.get(m.base) ?? [];

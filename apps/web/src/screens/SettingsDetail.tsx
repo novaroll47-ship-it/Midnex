@@ -27,6 +27,7 @@ import { currentThemeMode, setThemeMode, type ThemeMode } from '../lib/theme';
 import type { SettingsController } from '../lib/useSettings';
 import { ApiKeysView } from './ApiKeysView';
 import { BotFundingView, BotSpreadView } from './BotViews';
+import { PairsAdminView } from './PairsAdminView';
 import { SubscriptionView } from './SubscriptionView';
 
 export type SettingsView =
@@ -42,7 +43,8 @@ export type SettingsView =
   | 'about'
   | 'market'
   | 'botSpread'
-  | 'botFunding';
+  | 'botFunding'
+  | 'pairs';
 
 export function settingsViewTitle(view: SettingsView, t: (k: string) => string): string {
   const map: Record<SettingsView, string> = {
@@ -59,6 +61,7 @@ export function settingsViewTitle(view: SettingsView, t: (k: string) => string):
     market: 'settings.marketTitle',
     botSpread: 'bots.spreadName',
     botFunding: 'bots.fundingName',
+    pairs: 'pairs.title',
   };
   return t(map[view]);
 }
@@ -103,6 +106,8 @@ export function SettingsDetail({
       return <BotSpreadView settings={settings} />;
     case 'botFunding':
       return <BotFundingView settings={settings} />;
+    case 'pairs':
+      return <PairsAdminView />;
   }
 }
 

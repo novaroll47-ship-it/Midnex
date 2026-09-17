@@ -519,5 +519,25 @@
     "last": "now",
     "noData": "History is still accumulating — check back later",
     "unavailable": "History unavailable"
+  },
+  "pairs": {
+    "title": "Pair verification",
+    "sub": "Which symbols on exchanges are the same coin",
+    "hint": "Only pairs with both legs verified reach the feed. ×1.000 — price matches other exchanges (same coin); ×1000 — contract multiplier, put it in the field; anything else is a different asset, reject it.",
+    "total": "Legs",
+    "verified": "Verified",
+    "candidates": "Candidates",
+    "tab_candidate": "Candidates",
+    "tab_verified": "Verified",
+    "tab_rejected": "Rejected",
+    "search": "Coin or symbol",
+    "verifyMatching": "Verify ±1 %",
+    "empty": "Empty",
+    "truncated": "Showing first 200 of {{count}} — narrow the search",
+    "peers": "{{count}} verified",
+    "multiplier": "Multiplier",
+    "verify": "Verify",
+    "reject": "Reject",
+    "reset": "To candidates"
   }
 }

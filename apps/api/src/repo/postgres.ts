@@ -18,6 +18,7 @@ import type {
   SessionRecord,
   UserRecord,
   UserSettings,
+  VerifiedSymbolRecord,
 } from './types.js';
 
 const ts = (v: unknown): number => (v instanceof Date ? v.getTime() : Number(v));
@@ -397,6 +398,44 @@ export class PostgresRepo implements Repo {
         : await this
             .sql`select * from payments where status = 'pending' and user_id = ${userId} order by created_at`;
     return rows.map((r) => this.paymentFromRow(r));
+  }
+
+  // ---------------------------------------------------------------- сверка ног
+
+  async listVerifiedSymbols(): Promise<VerifiedSymbolRecord[]> {
+    const rows = await this.sql`select * from verified_symbols`;
+    return rows.map((r) => ({
+      base: r['base'] as string,
+      exchange: r['exchange'] as ExchangeId,
+      symbol: r['symbol'] as string,
+      multiplier: Number(r['multiplier']),
+      status: r['status'] as VerifiedSymbolRecord['status'],
+      note: (r['note'] as string | null) ?? null,
+      updatedAt: ts(r['updated_at']),
+      updatedBy: (r['updated_by'] as string | null) ?? null,
+    }));
+  }
+
+  async upsertVerifiedSymbols(rows: VerifiedSymbolRecord[]): Promise<void> {
+    // Пачками по 200: у первой загрузки восемь бирж по ~500 символов.
+    for (let i = 0; i < rows.length; i += 200) {
+      const chunk = rows.slice(i, i + 200).map((r) => ({
+        exchange: r.exchange,
+        symbol: r.symbol,
+        base: r.base,
+        multiplier: r.multiplier,
+        status: r.status,
+        note: r.note,
+        updated_at: new Date(r.updatedAt),
+        updated_by: r.updatedBy,
+      }));
+      await this.sql`
+        insert into verified_symbols ${this.sql(chunk)}
+        on conflict (exchange, symbol) do update set
+          base = excluded.base, multiplier = excluded.multiplier, status = excluded.status,
+          note = excluded.note, updated_at = excluded.updated_at, updated_by = excluded.updated_by
+      `;
+    }
   }
 
   async close(): Promise<void> {
