@@ -58,7 +58,7 @@ export class PostgresRepo implements Repo {
         set username = coalesce(excluded.username, users.username),
             first_name = excluded.first_name,
             last_seen_at = now()
-      returning id, username, first_name, language, plan, created_at, last_seen_at
+      returning id, username, first_name, language, plan, created_at, last_seen_at, trial_used_at
     `;
     const r = rows[0]!;
     return {
@@ -69,6 +69,7 @@ export class PostgresRepo implements Repo {
       plan: r['plan'] as PlanId,
       createdAt: ts(r['created_at']),
       lastSeenAt: ts(r['last_seen_at']),
+      trialUsedAt: tsOrNull(r['trial_used_at']),
     };
   }
 
@@ -258,6 +259,7 @@ export class PostgresRepo implements Repo {
       plan: r['plan'] as PlanId,
       createdAt: ts(r['created_at']),
       lastSeenAt: ts(r['last_seen_at']),
+      trialUsedAt: tsOrNull(r['trial_used_at']),
     };
   }
 
@@ -271,6 +273,11 @@ export class PostgresRepo implements Repo {
     const rows = await this
       .sql`select * from users where lower(username) = lower(${wanted}) limit 1`;
     return rows[0] ? this.userFromRow(rows[0]) : null;
+  }
+
+  async markTrialUsed(userId: number): Promise<void> {
+    await this
+      .sql`update users set trial_used_at = now() where id = ${userId} and trial_used_at is null`;
   }
 
   async countUsers(): Promise<number> {

@@ -14,6 +14,7 @@ import type { FastifyBaseLogger } from 'fastify';
 import {
   BILLING_MONTHS,
   PRICING,
+  TRIAL_DAYS,
   purchasablePlans,
   type BillingMonths,
   type PaymentInfo,
@@ -77,15 +78,17 @@ export class Billing {
   toInfo(sub: SubscriptionRecord | null, userId: number): SubscriptionInfo {
     const now = Date.now();
     if (this.isAdmin(userId)) {
-      return { plan: 'unlimited', active: true, expiresAt: null, daysLeft: 3650 };
+      return { plan: 'unlimited', active: true, expiresAt: null, daysLeft: 3650, source: 'admin' };
     }
-    if (!sub) return { plan: 'screener', active: false, expiresAt: null, daysLeft: 0 };
+    if (!sub)
+      return { plan: 'screener', active: false, expiresAt: null, daysLeft: 0, source: null };
     const left = Math.max(0, Math.ceil((sub.expiresAt - now) / DAY_MS));
     return {
       plan: sub.plan,
       active: sub.expiresAt > now,
       expiresAt: sub.expiresAt,
       daysLeft: left,
+      source: sub.source,
     };
   }
 
@@ -295,6 +298,23 @@ export class Billing {
     p.resolvedAt = Date.now();
     await this.o.repo.updatePayment(p);
     return p;
+  }
+
+  /**
+   * Пробная неделя при первом появлении пользователя. Привязана к Telegram ID:
+   * второй раз не выдаётся, даже если подписка давно истекла.
+   */
+  async grantTrialIfEligible(
+    userId: number,
+    trialUsedAt: number | null,
+  ): Promise<SubscriptionRecord | null> {
+    if (trialUsedAt !== null || this.isAdmin(userId)) return null;
+    const existing = await this.o.repo.getSubscription(userId);
+    if (existing) return null;
+    await this.o.repo.markTrialUsed(userId);
+    const sub = await this.o.repo.extendSubscription(userId, 'screener', TRIAL_DAYS, 'trial');
+    this.o.log.info({ user: userId }, 'подписка: выдана пробная неделя');
+    return sub;
   }
 
   /** Ручное продление админом (тест, подарок, компенсация). */

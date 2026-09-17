@@ -206,12 +206,19 @@ export function ScreenerScreen({
               <i className={`panel__dot${subscription?.active ? '' : ' panel__dot--off'}`} />
               {subscription?.active
                 ? subscription.expiresAt
-                  ? t('screener.subActiveUntil', { date: fmtShort(subscription.expiresAt) })
+                  ? t(
+                      subscription.source === 'trial'
+                        ? 'screener.trialUntil'
+                        : 'screener.subActiveUntil',
+                      { date: fmtShort(subscription.expiresAt) },
+                    )
                   : t('screener.subActive')
                 : t('screener.subInactive')}
             </span>
             <span className="panel__sub-cta">
-              {subscription?.active ? t('screener.subManage') : t('screener.subBuy')}
+              {subscription?.active && subscription.source !== 'trial'
+                ? t('screener.subManage')
+                : t('screener.subBuy')}
             </span>
           </button>
 

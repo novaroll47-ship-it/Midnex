@@ -84,7 +84,8 @@
     "subActive": "Subscription active",
     "subActiveUntil": "Subscription until {{date}}",
     "subBuy": "Subscribe",
-    "subManage": "Extend"
+    "subManage": "Extend",
+    "trialUntil": "Trial until {{date}}"
   },
   "positions": {
     "title": "Positions",
@@ -473,7 +474,8 @@
     "iPaidStars": "I have paid",
     "starsFallbackChat": "The invoice was sent to the bot chat. Open the chat, tap Pay and confirm — access activates by itself and this sheet closes automatically.",
     "starsFallbackLink": "The payment window did not open. Tap “Open invoice” — Telegram will show the Stars payment. Access activates automatically after payment.",
-    "openChat": "Open chat"
+    "openChat": "Open chat",
+    "trial": "Trial period"
   },
   "bots": {
     "spreadName": "Spread bot",

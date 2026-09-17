@@ -22,7 +22,7 @@ import {
 
 import type { MarketSource } from './market.js';
 import { fundingRatePct, nextFundingTime } from './mock.js';
-import type { PositionRecord, Repo, UserSettings } from './repo/index.js';
+import type { PositionRecord, Repo, UserRecord, UserSettings } from './repo/index.js';
 
 const FUNDING_INTERVAL_MS = 8 * 60 * 60 * 1000;
 
@@ -36,6 +36,8 @@ export interface UserState {
 
 export class StateService {
   private readonly cache = new Map<number, Promise<UserState>>();
+  /** Вызывается при первом появлении пользователя — например, чтобы выдать пробный период. */
+  onNewUser: ((user: UserRecord) => Promise<void>) | null = null;
 
   constructor(
     private readonly repo: Repo,
@@ -67,6 +69,14 @@ export class StateService {
       firstName: profile?.firstName ?? '',
       language: profile?.language,
     });
+    if (user.trialUsedAt === null && this.onNewUser) {
+      try {
+        await this.onNewUser(user);
+      } catch (err) {
+        // Пробный период — не повод не пустить пользователя в приложение.
+        void err;
+      }
+    }
 
     let settings = await this.repo.getSettings(userId);
     if (!settings) {

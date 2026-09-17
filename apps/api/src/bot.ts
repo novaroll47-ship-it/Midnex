@@ -115,6 +115,7 @@ function greeting(appUrl: string | undefined, name: string): string {
     'MIDNEX — скринер спредов: в реальном времени сравнивает цены фьючерсов ' +
     'на восьми биржах и показывает, где одну и ту же монету можно купить дешевле ' +
     'и продать дороже — уже за вычетом комиссий.\n\n' +
+    'Первая неделя — бесплатно, без карты и без ограничений.\n\n' +
     'Автоматическая торговля по этим спредам — в разработке.\n\n' +
     `Новости и разборы — в канале ${CHANNEL_URL}\n\n` +
     'Нажми кнопку ниже, чтобы открыть скринер.'
@@ -550,13 +551,19 @@ export function startBot({ token, publicUrl, log, billing, repo }: BotOptions): 
   async function remind(): Promise<void> {
     try {
       const now = Date.now();
+      // Платные — за три дня, пробные — за день: неделя короткая, три дня
+      // от неё — почти половина срока.
       const soon = await repo.listSubscriptionsExpiring(now, now + 3 * 86_400_000);
       for (const sub of soon) {
+        const trial = sub.source === 'trial';
+        if (trial && sub.expiresAt - now > 86_400_000) continue;
         if (sub.remindedAt && now - sub.remindedAt < 2.5 * 86_400_000) continue;
         const ok = await send(
           sub.userId,
-          `Подписка ${planTitle(sub.plan)} заканчивается ${fmtDate(sub.expiresAt)}. ` +
-            'Продлить можно в приложении: Настройки → Подписка.',
+          trial
+            ? `Пробная неделя заканчивается ${fmtDate(sub.expiresAt)}. Чтобы скринер не закрылся, оформи подписку: Настройки → Подписка.`
+            : `Подписка ${planTitle(sub.plan)} заканчивается ${fmtDate(sub.expiresAt)}. ` +
+                'Продлить можно в приложении: Настройки → Подписка.',
         );
         if (ok) await repo.markReminded(sub.userId);
       }

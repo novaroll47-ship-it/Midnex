@@ -54,6 +54,7 @@ export class MemoryRepo implements Repo {
           plan: 'unlimited',
           createdAt: now,
           lastSeenAt: now,
+          trialUsedAt: null,
         };
     this.users.set(u.id, record);
     return record;
@@ -161,6 +162,11 @@ export class MemoryRepo implements Repo {
 
   async countUsers(): Promise<number> {
     return this.users.size;
+  }
+
+  async markTrialUsed(userId: number): Promise<void> {
+    const u = this.users.get(userId);
+    if (u) this.users.set(userId, { ...u, trialUsedAt: Date.now() });
   }
 
   async getSubscription(userId: number): Promise<SubscriptionRecord | null> {

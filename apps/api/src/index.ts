@@ -124,6 +124,18 @@ const billing = new Billing({
 });
 let bot: BotHandle | null = null;
 
+// Новому пользователю — пробная неделя «Скринера» и сообщение об этом в чат.
+state.onNewUser = async (user) => {
+  const sub = await billing.grantTrialIfEligible(user.id, user.trialUsedAt);
+  if (sub && bot) {
+    void bot.send(
+      user.id,
+      `Тебе открыта пробная неделя MIDNEX — все спреды в реальном времени до ${new Date(sub.expiresAt).toLocaleDateString('ru-RU')}. ` +
+        'За день до конца напомню.',
+    );
+  }
+};
+
 // История пишется только с живого рынка: мок-данные истории не заслуживают.
 const history = new SqliteHistoryStore(HISTORY_DB_PATH);
 const collector = new HistoryCollector({

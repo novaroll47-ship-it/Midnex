@@ -47,6 +47,8 @@ export interface SubscriptionInfo {
   expiresAt: number | null;
   /** Дней осталось (0, если истекла). */
   daysLeft: number;
+  /** Откуда доступ: trial | stars | crypto | manual | admin; null — подписки нет. */
+  source: string | null;
 }
 
 /** Заявка на оплату, как её видит интерфейс. */
@@ -62,3 +64,6 @@ export interface PaymentInfo {
   txHash: string | null;
   createdAt: number;
 }
+
+/** Бесплатная неделя новым пользователям — один раз на аккаунт. */
+export const TRIAL_DAYS = 7;

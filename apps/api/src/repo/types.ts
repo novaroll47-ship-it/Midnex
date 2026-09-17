@@ -24,6 +24,8 @@ export interface UserRecord {
   plan: PlanId;
   createdAt: number;
   lastSeenAt: number;
+  /** Когда была выдана пробная неделя; null — ещё не выдавалась. */
+  trialUsedAt: number | null;
 }
 
 export interface UserSettings {
@@ -143,6 +145,7 @@ export interface Repo {
   getUser(userId: number): Promise<UserRecord | null>;
   findUserByUsername(username: string): Promise<UserRecord | null>;
   countUsers(): Promise<number>;
+  markTrialUsed(userId: number): Promise<void>;
 
   getSubscription(userId: number): Promise<SubscriptionRecord | null>;
   /** Продлить от текущего конца (если он в будущем) или от сейчас; вернуть новую запись. */

@@ -66,7 +66,7 @@ export function SubscriptionView({ settings }: { settings: SettingsController })
     <div className="stack">
       <Section title={t('sub.statusTitle')}>
         <InfoRow
-          label={t(`sd.plan_${sub.plan}`)}
+          label={sub.source === 'trial' ? t('sub.trial') : t(`sd.plan_${sub.plan}`)}
           value={
             sub.active
               ? sub.expiresAt
