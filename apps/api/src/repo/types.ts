@@ -126,6 +126,20 @@ export interface VerifiedSymbolRecord {
   updatedBy: string | null;
 }
 
+/** Правило алерта: по монете (base) или общее (любая монета выше порога). */
+export interface AlertRuleRecord {
+  id: string;
+  userId: number;
+  type: 'pair' | 'global';
+  base: string | null;
+  thresholdPct: number;
+  isArmed: boolean;
+  lastFiredAt: number | null;
+  /** Монета последнего срабатывания — для общего правила. */
+  lastBase: string | null;
+  createdAt: number;
+}
+
 export interface Repo {
   readonly kind: 'memory' | 'postgres';
 
@@ -177,6 +191,21 @@ export interface Repo {
   getPayment(id: string): Promise<PaymentRecord | null>;
   updatePayment(record: PaymentRecord): Promise<void>;
   listPendingPayments(userId?: number): Promise<PaymentRecord[]>;
+
+  listAlertRules(userId?: number): Promise<AlertRuleRecord[]>;
+  createAlertRule(rule: AlertRuleRecord): Promise<void>;
+  deleteAlertRule(userId: number, id: string): Promise<boolean>;
+  updateAlertRule(
+    userId: number,
+    id: string,
+    thresholdPct: number,
+  ): Promise<AlertRuleRecord | null>;
+  updateAlertState(
+    id: string,
+    isArmed: boolean,
+    lastFiredAt: number | null,
+    lastBase: string | null,
+  ): Promise<void>;
 
   listVerifiedSymbols(): Promise<VerifiedSymbolRecord[]>;
   upsertVerifiedSymbols(rows: VerifiedSymbolRecord[]): Promise<void>;

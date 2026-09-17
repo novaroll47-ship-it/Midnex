@@ -210,3 +210,16 @@ export const CoinsIcon = (p: P) => (
     <path d="M4.5 12v5c0 1.8 3.4 3.2 7.5 3.2s7.5-1.4 7.5-3.2v-5" />
   </Svg>
 );
+
+export const BellIcon = (p: P) => (
+  <Svg {...p}>
+    <path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z" />
+    <path d="M10 20a2 2 0 0 0 4 0" />
+  </Svg>
+);
+
+export const StarIcon = (p: P) => (
+  <Svg {...p} fill="currentColor" stroke="none">
+    <path d="M12 2.6l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.4l-5.8 3.1 1.1-6.5L2.6 9.4l6.5-.9z" />
+  </Svg>
+);

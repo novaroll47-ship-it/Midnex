@@ -157,6 +157,18 @@ export interface FundingResponse {
   best: { longExchange: ExchangeId; shortExchange: ExchangeId; netPct: number } | null;
 }
 
+export interface AlertRule {
+  id: string;
+  userId: number;
+  type: 'pair' | 'global';
+  base: string | null;
+  thresholdPct: number;
+  isArmed: boolean;
+  lastFiredAt: number | null;
+  lastBase: string | null;
+  createdAt: number;
+}
+
 export interface BillingResponse {
   botUsername: string | null;
   subscription: SubscriptionInfo;
@@ -284,6 +296,11 @@ export const api = {
 
   coinFunding: (base: string, period: FundingPeriod) =>
     get<FundingResponse>(`/api/coin/${encodeURIComponent(base)}/funding`, { period }),
+
+  alerts: () => get<{ rules: AlertRule[]; active: boolean }>('/api/alerts'),
+  createAlert: (body: { type: 'pair' | 'global'; base?: string; thresholdPct: number }) =>
+    request<{ rule: AlertRule }>('POST', '/api/alerts', body),
+  deleteAlert: (id: string) => request<{ ok: true }>('DELETE', `/api/alerts/${id}`),
 
   billing: () => get<BillingResponse>('/api/billing'),
   starsInvoice: (plan: PlanId, months: BillingMonths) =>

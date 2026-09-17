@@ -9,6 +9,7 @@ import postgres, { type Sql } from 'postgres';
 import type { BillingMonths, ExchangeId, PaymentMethod, PaymentStatus, PlanId } from '@cs/shared';
 
 import type {
+  AlertRuleRecord,
   ExchangeKeyRecord,
   KeyStatus,
   PaymentRecord,
@@ -436,6 +437,69 @@ export class PostgresRepo implements Repo {
           note = excluded.note, updated_at = excluded.updated_at, updated_by = excluded.updated_by
       `;
     }
+  }
+
+  // ---------------------------------------------------------------- алерты
+
+  private alertFromRow(r: Record<string, unknown>): AlertRuleRecord {
+    return {
+      id: r['id'] as string,
+      userId: Number(r['user_id']),
+      type: r['type'] as AlertRuleRecord['type'],
+      base: (r['base'] as string | null) ?? null,
+      thresholdPct: Number(r['threshold_pct']),
+      isArmed: Boolean(r['is_armed']),
+      lastFiredAt: tsOrNull(r['last_fired_at']),
+      lastBase: (r['last_base'] as string | null) ?? null,
+      createdAt: ts(r['created_at']),
+    };
+  }
+
+  async listAlertRules(userId?: number): Promise<AlertRuleRecord[]> {
+    const rows =
+      userId === undefined
+        ? await this.sql`select * from user_alert_rules order by created_at`
+        : await this
+            .sql`select * from user_alert_rules where user_id = ${userId} order by created_at`;
+    return rows.map((r) => this.alertFromRow(r));
+  }
+
+  async createAlertRule(rule: AlertRuleRecord): Promise<void> {
+    await this.sql`
+      insert into user_alert_rules (id, user_id, type, base, threshold_pct, is_armed, created_at)
+      values (${rule.id}, ${rule.userId}, ${rule.type}, ${rule.base}, ${rule.thresholdPct}, ${rule.isArmed}, ${new Date(rule.createdAt)})
+    `;
+  }
+
+  async deleteAlertRule(userId: number, id: string): Promise<boolean> {
+    const rows = await this
+      .sql`delete from user_alert_rules where id = ${id} and user_id = ${userId} returning id`;
+    return rows.length > 0;
+  }
+
+  async updateAlertRule(
+    userId: number,
+    id: string,
+    thresholdPct: number,
+  ): Promise<AlertRuleRecord | null> {
+    const rows = await this.sql`
+      update user_alert_rules set threshold_pct = ${thresholdPct}, is_armed = true
+      where id = ${id} and user_id = ${userId} returning *
+    `;
+    return rows[0] ? this.alertFromRow(rows[0]) : null;
+  }
+
+  async updateAlertState(
+    id: string,
+    isArmed: boolean,
+    lastFiredAt: number | null,
+    lastBase: string | null,
+  ): Promise<void> {
+    await this.sql`
+      update user_alert_rules set is_armed = ${isArmed},
+        last_fired_at = ${lastFiredAt == null ? null : new Date(lastFiredAt)}, last_base = ${lastBase}
+      where id = ${id}
+    `;
   }
 
   async close(): Promise<void> {

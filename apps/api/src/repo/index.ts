@@ -13,6 +13,7 @@ import type { Repo } from './types.js';
 
 export type { Repo } from './types.js';
 export type {
+  AlertRuleRecord,
   ExchangeKeyRecord,
   KeyStatus,
   PaymentRecord,

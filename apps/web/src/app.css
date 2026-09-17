@@ -1880,4 +1880,22 @@
     font-size: 12px;
     font-weight: 600;
   }
+
+  .alert-glyph {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--blue-soft);
+    color: var(--blue);
+    flex-shrink: 0;
+  }
+
+  .coin-alert {
+    width: 100%;
+    justify-content: center;
+    height: 40px;
+    font-size: 14px;
+  }
 }

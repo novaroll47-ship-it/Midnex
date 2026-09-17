@@ -23,11 +23,17 @@ import { ExchangeLogo } from '../components/ExchangeLogo';
 import { FundingHistory } from '../components/FundingHistory';
 import { SpreadChart } from '../components/SpreadChart';
 import { InfoRow, Section } from '../components/Form';
-import { ArrowDownIcon, ArrowUpIcon, ClockIcon } from '../icons';
+import { ArrowDownIcon, ArrowUpIcon, BellIcon, ClockIcon } from '../icons';
 import { api } from '../lib/api';
 import { usePolling } from '../lib/usePolling';
 
-export function CoinDetailScreen({ base }: { base: string }) {
+export function CoinDetailScreen({
+  base,
+  onAlert,
+}: {
+  base: string;
+  onAlert?: (base: string) => void;
+}) {
   const { t } = useTranslation();
   const fetcher = useCallback(() => api.coin(base), [base]);
   const { data, error } = usePolling<CoinDetail>(fetcher, 1000);
@@ -52,6 +58,11 @@ export function CoinDetailScreen({ base }: { base: string }) {
           <div className="coin-head__spread-label">{t('screener.colSpread')}</div>
         </div>
       </section>
+
+      <button className="btn-ghost coin-alert" type="button" onClick={() => onAlert?.(data.base)}>
+        <BellIcon size={15} />
+        {t('alerts.tileFull', { base: data.base })}
+      </button>
 
       <SpreadChart base={data.base} />
 

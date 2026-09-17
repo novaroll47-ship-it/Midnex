@@ -1,21 +1,32 @@
 import { useTranslation } from 'react-i18next';
 
-import { BriefcaseIcon, ChartIcon, GearIcon } from '../icons';
+import { BellIcon, BriefcaseIcon, ChartIcon, GearIcon } from '../icons';
 import { haptic } from '../lib/telegram';
 
-export type Tab = 'screener' | 'positions' | 'settings';
+export type Tab = 'screener' | 'alerts' | 'positions' | 'settings';
 
-const TABS: { id: Tab; Icon: typeof ChartIcon; labelKey: string }[] = [
+const ALL_TABS: { id: Tab; Icon: typeof ChartIcon; labelKey: string }[] = [
   { id: 'screener', Icon: ChartIcon, labelKey: 'nav.screener' },
+  { id: 'alerts', Icon: BellIcon, labelKey: 'nav.alerts' },
   { id: 'positions', Icon: BriefcaseIcon, labelKey: 'nav.positions' },
   { id: 'settings', Icon: GearIcon, labelKey: 'nav.settings' },
 ];
 
-export function BottomNav({ active, onChange }: { active: Tab; onChange: (tab: Tab) => void }) {
+export function BottomNav({
+  active,
+  trading,
+  onChange,
+}: {
+  active: Tab;
+  /** Без торговли вкладка «Позиции» уступает место «Алертам». */
+  trading: boolean;
+  onChange: (tab: Tab) => void;
+}) {
   const { t } = useTranslation();
+  const tabs = ALL_TABS.filter((tab) => trading || tab.id !== 'positions');
   return (
-    <nav className="nav">
-      {TABS.map(({ id, Icon, labelKey }) => (
+    <nav className="nav" style={{ gridTemplateColumns: `repeat(${tabs.length}, 1fr)` }}>
+      {tabs.map(({ id, Icon, labelKey }) => (
         <button
           key={id}
           type="button"

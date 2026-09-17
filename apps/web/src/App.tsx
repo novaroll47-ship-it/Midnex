@@ -8,6 +8,7 @@ import { backButton, initTelegram, isBrowserFallback, isTelegram } from './lib/t
 import { initTheme } from './lib/theme';
 import { useSettings } from './lib/useSettings';
 import { CoinDetailScreen } from './screens/CoinDetailScreen';
+import { AlertsScreen } from './screens/AlertsScreen';
 import { ComingSoonScreen } from './screens/ComingSoonScreen';
 import { PositionDetailScreen, type PositionView } from './screens/PositionDetail';
 import { PositionsScreen } from './screens/PositionsScreen';
@@ -83,6 +84,8 @@ export function App() {
 
   // Пока не включена торговля — наружу только скринер; остальное «Скоро».
   const trading = settings.data?.features?.trading ?? false;
+  // Монета, для которой открыть форму алерта (переход с экрана монеты).
+  const [alertPreset, setAlertPreset] = useState<string | null>(null);
 
   return (
     <div className="app">
@@ -103,7 +106,16 @@ export function App() {
 
         {route.kind === 'position' && <PositionDetailScreen id={route.id} view={route.view} />}
 
-        {route.kind === 'coin' && <CoinDetailScreen base={route.base} />}
+        {route.kind === 'coin' && (
+          <CoinDetailScreen
+            base={route.base}
+            onAlert={(base) => {
+              setAlertPreset(base);
+              setRoute({ kind: 'tab' });
+              setTab('alerts');
+            }}
+          />
+        )}
 
         {route.kind === 'tab' && tab === 'screener' && (
           <ScreenerScreen
@@ -120,6 +132,17 @@ export function App() {
             onOpenBot={(view) => {
               setTab('settings');
               setRoute({ kind: 'settings', view });
+            }}
+          />
+        )}
+
+        {route.kind === 'tab' && tab === 'alerts' && (
+          <AlertsScreen
+            presetBase={alertPreset}
+            onPresetConsumed={() => setAlertPreset(null)}
+            onOpenSubscription={() => {
+              setTab('settings');
+              setRoute({ kind: 'settings', view: 'subscription' });
             }}
           />
         )}
@@ -144,7 +167,7 @@ export function App() {
         )}
       </main>
 
-      <BottomNav active={tab} onChange={switchTab} />
+      <BottomNav active={tab} trading={trading} onChange={switchTab} />
     </div>
   );
 }

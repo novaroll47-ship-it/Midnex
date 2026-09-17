@@ -17,7 +17,8 @@
   "nav": {
     "screener": "Screener",
     "positions": "Positions",
-    "settings": "Settings"
+    "settings": "Settings",
+    "alerts": "Alerts"
   },
   "screener": {
     "bot": "Bot:",
@@ -552,5 +553,32 @@
     "short": "Short",
     "noData": "Funding history is still loading — check back in a few minutes",
     "bestHint": "Best pair over the period: long on {{long}}, short on {{short}} — funding {{net}} of position."
+  },
+  "alerts": {
+    "title": "Alerts",
+    "add": "Add",
+    "addFirst": "Add a rule",
+    "tile": "Alert",
+    "hint": "The bot messages you when the spread crosses the threshold. A coin rule watches one coin; a global rule watches all coins at once.",
+    "inactiveNote": "Rules are saved, but notifications are sent only with an active subscription. Tap to subscribe.",
+    "emptyTitle": "No rules yet",
+    "emptyText": "For example: “BTC above 1 %” or “any coin above 3 %”.",
+    "anyCoin": "Any coin",
+    "above": "above",
+    "armed": "Armed — waiting for the threshold",
+    "fired": "Fired {{when}}{{base}} · re-arms once the spread drops",
+    "remove": "Delete",
+    "removeTitle": "Delete the rule?",
+    "removeText": "The rule “{{what}}” will be deleted and its notifications stop.",
+    "hysteresisNote": "Each rule fires once when the threshold is crossed upward and re-arms when the spread drops 0.3 % below it — so notifications do not spam around the boundary.",
+    "newTitle": "New rule",
+    "newHint": "Threshold is the spread between exchanges in percent. The notification arrives in the bot chat.",
+    "typePair": "By coin",
+    "typeGlobal": "Any coin",
+    "coin": "Coin",
+    "threshold": "Spread threshold",
+    "thresholdSub": "Fires when the spread reaches at least",
+    "save": "Save",
+    "tileFull": "Alert on {{base}}"
   }
 }

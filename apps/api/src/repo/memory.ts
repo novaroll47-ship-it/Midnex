@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import type { ExchangeId, PlanId } from '@cs/shared';
 
 import type {
+  AlertRuleRecord,
   PaymentRecord,
   SubscriptionRecord,
   VerifiedSymbolRecord,
@@ -32,6 +33,7 @@ export class MemoryRepo implements Repo {
   private subscriptions = new Map<number, SubscriptionRecord>();
   private payments = new Map<string, PaymentRecord>();
   private verified = new Map<string, VerifiedSymbolRecord>();
+  private alerts = new Map<string, AlertRuleRecord>();
 
   async upsertUser(u: {
     id: number;
@@ -239,6 +241,43 @@ export class MemoryRepo implements Repo {
 
   async upsertVerifiedSymbols(rows: VerifiedSymbolRecord[]): Promise<void> {
     for (const r of rows) this.verified.set(`${r.exchange}:${r.symbol}`, r);
+  }
+
+  async listAlertRules(userId?: number): Promise<AlertRuleRecord[]> {
+    return [...this.alerts.values()].filter((r) => userId === undefined || r.userId === userId);
+  }
+
+  async createAlertRule(rule: AlertRuleRecord): Promise<void> {
+    this.alerts.set(rule.id, rule);
+  }
+
+  async deleteAlertRule(userId: number, id: string): Promise<boolean> {
+    const r = this.alerts.get(id);
+    if (!r || r.userId !== userId) return false;
+    this.alerts.delete(id);
+    return true;
+  }
+
+  async updateAlertRule(
+    userId: number,
+    id: string,
+    thresholdPct: number,
+  ): Promise<AlertRuleRecord | null> {
+    const r = this.alerts.get(id);
+    if (!r || r.userId !== userId) return null;
+    const next = { ...r, thresholdPct, isArmed: true };
+    this.alerts.set(id, next);
+    return next;
+  }
+
+  async updateAlertState(
+    id: string,
+    isArmed: boolean,
+    lastFiredAt: number | null,
+    lastBase: string | null,
+  ): Promise<void> {
+    const r = this.alerts.get(id);
+    if (r) this.alerts.set(id, { ...r, isArmed, lastFiredAt, lastBase });
   }
 
   async close(): Promise<void> {}

@@ -33,7 +33,9 @@ import {
 } from '@cs/shared';
 
 import { AuthError, DEV_USER, verifyInitData, type TelegramUser } from './auth.js';
+import { AlertEngine } from './alerts.js';
 import { Billing, toPaymentInfo } from './billing.js';
+import { NotificationService } from './notifications.js';
 import { startBot, type BotHandle } from './bot.js';
 import { decrypt, encrypt, encryptionReady, initEncryption, keyHint } from './crypto.js';
 import { coinIcon } from './icons.js';
@@ -163,6 +165,11 @@ setTimeout(() => {
     app.log.warn({ err: String(err) }, 'сверка: нулевая сверка не удалась');
   });
 }, 120_000);
+
+// Уведомления — единая очередь в Telegram; алерты по спреду — поверх неё.
+const notifications = new NotificationService(() => bot, app.log, process.env.PUBLIC_URL);
+const alerts = new AlertEngine(repo, market, notifications, billing, app.log);
+void alerts.start();
 
 // Новому пользователю — пробная неделя «Скринера» и сообщение об этом в чат.
 state.onNewUser = async (user) => {
@@ -634,6 +641,75 @@ app.post('/api/billing/crypto/:id/cancel', async (req, reply) => {
   return { ok: true };
 });
 
+// ---------------------------------------------------------------- алерты
+
+const MAX_RULES_PER_USER = 50;
+
+app.get('/api/alerts', async (req) => {
+  const userId = req.state!.userId;
+  return {
+    rules: await repo.listAlertRules(userId),
+    // Без доступа правила молчат — интерфейс показывает это явно.
+    active: await billing.hasAccess(userId),
+  };
+});
+
+app.post('/api/alerts', async (req, reply) => {
+  const userId = req.state!.userId;
+  const body = req.body as { type?: string; base?: string; thresholdPct?: number };
+  const type = body?.type === 'global' ? 'global' : body?.type === 'pair' ? 'pair' : null;
+  const threshold = Number(body?.thresholdPct);
+  if (!type || !Number.isFinite(threshold) || threshold <= 0 || threshold > 100) {
+    return reply.code(400).send({ error: 'type and thresholdPct required' });
+  }
+  const base =
+    type === 'pair'
+      ? String(body?.base ?? '')
+          .trim()
+          .toUpperCase()
+      : null;
+  if (type === 'pair' && !base) return reply.code(400).send({ error: 'base required' });
+  const existing = await repo.listAlertRules(userId);
+  if (existing.length >= MAX_RULES_PER_USER) {
+    return reply.code(409).send({ error: 'too many rules', limit: MAX_RULES_PER_USER });
+  }
+  const rule = {
+    id: randomUUID().slice(0, 8),
+    userId,
+    type,
+    base,
+    thresholdPct: Math.round(threshold * 100) / 100,
+    isArmed: true,
+    lastFiredAt: null,
+    lastBase: null,
+    createdAt: Date.now(),
+  } as const;
+  await repo.createAlertRule(rule);
+  await alerts.reloadUser(userId);
+  return { rule };
+});
+
+app.patch('/api/alerts/:id', async (req, reply) => {
+  const { id } = req.params as { id: string };
+  const body = req.body as { thresholdPct?: number };
+  const threshold = Number(body?.thresholdPct);
+  if (!Number.isFinite(threshold) || threshold <= 0 || threshold > 100) {
+    return reply.code(400).send({ error: 'thresholdPct required' });
+  }
+  const rule = await repo.updateAlertRule(req.state!.userId, id, Math.round(threshold * 100) / 100);
+  if (!rule) return reply.code(404).send({ error: 'not found' });
+  await alerts.reloadUser(req.state!.userId);
+  return { rule };
+});
+
+app.delete('/api/alerts/:id', async (req, reply) => {
+  const { id } = req.params as { id: string };
+  const ok = await repo.deleteAlertRule(req.state!.userId, id);
+  if (!ok) return reply.code(404).send({ error: 'not found' });
+  await alerts.reloadUser(req.state!.userId);
+  return { ok: true };
+});
+
 // ---------------------------------------------------------------- сверка ног (админ)
 
 app.get('/api/admin/pairs', async (req, reply) => {
@@ -911,6 +987,7 @@ app.setErrorHandler((err, _req, reply) => {
 
 app.addHook('onClose', async () => {
   bot?.stop();
+  alerts.stop();
   collector.stop();
   fundingHistory.stop();
   history.close();
