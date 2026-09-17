@@ -506,5 +506,16 @@
     "fundingLeverageSub": "Low leverage: the position is long-lived, liquidation is unacceptable",
     "maxPositions": "Max positions at once",
     "notifyPayout": "Funding payout received"
+  },
+  "chart": {
+    "title": "Spread history",
+    "range_1h": "1 h",
+    "range_24h": "24 h",
+    "range_7d": "7 d",
+    "min": "min",
+    "max": "max",
+    "last": "now",
+    "noData": "History is still accumulating — check back later",
+    "unavailable": "History unavailable"
   }
 }

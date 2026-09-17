@@ -20,6 +20,7 @@ import { useTranslation } from 'react-i18next';
 
 import { CoinIcon } from '../components/CoinIcon';
 import { ExchangeLogo } from '../components/ExchangeLogo';
+import { SpreadChart } from '../components/SpreadChart';
 import { InfoRow, Section } from '../components/Form';
 import { ArrowDownIcon, ArrowUpIcon, ClockIcon } from '../icons';
 import { api } from '../lib/api';
@@ -50,6 +51,8 @@ export function CoinDetailScreen({ base }: { base: string }) {
           <div className="coin-head__spread-label">{t('screener.colSpread')}</div>
         </div>
       </section>
+
+      <SpreadChart base={data.base} />
 
       <Section title={t('coin.bestPair')} hint={t('coin.bestPairHint')}>
         <InfoRow

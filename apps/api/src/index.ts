@@ -39,6 +39,9 @@ import { decrypt, encrypt, encryptionReady, initEncryption, keyHint } from './cr
 import { coinIcon } from './icons.js';
 import { verifyExchangeKey } from './keys.js';
 import { createMarketSource } from './market.js';
+import { HistoryCollector } from './history/collector.js';
+import { SqliteHistoryStore } from './history/sqlite.js';
+import type { Timeframe } from './history/store.js';
 import { createRepo, type ExchangeKeyRecord } from './repo/index.js';
 import { StateService, type UserState } from './state.js';
 
@@ -80,6 +83,13 @@ const USDT_WALLETS = (process.env.USDT_WALLETS ?? '')
   .filter((w) => w.network && w.address);
 /** Сколько строк скринера видно без подписки. */
 const FREE_PREVIEW_ROWS = 3;
+
+/** История спредов: файл SQLite рядом с процессом (см. history/). */
+const HISTORY_DB_PATH =
+  process.env.HISTORY_DB_PATH?.trim() || join(here, '../../../.data', 'history.sqlite');
+const HISTORY_RAW_DAYS = Number(process.env.HISTORY_RAW_DAYS) || 7;
+const HISTORY_MINUTE_DAYS = Number(process.env.HISTORY_MINUTE_DAYS) || 30;
+const HISTORY_TICK_MIN_SPREAD = Number(process.env.HISTORY_TICK_MIN_SPREAD) || 0.5;
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 const DEV_FAKE_USER = process.env.DEV_FAKE_USER === '1';
 const IS_PROD = process.env.NODE_ENV === 'production';
@@ -113,6 +123,18 @@ const billing = new Billing({
   trading: TRADING_ENABLED,
 });
 let bot: BotHandle | null = null;
+
+// История пишется только с живого рынка: мок-данные истории не заслуживают.
+const history = new SqliteHistoryStore(HISTORY_DB_PATH);
+const collector = new HistoryCollector({
+  store: history,
+  market,
+  log: app.log,
+  tickMinSpreadPct: HISTORY_TICK_MIN_SPREAD,
+  rawDays: HISTORY_RAW_DAYS,
+  minuteDays: HISTORY_MINUTE_DAYS,
+});
+if (market.mode === 'live') collector.start();
 
 await app.register(cors, {
   origin: IS_PROD ? WEB_ORIGIN : true,
@@ -257,6 +279,46 @@ app.get('/api/coin/:base', async (req, reply) => {
   const detail = market.coinDetail(base);
   if (!detail) return reply.code(404).send({ error: 'not found' });
   return detail;
+});
+
+// ---------------------------------------------------------------- история спредов
+
+const TIMEFRAMES: Timeframe[] = ['1m', '5m', '1h'];
+
+/**
+ * Свечи спреда по монете. Пара бирж внутри минуты могла меняться, поэтому
+ * на каждый момент отдаём лучшую (по максимуму) свечу — так график монеты
+ * показывает «какой спред был доступен», а не историю одной пары.
+ */
+app.get('/api/history/:base', async (req, reply) => {
+  if (!(await billing.hasAccess(req.state!.userId))) {
+    return reply.code(402).send({ error: 'subscription required' });
+  }
+  const { base } = req.params as { base: string };
+  const q = req.query as { tf?: string; from?: string; to?: string };
+  const tf = (TIMEFRAMES.includes(q.tf as Timeframe) ? q.tf : '1m') as Timeframe;
+  const to = Number(q.to) || Date.now();
+  const spanDefault = tf === '1m' ? 6 * 3_600_000 : tf === '5m' ? 2 * 86_400_000 : 30 * 86_400_000;
+  const from = Number(q.from) || to - spanDefault;
+  const all = history.queryCandles(base.toUpperCase(), tf, from, to);
+  const best = new Map<number, (typeof all)[number]>();
+  for (const c of all) {
+    const cur = best.get(c.ts);
+    if (!cur || c.high > cur.high) best.set(c.ts, c);
+  }
+  return {
+    base: base.toUpperCase(),
+    tf,
+    from,
+    to,
+    candles: [...best.values()].sort((a, b) => a.ts - b.ts),
+  };
+});
+
+/** Состояние сборщика истории — только администратору. */
+app.get('/api/history/status', async (req, reply) => {
+  if (!billing.isAdmin(req.state!.userId)) return reply.code(403).send({ error: 'admin only' });
+  return history.status();
 });
 
 /** Состояние подключений к биржам — для экрана отладки в настройках. */
@@ -722,6 +784,8 @@ app.setErrorHandler((err, _req, reply) => {
 
 app.addHook('onClose', async () => {
   bot?.stop();
+  collector.stop();
+  history.close();
   await market.stop();
   await repo.close();
 });

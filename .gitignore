@@ -11,3 +11,6 @@ dist/
 
 # Локальные настройки с секретами: токен Supabase живёт здесь, не в .mcp.json
 .claude/settings.local.json
+
+# История спредов (SQLite) — данные, не код
+.data/

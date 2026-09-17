@@ -104,6 +104,27 @@ export interface SettingsResponse {
   subscription: SubscriptionInfo;
 }
 
+export interface HistoryCandle {
+  ts: number;
+  base: string;
+  exA: ExchangeId;
+  exB: ExchangeId;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  samples: number;
+  source: 'live' | 'reconstructed';
+}
+
+export interface HistoryResponse {
+  base: string;
+  tf: '1m' | '5m' | '1h';
+  from: number;
+  to: number;
+  candles: HistoryCandle[];
+}
+
 export interface BillingResponse {
   botUsername: string | null;
   subscription: SubscriptionInfo;
@@ -209,6 +230,9 @@ export const api = {
       `/api/keys/${exchange}/verify`,
     ),
   deleteKey: (exchange: ExchangeId) => request<{ ok: true }>('DELETE', `/api/keys/${exchange}`),
+
+  history: (base: string, tf: '1m' | '5m' | '1h', from: number, to: number) =>
+    get<HistoryResponse>(`/api/history/${encodeURIComponent(base)}`, { tf, from, to }),
 
   billing: () => get<BillingResponse>('/api/billing'),
   starsInvoice: (plan: PlanId, months: BillingMonths) =>
