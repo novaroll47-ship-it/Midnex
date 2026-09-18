@@ -47,6 +47,7 @@ import { PairsService } from './pairs.js';
 import { ExternalTickers } from './pairs-external.js';
 import { HistoryCollector } from './history/collector.js';
 import { FUNDING_PERIODS, FundingHistory, type FundingPeriod } from './history/funding.js';
+import { GapFiller } from './history/gapfill.js';
 import { SqliteHistoryStore } from './history/sqlite.js';
 import type { PairTimeframe, Timeframe } from './history/store.js';
 import { createRepo, type ExchangeKeyRecord } from './repo/index.js';
@@ -241,6 +242,10 @@ const fundingHistory = new FundingHistory({
   backfillDays: 180,
 });
 if (market.mode === 'live') fundingHistory.start();
+
+// Дыры в истории (перезапуски, обрывы) закрываются часовыми свечами бирж.
+const gapFiller = new GapFiller({ store: history, engine: market.engine, log: app.log });
+if (market.mode === 'live') gapFiller.start();
 
 await app.register(cors, {
   origin: IS_PROD ? WEB_ORIGIN : true,

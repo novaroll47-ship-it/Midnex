@@ -278,6 +278,15 @@ export class MarketEngine {
     }));
   }
 
+  /** Ноги монеты с множителем к канонической цене — для реконструкции по свечам. */
+  legsWithMultiplier(base: string): { exchange: ExchangeId; symbol: string; multiplier: number }[] {
+    return (this.universe.byBase.get(base) ?? []).map((m) => ({
+      exchange: m.exchange,
+      symbol: m.symbol,
+      multiplier: m.multiplier,
+    }));
+  }
+
   /** Все ноги вселенной — для фоновой загрузки истории. */
   allLegs(): { exchange: ExchangeId; symbol: string }[] {
     const out: { exchange: ExchangeId; symbol: string }[] = [];
