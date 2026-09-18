@@ -1361,12 +1361,22 @@
     background: var(--surface-2);
   }
 
+  .section-label__count {
+    margin-left: 8px;
+    font-weight: 500;
+    color: var(--text-mute);
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
   .venue-tile__order {
     position: absolute;
     top: 5px;
     right: 6px;
     width: 15px;
     height: 15px;
+    display: grid;
+    place-items: center;
     border-radius: var(--radius-pill);
     background: var(--green);
     color: #04160a;

@@ -67,6 +67,21 @@ interface Props {
   refreshMs: number;
 }
 
+const VENUES_KEY = 'midnex.screener.venues';
+
+function loadVenues(): ExchangeId[] {
+  try {
+    const raw = localStorage.getItem(VENUES_KEY);
+    const ids = new Set<string>(EXCHANGES.map((e) => e.id));
+    const list = raw ? (JSON.parse(raw) as unknown) : [];
+    if (!Array.isArray(list)) return [];
+    const out = list.filter((v): v is ExchangeId => typeof v === 'string' && ids.has(v));
+    return out.length >= 2 && out.length < EXCHANGES.length ? out : [];
+  } catch {
+    return [];
+  }
+}
+
 export function ScreenerScreen({
   onOpenSubscription,
   subscription,
@@ -81,7 +96,16 @@ export function ScreenerScreen({
 
   const [minSpread, setMinSpread] = useState('0.50');
   const [search, setSearch] = useState('');
-  const [venues, setVenues] = useState<ExchangeId[]>([]);
+  // Выбор бирж переживает перезапуск: это фильтр отображения, а не разовая настройка.
+  const [venues, setVenuesState] = useState<ExchangeId[]>(() => loadVenues());
+  const setVenues = (next: ExchangeId[]) => {
+    setVenuesState(next);
+    try {
+      localStorage.setItem(VENUES_KEY, JSON.stringify(next));
+    } catch {
+      // Хранилище недоступно — фильтр живёт до перезапуска.
+    }
+  };
   const [extra, setExtra] = useState<ExtraFilters>(DEFAULT_EXTRA);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sheet, setSheet] = useState<'filters' | null>(null);
@@ -188,7 +212,7 @@ export function ScreenerScreen({
       : t('app.loadError');
 
   const extraCount =
-    (venues.length === 2 ? 1 : 0) +
+    (venues.length >= 2 && venues.length < EXCHANGES.length ? 1 : 0) +
     (extra.onlyPositiveNet ? 1 : 0) +
     (extra.onlyProfitableFunding ? 1 : 0) +
     (extra.maxSpreadPct > 0 ? 1 : 0);
@@ -400,23 +424,32 @@ function FiltersSheet({
   const { t } = useTranslation();
   const [draft, setDraft] = useState(value);
   const [minDraft, setMinDraft] = useState(minSpread);
-  const [pair, setPair] = useState<ExchangeId[]>(venues);
+  // Пустой выбор означает «все восемь» — так и показываем.
+  const allIds = EXCHANGES.map((e) => e.id);
+  const [picked, setPicked] = useState<ExchangeId[]>(venues.length ? venues : allIds);
 
-  // Пара бирж: третий выбор вытесняет самый ранний, пара всегда из двух.
-  // Пока выбрана пара, спред считается именно между ними, а не между
-  // лучшими из восьми — иначе выбор ничего не значил бы.
+  // Биржи: от двух до всех восьми. Спред считается между лучшей парой
+  // внутри выбранных — иначе выбор ничего не значил бы. Меньше двух
+  // оставить нельзя: спред не бывает по одной бирже.
   function pick(id: ExchangeId) {
-    haptic('tap');
-    setPair((prev) => {
-      if (prev.includes(id)) return prev.filter((x) => x !== id);
-      return prev.length < 2 ? [...prev, id] : [prev[1]!, id];
+    setPicked((prev) => {
+      if (prev.includes(id)) {
+        if (prev.length <= 2) {
+          haptic('warning');
+          return prev;
+        }
+        haptic('tap');
+        return prev.filter((x) => x !== id);
+      }
+      haptic('tap');
+      return [...prev, id];
     });
   }
 
   function apply() {
     const n = Number(minDraft.replace(',', '.'));
     onMinSpread(Number.isFinite(n) && n >= 0 ? n.toFixed(2) : minSpread);
-    onVenues(pair.length === 2 ? pair : []);
+    onVenues(picked.length >= EXCHANGES.length ? [] : allIds.filter((id) => picked.includes(id)));
     onChange(draft);
     onClose();
   }
@@ -460,25 +493,35 @@ function FiltersSheet({
         </label>
       </div>
 
-      <div className="section-label section-label--sheet">{t('screener.venuePairTitle')}</div>
+      <div className="section-label section-label--sheet">
+        {t('screener.venuesTitle')}
+        <span className="section-label__count num">
+          {picked.length}/{EXCHANGES.length}
+        </span>
+      </div>
       <div className="venue-grid">
         {EXCHANGES.map((ex) => {
-          const index = pair.indexOf(ex.id);
+          const on = picked.includes(ex.id);
           return (
             <button
               key={ex.id}
               type="button"
-              className={`venue-tile${index >= 0 ? ' venue-tile--on' : ''}`}
+              className={`venue-tile${on ? ' venue-tile--on' : ''}`}
+              aria-pressed={on}
               onClick={() => pick(ex.id)}
             >
               <ExchangeLogo id={ex.id} size={20} />
               <span>{ex.name}</span>
-              {index >= 0 && <span className="venue-tile__order">{index + 1}</span>}
+              {on && (
+                <span className="venue-tile__order">
+                  <CheckIcon size={10} />
+                </span>
+              )}
             </button>
           );
         })}
       </div>
-      <p className="hint hint--sheet">{t('screener.venuePairHint')}</p>
+      <p className="hint hint--sheet">{t('screener.venuesHint')}</p>
 
       <div className="section-label section-label--sheet">{t('screener.moreFilters')}</div>
       <div className="sheet__group">
