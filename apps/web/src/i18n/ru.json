@@ -88,7 +88,22 @@
     "subBuy": "Оформить",
     "subManage": "Продлить",
     "trialUntil": "Пробный период до {{date}}",
-    "newPair": "NEW"
+    "newPair": "NEW",
+    "viewToggle": "Вид списка",
+    "viewList": "Список",
+    "viewCards": "Карточки",
+    "card": {
+      "verified": "Сверено",
+      "newPair": "Новая пара",
+      "held": "держится {{min}} мин",
+      "listing": "листинг сегодня",
+      "newCycle": "новый цикл",
+      "cycle": "{{n}}-й цикл сегодня",
+      "long": "Лонг",
+      "short": "Шорт",
+      "net": "чистыми {{value}} после комиссий",
+      "netUnknown": "чистыми {{value}} без учёта фандинга"
+    }
   },
   "positions": {
     "title": "Позиции",
@@ -299,6 +314,8 @@
     "theme_system_sub": "Следует за темой клиента",
     "theme_dark": "Тёмная",
     "theme_light": "Светлая",
+    "theme_telegram": "Под цвет Telegram",
+    "theme_telegram_sub": "Фон, текст и цвет кнопок — из твоей темы Telegram",
     "noKey": "Нет API-ключа",
     "needKeyNotice": "Введите API-ключ биржи {{exchange}}, чтобы включить её для торговли. Нажмите, чтобы перейти к ключам."
   },

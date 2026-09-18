@@ -6,7 +6,7 @@
  * возвращаем прежнее значение и показываем ошибку: молча «откатывать»
  * настройку риска нельзя.
  */
-import type { BotSettings, NotificationSettings, PlanId, RiskSettings } from '@cs/shared';
+import type { BotSettings, NotificationSettings, PlanId, RiskSettings, UiSettings } from '@cs/shared';
 import { useCallback, useEffect, useState } from 'react';
 
 import { api, type SettingsResponse } from './api';
@@ -21,6 +21,8 @@ export interface SettingsController {
   patchPlan: (plan: PlanId) => void;
   /** Пройденные модули обучения — замена целиком. */
   setOnboarding: (completed: string[]) => void;
+  /** Вид скринера: сразу в состоянии, потом на сервер. */
+  setUi: (ui: Partial<UiSettings>) => void;
 }
 
 export function useSettings(): SettingsController {
@@ -69,6 +71,13 @@ export function useSettings(): SettingsController {
     patchBot: (body) => apply('bot', body, () => api.patchBot(body)),
     patchRisk: (body) => apply('risk', body, () => api.patchRisk(body)),
     patchNotifications: (body) => apply('notifications', body, () => api.patchNotifications(body)),
+    setUi: (ui) => {
+      setData((d) => (d ? { ...d, ui: { ...d.ui, ...ui } } : d));
+      api
+        .patchUi(ui)
+        .then(setData)
+        .catch(() => {});
+    },
     setOnboarding: (completed) => {
       setData((d) => (d ? { ...d, onboarding: { completed } } : d));
       api

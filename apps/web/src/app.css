@@ -2077,3 +2077,153 @@
     margin-top: 12px;
   }
 }
+
+@layer legacy {
+  /* ---------- Переключатель вида: список / карточки ---------- */
+
+  .list-head__title {
+    margin-right: auto;
+  }
+
+  .view-toggle {
+    display: inline-flex;
+    gap: 2px;
+    padding: 2px;
+    margin-left: 8px;
+    border-radius: 999px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+
+  .view-toggle__btn {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 22px;
+    border-radius: 999px;
+    color: var(--text-mute);
+  }
+
+  .view-toggle__btn--on {
+    background: var(--brand, var(--green));
+    color: var(--brand-ink, #04160a);
+  }
+
+  /* ---------- Карточка монеты ---------- */
+
+  .coin-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 14px 12px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    text-align: left;
+    width: 100%;
+    cursor: pointer;
+  }
+
+  .coin-card--pinned {
+    border-color: var(--brand-line, var(--green-line));
+  }
+
+  .coin-card--stale {
+    opacity: 0.6;
+  }
+
+  .coin-card__head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .coin-card__title {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .coin-card__ticker {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  .badge.coin-card__spread {
+    font-size: 14px;
+    font-weight: 700;
+    padding: 5px 10px;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+
+  .coin-card__meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--text-mute);
+  }
+
+  .chip-mini {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    color: var(--text-dim);
+    font-size: 11px;
+  }
+
+  .coin-card__legs {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  .coin-card__legs b {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .coin-card__side {
+    font-style: normal;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .coin-card__side--long {
+    color: var(--positive, var(--green));
+  }
+
+  .coin-card__side--short {
+    color: var(--negative, var(--red));
+  }
+
+  .coin-card__arrow {
+    color: var(--text-mute);
+  }
+
+  .coin-card__net {
+    font-size: 11px;
+    color: var(--text-mute);
+  }
+
+  .coin-card__net--good {
+    color: var(--positive, var(--green));
+  }
+
+  .coin-row {
+    cursor: pointer;
+  }
+}

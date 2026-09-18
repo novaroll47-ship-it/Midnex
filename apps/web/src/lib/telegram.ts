@@ -25,6 +25,21 @@ interface TelegramWebApp {
     user?: { id: number; first_name: string; username?: string; language_code?: string };
   };
   colorScheme: 'light' | 'dark';
+  /** Цвета клиента — для режима «под цвет Telegram». */
+  themeParams?: Partial<
+    Record<
+      | 'bg_color'
+      | 'secondary_bg_color'
+      | 'section_bg_color'
+      | 'text_color'
+      | 'hint_color'
+      | 'link_color'
+      | 'button_color'
+      | 'button_text_color'
+      | 'subtitle_text_color',
+      string
+    >
+  >;
   version: string;
   platform: string;
   isExpanded: boolean;

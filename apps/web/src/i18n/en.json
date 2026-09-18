@@ -87,7 +87,22 @@
     "subBuy": "Subscribe",
     "subManage": "Extend",
     "trialUntil": "Trial until {{date}}",
-    "newPair": "NEW"
+    "newPair": "NEW",
+    "viewToggle": "List view",
+    "viewList": "List",
+    "viewCards": "Cards",
+    "card": {
+      "verified": "Verified",
+      "newPair": "New pair",
+      "held": "held {{min}} min",
+      "listing": "listed today",
+      "newCycle": "new cycle",
+      "cycle": "cycle #{{n}} today",
+      "long": "Long",
+      "short": "Short",
+      "net": "net {{value}} after fees",
+      "netUnknown": "net {{value}} excluding funding"
+    }
   },
   "positions": {
     "title": "Positions",
@@ -298,6 +313,8 @@
     "theme_system_sub": "Follows the client theme",
     "theme_dark": "Dark",
     "theme_light": "Light",
+    "theme_telegram": "Telegram colours",
+    "theme_telegram_sub": "Background, text and button colour from your Telegram theme",
     "noKey": "No API key",
     "needKeyNotice": "Add the {{exchange}} API key to enable it for trading. Tap to go to keys."
   },

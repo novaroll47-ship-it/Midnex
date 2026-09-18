@@ -3,6 +3,7 @@ import type {
   FundingBotSettings,
   NotificationSettings,
   RiskSettings,
+  UiSettings,
 } from './types.js';
 
 /**
@@ -57,6 +58,8 @@ export const DEFAULT_NOTIFICATIONS: NotificationSettings = {
   onRiskLimit: true,
   onConfirmationNeeded: true,
 };
+
+export const DEFAULT_UI: UiSettings = { view: 'list' };
 
 export const APP_VERSION = '0.2.0';
 

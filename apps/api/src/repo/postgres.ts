@@ -84,7 +84,7 @@ export class PostgresRepo implements Repo {
 
   async getSettings(userId: number): Promise<UserSettings | null> {
     const rows = await this.sql`
-      select bot, risk, notifications, onboarding from user_settings where user_id = ${userId}
+      select bot, risk, notifications, onboarding, ui from user_settings where user_id = ${userId}
     `;
     const r = rows[0];
     if (!r) return null;
@@ -93,17 +93,20 @@ export class PostgresRepo implements Repo {
       risk: r['risk'] as UserSettings['risk'],
       notifications: r['notifications'] as UserSettings['notifications'],
       onboarding: (r['onboarding'] as UserSettings['onboarding'] | null) ?? { completed: [] },
+      ui: (r['ui'] as UserSettings['ui'] | null) ?? { view: 'list' },
     };
   }
 
   async saveSettings(userId: number, s: UserSettings): Promise<void> {
     await this.sql`
-      insert into user_settings (user_id, bot, risk, notifications, onboarding)
+      insert into user_settings (user_id, bot, risk, notifications, onboarding, ui)
       values (${userId}, ${this.sql.json(s.bot as never)}, ${this.sql.json(s.risk as never)},
-              ${this.sql.json(s.notifications as never)}, ${this.sql.json(s.onboarding as never)})
+              ${this.sql.json(s.notifications as never)}, ${this.sql.json(s.onboarding as never)},
+              ${this.sql.json(s.ui as never)})
       on conflict (user_id) do update
         set bot = excluded.bot, risk = excluded.risk,
-            notifications = excluded.notifications, onboarding = excluded.onboarding, updated_at = now()
+            notifications = excluded.notifications, onboarding = excluded.onboarding,
+            ui = excluded.ui, updated_at = now()
     `;
   }
 

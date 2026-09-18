@@ -631,6 +631,16 @@ app.patch('/api/settings/onboarding', async (req, reply) => {
   return settingsPayload(s);
 });
 
+/** Вид скринера: список или карточки — личная настройка, живёт на сервере. */
+app.patch('/api/settings/ui', async (req, reply) => {
+  const s = req.state!;
+  const body = req.body as { view?: unknown };
+  if (body?.view !== 'list' && body?.view !== 'cards') return reply.code(400).send({ error: 'bad view' });
+  s.settings.ui = { ...s.settings.ui, view: body.view };
+  await state.saveSettings(s);
+  return settingsPayload(s);
+});
+
 app.patch('/api/settings/plan', async (req) => {
   const s = req.state!;
   const body = req.body as { plan?: string };

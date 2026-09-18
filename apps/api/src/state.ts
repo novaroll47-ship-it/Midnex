@@ -9,6 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   DEFAULT_BOT,
+  DEFAULT_UI,
   DEFAULT_NOTIFICATIONS,
   DEFAULT_RISK,
   DEFAULT_TAKER_PCT,
@@ -92,6 +93,7 @@ export class StateService {
         risk: { ...DEFAULT_RISK },
         notifications: { ...DEFAULT_NOTIFICATIONS },
         onboarding: { completed: [] },
+        ui: { ...DEFAULT_UI },
       };
       await this.repo.saveSettings(userId, settings);
     } else {
@@ -101,6 +103,7 @@ export class StateService {
         risk: { ...DEFAULT_RISK, ...settings.risk },
         notifications: { ...DEFAULT_NOTIFICATIONS, ...settings.notifications },
         onboarding: { completed: [...(settings.onboarding?.completed ?? [])] },
+        ui: { ...DEFAULT_UI, ...settings.ui },
       };
     }
 

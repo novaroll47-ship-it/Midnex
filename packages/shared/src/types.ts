@@ -54,6 +54,10 @@ export interface SpreadRow {
   suspect?: boolean;
   /** Одна из ног сверена меньше недели назад — свежий листинг. */
   isNew?: boolean;
+  /** С какого момента спред держится выше порога заметности; null — сейчас ниже. */
+  heldSinceAt?: number | null;
+  /** Сколько раз за сегодня спред поднимался выше порога заметности. */
+  cyclesToday?: number;
 }
 
 export interface ScreenerSnapshot {
@@ -253,6 +257,11 @@ export interface FundingBotSettings {
   notionalUsdt: number;
   leverage: number;
   maxPositions: number;
+}
+
+/** Личные настройки вида: список или карточки в скринере. */
+export interface UiSettings {
+  view: 'list' | 'cards';
 }
 
 /** Прогресс обучения: какие модули пройдены (или пропущены). */

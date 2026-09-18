@@ -146,6 +146,8 @@ export function App() {
             subscription={settings.data?.subscription}
             minSpreadPct={settings.data?.bot.minSpreadPct}
             refreshMs={settings.data?.bot.refreshMs ?? 1000}
+            view={settings.data?.ui.view ?? 'list'}
+            onSetView={(view) => settings.setUi({ view })}
             onOpenCoin={(base) => setRoute({ kind: 'coin', base })}
             onOpenSubscription={() => {
               setTab('settings');

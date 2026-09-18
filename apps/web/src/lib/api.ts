@@ -15,6 +15,7 @@ import type {
   RiskSettings,
   ScreenerSnapshot,
   SessionInfo,
+  UiSettings,
 } from '@cs/shared';
 
 import { initData, platform, tgVersion } from './telegram';
@@ -95,6 +96,7 @@ export interface SettingsResponse {
   risk: RiskSettings;
   notifications: NotificationSettings;
   onboarding: { completed: string[] };
+  ui: UiSettings;
   plan: PlanId;
   apiKeys: ApiKeyStatus[];
   version: string;
@@ -280,6 +282,7 @@ export const api = {
   patchNotifications: (body: Partial<NotificationSettings>) =>
     request<SettingsResponse>('PATCH', '/api/settings/notifications', body),
   patchPlan: (plan: PlanId) => request<SettingsResponse>('PATCH', '/api/settings/plan', { plan }),
+  patchUi: (ui: Partial<UiSettings>) => request<SettingsResponse>('PATCH', '/api/settings/ui', ui),
   patchOnboarding: (completed: string[]) =>
     request<SettingsResponse>('PATCH', '/api/settings/onboarding', { completed }),
 

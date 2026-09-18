@@ -23,7 +23,7 @@ import { Switch } from '@/components/ui/switch';
 import { CoinIcon } from '../components/CoinIcon';
 import { ExchangeLogo } from '../components/ExchangeLogo';
 import { Sheet } from '../components/Sheet';
-import { CheckIcon, ChevronRightIcon, SearchIcon, SlidersIcon, XIcon } from '../icons';
+import { CheckIcon, ChevronRightIcon, ClockIcon, GridIcon, ListIcon, SearchIcon, SlidersIcon, XIcon } from '../icons';
 import { ApiError, api } from '../lib/api';
 import { haptic } from '../lib/telegram';
 import { usePolling } from '../lib/usePolling';
@@ -64,7 +64,9 @@ interface Props {
   /** Без торговли закреплённые монеты — избранное без лимитов тарифа. */
   trading: boolean;
   minSpreadPct?: number;
-  refreshMs: number;
+  refreshMs: number;  /** Вид списка: строки или карточки — личная настройка, хранится на сервере. */
+  view: 'list' | 'cards';
+  onSetView: (view: 'list' | 'cards') => void;
 }
 
 const VENUES_KEY = 'midnex.screener.venues';
@@ -91,6 +93,8 @@ export function ScreenerScreen({
   trading,
   minSpreadPct,
   refreshMs,
+  view,
+  onSetView,
 }: Props) {
   const { t } = useTranslation();
 
@@ -341,22 +345,60 @@ export function ScreenerScreen({
           >
             {t(SORT_LABEL[extra.sort])}
           </button>
+          <div className="view-toggle" role="group" aria-label={t('screener.viewToggle')}>
+            <button
+              type="button"
+              className={`view-toggle__btn${view === 'list' ? ' view-toggle__btn--on' : ''}`}
+              aria-pressed={view === 'list'}
+              aria-label={t('screener.viewList')}
+              onClick={() => {
+                haptic('tap');
+                onSetView('list');
+              }}
+            >
+              <ListIcon size={14} />
+            </button>
+            <button
+              type="button"
+              className={`view-toggle__btn${view === 'cards' ? ' view-toggle__btn--on' : ''}`}
+              aria-pressed={view === 'cards'}
+              aria-label={t('screener.viewCards')}
+              onClick={() => {
+                haptic('tap');
+                onSetView('cards');
+              }}
+            >
+              <GridIcon size={14} />
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Скроллится только список монет — шапка и подвал стоят на месте. */}
       <div className="screener__list">
-        {visible.map((row, i) => (
-          <CoinRow
-            key={row.symbol}
-            row={row}
-            first={i === 0}
-            checked={selected.has(row.base)}
-            disabled={!selected.has(row.base) && limitReached}
-            onToggle={() => toggle(row.base)}
-            onOpen={() => onOpenCoin(row.base)}
-          />
-        ))}
+        {visible.map((row, i) =>
+          view === 'cards' ? (
+            <CoinCard
+              key={row.symbol}
+              row={row}
+              first={i === 0}
+              checked={selected.has(row.base)}
+              disabled={!selected.has(row.base) && limitReached}
+              onToggle={() => toggle(row.base)}
+              onOpen={() => onOpenCoin(row.base)}
+            />
+          ) : (
+            <CoinRow
+              key={row.symbol}
+              row={row}
+              first={i === 0}
+              checked={selected.has(row.base)}
+              disabled={!selected.has(row.base) && limitReached}
+              onToggle={() => toggle(row.base)}
+              onOpen={() => onOpenCoin(row.base)}
+            />
+          ),
+        )}
         {data?.preview && (
           <button type="button" className="card paywall" onClick={onOpenSubscription}>
             <div className="paywall__title">
@@ -599,11 +641,21 @@ function CoinRow({
     <div
       className={`coin-row${row.stale ? ' coin-row--stale' : ''}${checked ? ' coin-row--pinned' : ''}`}
       data-tour={first ? 'row' : undefined}
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') onOpen();
+      }}
     >
       <button
         type="button"
         className={`checkbox${checked ? ' checkbox--on' : ''}${disabled ? ' checkbox--disabled' : ''}`}
-        onClick={onToggle}
+        onClick={(e) => {
+          // Чекбокс только отмечает монету — экран монеты не открывает.
+          e.stopPropagation();
+          onToggle();
+        }}
         aria-pressed={checked}
         aria-label={row.base}
       >
@@ -645,13 +697,124 @@ function CoinRow({
       <button
         className="row-open"
         type="button"
-        onClick={onOpen}
+        tabIndex={-1}
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpen();
+        }}
         aria-label={t('coin.openTitle', { base: row.base })}
       >
         <ChevronRightIcon size={15} />
       </button>
     </div>
   );
+}
+
+/**
+ * Карточка — тот же набор данных, что и строка, но просторнее: крупный
+ * спред, бейджи сверки и листинга, сколько держится спред и что остаётся
+ * после комиссий.
+ */
+function CoinCard({
+  row,
+  first,
+  checked,
+  disabled,
+  onToggle,
+  onOpen,
+}: {
+  row: SpreadRow;
+  first?: boolean;
+  checked: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+  onOpen: () => void;
+}) {
+  const { t } = useTranslation();
+  const decimals = priceDecimals(row.longPrice);
+  const heldMin = row.heldSinceAt ? Math.max(0, Math.floor((Date.now() - row.heldSinceAt) / 60_000)) : null;
+  const cycles = row.cyclesToday ?? 0;
+  const cycleText = row.isNew
+    ? t('screener.card.listing')
+    : cycles <= 1
+      ? t('screener.card.newCycle')
+      : t('screener.card.cycle', { n: cycles });
+
+  return (
+    <div
+      className={`coin-card${row.stale ? ' coin-card--stale' : ''}${checked ? ' coin-card--pinned' : ''}`}
+      data-tour={first ? 'row' : undefined}
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') onOpen();
+      }}
+    >
+      <div className="coin-card__head">
+        <button
+          type="button"
+          className={`checkbox${checked ? ' checkbox--on' : ''}${disabled ? ' checkbox--disabled' : ''}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggle();
+          }}
+          aria-pressed={checked}
+          aria-label={row.base}
+        >
+          <CheckIcon />
+        </button>
+        <CoinIcon base={row.base} size={36} />
+        <div className="coin-card__title">
+          <span className="coin-card__ticker">{row.base}</span>
+          {row.isNew ? (
+            <span className="badge badge--soon">{t('screener.card.newPair')}</span>
+          ) : (
+            <span className="badge badge--amber">
+              <CheckIcon size={9} /> {t('screener.card.verified')}
+            </span>
+          )}
+        </div>
+        <span
+          className={`coin-card__spread num badge ${row.spreadPct > 0 && !row.suspect ? 'badge--positive' : 'badge--soon'}`}
+        >
+          {row.suspect ? '—' : formatSignedPct(row.spreadPct)}
+        </span>
+      </div>
+
+      <div className="coin-card__meta">
+        {heldMin !== null && (
+          <span className="chip-mini num">
+            <ClockIcon size={11} /> {t('screener.card.held', { min: heldMin })}
+          </span>
+        )}
+        <span className="coin-card__cycle">{row.stale ? t('screener.stale') : cycleText}</span>
+      </div>
+
+      <div className="coin-card__legs num">
+        <span>
+          <em className="coin-card__side coin-card__side--long">{t('screener.card.long')}</em>{' '}
+          {exchangeName(row.longExchange)} <b>{formatPrice(row.longPrice, decimals)}</b>
+        </span>
+        <span className="coin-card__arrow">→</span>
+        <span>
+          <em className="coin-card__side coin-card__side--short">{t('screener.card.short')}</em>{' '}
+          {exchangeName(row.shortExchange)} <b>{formatPrice(row.shortPrice, decimals)}</b>
+        </span>
+      </div>
+      <div className={`coin-card__net num${row.netPct > 0 && !row.suspect ? ' coin-card__net--good' : ''}`}>
+        {row.suspect
+          ? t('md.suspect')
+          : t(row.fundingKnown === false ? 'screener.card.netUnknown' : 'screener.card.net', {
+              value: formatSignedPct(row.netPct),
+            })}
+      </div>
+    </div>
+  );
+}
+
+function exchangeName(id: ExchangeId): string {
+  return EXCHANGES.find((e) => e.id === id)?.name ?? id;
 }
 
 /**

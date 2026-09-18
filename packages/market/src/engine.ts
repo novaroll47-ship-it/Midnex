@@ -510,6 +510,39 @@ export class MarketEngine {
   }
 
   private cache: { key: string; at: number; value: ScreenerSnapshot } | null = null;
+
+  /**
+   * Сколько держится спред: с момента, когда он поднялся выше порога
+   * заметности, и сколько таких подъёмов было за сегодня. Гистерезис в
+   * 0,1 % — чтобы дрожание у порога не плодило «циклы».
+   */
+  private static readonly HELD_PCT = 0.5;
+  private static readonly HELD_RELEASE_PCT = 0.4;
+  private readonly held = new Map<string, { since: number; cycles: number; day: number }>();
+
+  private trackHeld(rows: SpreadRow[], now: number): void {
+    const day = Math.floor((now + new Date(now).getTimezoneOffset() * -60_000) / 86_400_000);
+    const seen = new Set<string>();
+    for (const r of rows) {
+      seen.add(r.base);
+      const cur = this.held.get(r.base);
+      const above = !r.stale && !r.suspect && r.spreadPct >= MarketEngine.HELD_PCT;
+      const still = cur && cur.since > 0 && !r.stale && !r.suspect && r.spreadPct >= MarketEngine.HELD_RELEASE_PCT;
+      if (cur && cur.day !== day) {
+        cur.cycles = 0;
+        cur.day = day;
+      }
+      if (above && !(cur && cur.since > 0)) {
+        this.held.set(r.base, { since: now, cycles: (cur?.cycles ?? 0) + 1, day });
+      } else if (cur && cur.since > 0 && !still) {
+        cur.since = 0;
+      }
+      const state = this.held.get(r.base);
+      r.heldSinceAt = state && state.since > 0 ? state.since : null;
+      r.cyclesToday = state?.cycles ?? 0;
+    }
+    for (const base of this.held.keys()) if (!seen.has(base)) this.held.delete(base);
+  }
   /** Чтобы каждая коллизия тикеров попала в лог один раз, а не раз в секунду. */
   private readonly reportedSuspects = new Set<string>();
 
@@ -531,6 +564,15 @@ export class MarketEngine {
     // спред не имеет смысла как число.
     const rank = (r: SpreadRow) => (r.suspect ? 2 : r.stale ? 1 : 0);
     rows.sort((a, b) => rank(a) - rank(b) || b.spreadPct - a.spreadPct);
+    // Длительность считаем по полной картине; с фильтром бирж — просто подставляем.
+    if (!filter) this.trackHeld(rows, now);
+    else {
+      for (const r of rows) {
+        const h = this.held.get(r.base);
+        r.heldSinceAt = h && h.since > 0 ? h.since : null;
+        r.cyclesToday = h?.cycles ?? 0;
+      }
+    }
 
     const passing = rows.filter((r) => !r.stale && !r.suspect && r.spreadPct >= minSpreadPct);
     const value: ScreenerSnapshot = {

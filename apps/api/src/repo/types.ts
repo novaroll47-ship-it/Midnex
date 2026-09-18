@@ -11,6 +11,7 @@ import type {
   ExchangeId,
   NotificationSettings,
   OnboardingState,
+  UiSettings,
   PaymentMethod,
   PaymentStatus,
   PlanId,
@@ -34,6 +35,7 @@ export interface UserSettings {
   risk: RiskSettings;
   notifications: NotificationSettings;
   onboarding: OnboardingState;
+  ui: UiSettings;
 }
 
 export interface PositionRecord {
