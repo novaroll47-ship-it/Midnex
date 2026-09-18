@@ -110,9 +110,9 @@ Start-Process -FilePath 'node' -ArgumentList '--max-old-space-size=1024', 'apps/
     -RedirectStandardOutput $ApiLog -RedirectStandardError "$ApiLog.err"
 
 # С базой старт длится дольше (проверка соединения с Postgres), поэтому ждём
-# до двух минут, а не фиксированные пять секунд.
+# до пяти минут (восемь бирж и база), а не фиксированные пять секунд.
 $health = $null
-foreach ($i in 1..60) {
+foreach ($i in 1..150) {
     Start-Sleep -Seconds 2
     try { $health = Invoke-RestMethod -Uri 'http://localhost:8787/api/health' -TimeoutSec 5 } catch { }
     if ($health -and $health.ok) { break }

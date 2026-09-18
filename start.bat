@@ -1,21 +1,20 @@
 @echo off
-chcp 65001 >nul
 cd /d "%~dp0"
 title MidNex
 
-echo ==^> ╨Ч╨░╨┐╤Г╤Б╨║ MidNex: ╤Б╨▒╨╛╤А╨║╨░, ╤В╤Г╨╜╨╜╨╡╨╗╤М, ╨┐╤А╨╕╨╗╨╛╨╢╨╡╨╜╨╕╨╡, ╨▒╨╛╤В
+echo ==^> Запуск MidNex: сборка, туннель, приложение, бот
 powershell -NoProfile -ExecutionPolicy Bypass -File "deploy\run-local.ps1"
 if errorlevel 1 (
   echo.
-  echo ╨Э╨╡ ╨┐╨╛╨┤╨╜╤П╨╗╨╛╤Б╤М. ╨Ы╨╛╨│╨╕: .tools\api.log, .tools\api.log.err, .tools\tunnel.log.err
+  echo Не поднялось. Логи: .tools\api.log, .tools\api.log.err, .tools\tunnel.log.err
   pause
   exit /b 1
 )
 
-echo ==^> ╨Ч╨░╨┐╤Г╤Б╨║╨░╤О ╤Б╤В╨╛╤А╨╛╨╢: ╨┐╨╡╤А╨╡╨╖╨░╨┐╤Г╤Б╤В╨╕╤В ╨▓╤Б╤С ╤Б╨░╨╝, ╨╡╤Б╨╗╨╕ ╤В╤Г╨╜╨╜╨╡╨╗╤М ╨╕╨╗╨╕ ╨┐╤А╨╕╨╗╨╛╨╢╨╡╨╜╨╕╨╡ ╤Г╨┐╨░╨┤╤Г╤В
+echo ==^> Запускаю сторож: перезапустит всё сам, если туннель или приложение упадут
 start "" /min powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "deploy\watchdog.ps1"
 
 echo.
-echo ╨У╨╛╤В╨╛╨▓╨╛. ╨н╤В╨╛ ╨╛╨║╨╜╨╛ ╨╝╨╛╨╢╨╜╨╛ ╨╖╨░╨║╤А╤Л╤В╤М тАФ ╨┐╤А╨╕╨╗╨╛╨╢╨╡╨╜╨╕╨╡ ╨╕ ╤Б╤В╨╛╤А╨╛╨╢ ╤А╨░╨▒╨╛╤В╨░╤О╤В ╨▓ ╤Д╨╛╨╜╨╡.
-echo ╨Ю╤Б╤В╨░╨╜╨╛╨▓╨╕╤В╤М ╨▓╤Б╤С: stop.bat
+echo Готово. Это окно можно закрыть - приложение и сторож работают в фоне.
+echo Остановить всё: stop.bat
 pause

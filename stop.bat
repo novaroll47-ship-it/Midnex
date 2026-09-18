@@ -1,10 +1,6 @@
 @echo off
-chcp 65001 >nul
 cd /d "%~dp0"
-echo ==^> ÐžÑÑ‚Ð°Ð½Ð°Ð²Ð»Ð¸Ð²Ð°ÑŽ ÑÑ‚Ð¾Ñ€Ð¾Ð¶, Ð¿Ñ€Ð¸Ð»Ð¾Ð¶ÐµÐ½Ð¸Ðµ Ð¸ Ñ‚ÑƒÐ½Ð½ÐµÐ»ÑŒ
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "Get-CimInstance Win32_Process -Filter \"Name = 'powershell.exe'\" | Where-Object { $_.CommandLine -like '*watchdog.ps1*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force };" ^
-  "Get-CimInstance Win32_Process -Filter \"Name = 'node.exe'\" | Where-Object { $_.CommandLine -like '*apps/api/dist/index.js*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force };" ^
-  "Get-Process cloudflared -ErrorAction SilentlyContinue | Stop-Process -Force"
-echo Ð“Ð¾Ñ‚Ð¾Ð²Ð¾.
+echo ==^> Žáâ ­ ¢«¨¢ î áâ®à®¦, ¯à¨«®¦¥­¨¥ ¨ âã­­¥«ì
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process -Filter \"Name = 'powershell.exe'\" | Where-Object { $_.CommandLine -like '*watchdog.ps1*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }; Get-CimInstance Win32_Process -Filter \"Name = 'node.exe'\" | Where-Object { $_.CommandLine -like '*apps/api/dist/index.js*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }; Get-Process cloudflared -ErrorAction SilentlyContinue | Stop-Process -Force"
+echo ƒ®â®¢®.
 pause
