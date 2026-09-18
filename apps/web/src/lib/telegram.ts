@@ -43,6 +43,8 @@ interface TelegramWebApp {
   version: string;
   platform: string;
   isExpanded: boolean;
+  viewportHeight?: number;
+  viewportStableHeight?: number;
   ready(): void;
   expand(): void;
   close?(): void;
@@ -88,6 +90,23 @@ export function initTelegram(): void {
   // Мешает скроллу длинных списков на мобильных клиентах.
   webApp.disableVerticalSwipes?.();
   // Цвета шапки и фона задаёт тема — см. lib/theme.ts.
+  syncViewportHeight();
+  webApp.onEvent?.('viewportChanged', syncViewportHeight);
+}
+
+/**
+ * Высота видимой области из клиента → --app-height. Значение берём только
+ * когда оно похоже на правду: в Telegram Desktop оно бывает нулевым, и без
+ * проверки экран схлопывался в чёрную полосу.
+ */
+function syncViewportHeight(): void {
+  const h = webApp?.viewportStableHeight ?? webApp?.viewportHeight;
+  const root = document.documentElement.style;
+  if (typeof h === 'number' && Number.isFinite(h) && h >= 300 && h <= window.innerHeight + 1) {
+    root.setProperty('--app-height', `${Math.round(h)}px`);
+  } else {
+    root.removeProperty('--app-height');
+  }
 }
 
 export function haptic(kind: 'tap' | 'success' | 'warning' | 'error' = 'tap'): void {

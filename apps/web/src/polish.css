@@ -735,3 +735,23 @@
   --text-mute: #9a9aa0;
   --surface-2: #e9e9eb;
 }
+
+@layer legacy {
+  /* Мини-сегмент — одна строка таблеток; если рядом с заголовком не
+     помещается, переезжает целиком на следующую строку, а не ломается на две. */
+  .chart__head {
+    flex-wrap: wrap;
+  }
+
+  .segmented--mini {
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    gap: 2px;
+    margin-left: auto;
+  }
+
+  .segmented--mini .segmented__item {
+    flex: 0 0 auto;
+  }
+}

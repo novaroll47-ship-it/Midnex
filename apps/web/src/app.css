@@ -14,9 +14,11 @@
     height: 100vh;
     height: 100dvh;
     /* В Telegram окно бывает выше видимой области (клавиатура, свёрнутый
-       вид) — тогда нижняя панель уезжает за край. Клиент сообщает
-       настоящую высоту переменной. */
-    height: var(--tg-viewport-stable-height, 100dvh);
+       вид) — тогда нижняя панель уезжает за край. Настоящую высоту клиент
+       сообщает событием viewportChanged; lib/telegram.ts кладёт её в
+       --app-height, только если она похожа на правду (в Telegram Desktop
+       встроенная переменная приходит нулевой и схлопывает экран). */
+    height: var(--app-height, 100dvh);
     overflow: hidden;
     display: flex;
     flex-direction: column;
