@@ -13,6 +13,7 @@ import { CoachMarks } from './components/CoachMarks';
 import { Splash } from './components/Splash';
 import { pendingModules } from './onboarding/modules';
 import { AlertsScreen } from './screens/AlertsScreen';
+import { BotsScreen } from './screens/BotsScreen';
 import { ComingSoonScreen } from './screens/ComingSoonScreen';
 import { PositionDetailScreen, type PositionView } from './screens/PositionDetail';
 import { PositionsScreen } from './screens/PositionsScreen';
@@ -31,7 +32,9 @@ type Route =
   | { kind: 'tab' }
   | { kind: 'settings'; view: SettingsView }
   | { kind: 'position'; id: string; view: PositionView }
-  | { kind: 'coin'; base: string };
+  | { kind: 'coin'; base: string }
+  | { kind: 'alerts' }
+  | { kind: 'bots' };
 
 interface NavState {
   tab: Tab;
@@ -142,6 +145,8 @@ export function App() {
       return t(route.view === 'details' ? 'positions.details' : 'positions.edit');
     }
     if (route.kind === 'coin') return route.base;
+    if (route.kind === 'alerts') return t('screener.tileAlerts');
+    if (route.kind === 'bots') return t('screener.tileBots');
     return undefined;
   }, [route, t]);
 
@@ -160,10 +165,16 @@ export function App() {
   const completedModules = settings.data?.onboarding?.completed;
   const tourModule = useMemo(() => {
     if (replayModule) return pendingModules([]).find((m) => m.id === replayModule) ?? null;
-    if (!completedModules || route.kind !== 'tab') return null;
+    // Тур живёт на вкладках и на экране уведомлений (его модуль ведёт туда сам).
+    if (!completedModules || (route.kind !== 'tab' && route.kind !== 'alerts')) return null;
     return pendingModules(completedModules)[0] ?? null;
   }, [replayModule, completedModules, route.kind]);
-  const switchTabForTour = useCallback((next: Tab) => setTab(next), [setTab]);
+  // Шаг тура «алерты» открывает экран уведомлений — он больше не вкладка.
+  const switchTabForTour = useCallback(
+    (next: Tab) =>
+      next === 'alerts' ? go({ tab: 'screener', route: { kind: 'alerts' } }) : setTab(next),
+    [go, setTab],
+  );
 
   if (!ready) {
     const steps = Number(settings.data !== null) + Number(primed);
@@ -211,7 +222,7 @@ export function App() {
             base={route.base}
             onAlert={(base) => {
               setAlertPreset(base);
-              setTab('alerts');
+              go({ route: { kind: 'alerts' } });
             }}
           />
         )}
@@ -229,11 +240,18 @@ export function App() {
             onOpenSubscription={() =>
               go({ tab: 'settings', route: { kind: 'settings', view: 'subscription' } })
             }
-            onOpenBot={(view) => go({ tab: 'settings', route: { kind: 'settings', view } })}
+            onOpenBots={() => go({ route: { kind: 'bots' } })}
+            onOpenAlerts={() => go({ route: { kind: 'alerts' } })}
           />
         )}
 
-        {route.kind === 'tab' && tab === 'alerts' && (
+        {route.kind === 'bots' && (
+          <BotsScreen
+            onOpen={(view) => go({ tab: 'settings', route: { kind: 'settings', view } })}
+          />
+        )}
+
+        {route.kind === 'alerts' && (
           <AlertsScreen
             presetBase={alertPreset}
             onPresetConsumed={() => setAlertPreset(null)}

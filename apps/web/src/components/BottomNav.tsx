@@ -18,12 +18,14 @@ export function BottomNav({
   onChange,
 }: {
   active: Tab;
-  /** Без торговли вкладка «Позиции» уступает место «Алертам». */
+  /** Пока торговля выключена, «Позиции» ведут на экран «Скоро». */
   trading: boolean;
   onChange: (tab: Tab) => void;
 }) {
   const { t } = useTranslation();
-  const tabs = ALL_TABS.filter((tab) => trading || tab.id !== 'positions');
+  void trading;
+  // Алерты живут плиткой «Уведомления» на панели скринера, а не вкладкой.
+  const tabs = ALL_TABS.filter((tab) => tab.id !== 'alerts');
   return (
     <nav className="nav" style={{ gridTemplateColumns: `repeat(${tabs.length}, 1fr)` }}>
       {tabs.map(({ id, Icon, labelKey }) => (

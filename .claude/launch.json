@@ -21,7 +21,7 @@
       "runtimeExecutable": "cmd",
       "runtimeArgs": [
         "/c",
-        "set PORT=8790&& set DEV_FAKE_USER=1&& set MARKET_MODE=mock&& set TELEGRAM_BOT_TOKEN=&& set DATABASE_URL=&& set ADMIN_TELEGRAM_ID=1&& node apps\\api\\dist\\index.js"
+        "set PORT=8790&& set DEV_FAKE_USER=1&& set MARKET_MODE=mock&& set BOT_DISABLED=1&& set DATABASE_URL=memory&& set ADMIN_TELEGRAM_ID=1&& node apps\\api\\dist\\index.js"
       ],
       "port": 8790
     },

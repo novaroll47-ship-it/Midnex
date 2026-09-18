@@ -24,6 +24,9 @@ import { CoinIcon } from '../components/CoinIcon';
 import { ExchangeLogo } from '../components/ExchangeLogo';
 import { Sheet } from '../components/Sheet';
 import {
+  BellIcon,
+  BoltIcon,
+  ChartIcon,
   CheckIcon,
   ChevronRightIcon,
   ClockIcon,
@@ -68,7 +71,10 @@ const DEFAULT_EXTRA: ExtraFilters = {
 interface Props {
   onOpenSubscription: () => void;
   subscription?: SubscriptionInfo;
-  onOpenBot: (view: 'botSpread' | 'botFunding') => void;
+  /** Плитка «Боты» — экран со списком ботов. */
+  onOpenBots: () => void;
+  /** Плитка «Уведомления» — экран алертов. */
+  onOpenAlerts: () => void;
   onOpenCoin: (base: string) => void;
   plan: keyof typeof PLAN_WATCHLIST_LIMIT;
   /** Без торговли закреплённые монеты — избранное без лимитов тарифа. */
@@ -82,7 +88,8 @@ interface Props {
 export function ScreenerScreen({
   onOpenSubscription,
   subscription,
-  onOpenBot,
+  onOpenBots,
+  onOpenAlerts,
   onOpenCoin,
   plan,
   trading,
@@ -246,41 +253,42 @@ export function ScreenerScreen({
             </span>
           </button>
 
-          {/* Боты: пока не запущены — серые, «Скоро»; «Настроить» открывает их экраны. */}
-          <div className="panel__bot">
-            <div>
-              <div className="panel__status">
-                <i className="panel__dot panel__dot--off" />
-                {t('bots.spreadName')}
-              </div>
-              <div className="panel__sub">{t('bots.spreadPanelSub')}</div>
+          {/* Плитки: боты и уведомления слева, сводные цифры справа. */}
+          <div className="panel__grid">
+            <div className="panel__tiles">
+              <button type="button" className="tile" data-tour="bots-tile" onClick={onOpenBots}>
+                <span className="tile__icon">
+                  <BoltIcon size={16} />
+                </span>
+                <span className="tile__text">
+                  <span className="tile__title">{t('screener.tileBots')}</span>
+                  <span className="tile__sub">{t('screener.tileBotsSub', { count: 2 })}</span>
+                </span>
+              </button>
+              <button type="button" className="tile" data-tour="alerts-tile" onClick={onOpenAlerts}>
+                <span className="tile__icon">
+                  <BellIcon size={16} />
+                </span>
+                <span className="tile__text">
+                  <span className="tile__title">{t('screener.tileAlerts')}</span>
+                  <span className="tile__sub">{t('screener.configure')}</span>
+                </span>
+              </button>
             </div>
-            <button className="panel__btn" type="button" onClick={() => onOpenBot('botSpread')}>
-              {t('screener.configure')}
-            </button>
-          </div>
-          <div className="panel__bot">
-            <div>
-              <div className="panel__status">
-                <i className="panel__dot panel__dot--off" />
-                {t('bots.fundingName')}
+            <div className="panel__statcard">
+              <span className="tile__icon">
+                <ChartIcon size={18} />
+              </span>
+              <div className="panel__stat">
+                <div className="panel__value num">{data?.opportunities ?? '—'}</div>
+                <div className="panel__label">{t('screener.opportunities')}</div>
               </div>
-              <div className="panel__sub">{t('bots.fundingPanelSub')}</div>
-            </div>
-            <button className="panel__btn" type="button" onClick={() => onOpenBot('botFunding')}>
-              {t('screener.configure')}
-            </button>
-          </div>
-          <div className="panel__stats">
-            <div className="panel__stat">
-              <div className="panel__value num">{data?.opportunities ?? '—'}</div>
-              <div className="panel__label">{t('screener.opportunities')}</div>
-            </div>
-            <div className="panel__stat">
-              <div className="panel__value panel__value--green num">
-                {data ? formatPct(data.avgSpreadPct) : '—'}
+              <div className="panel__stat">
+                <div className="panel__value panel__value--green num">
+                  {data ? formatPct(data.avgSpreadPct) : '—'}
+                </div>
+                <div className="panel__label">{t('screener.avgSpreadLower')}</div>
               </div>
-              <div className="panel__label">{t('screener.avgSpreadLower')}</div>
             </div>
           </div>
         </section>

@@ -30,7 +30,8 @@ export type {
 
 export async function createRepo(log: FastifyBaseLogger): Promise<Repo> {
   const url = process.env.DATABASE_URL?.trim();
-  if (!url) {
+  // DATABASE_URL=memory — явно без базы (dev-экземпляр не должен трогать прод-данные).
+  if (!url || url === 'memory') {
     log.warn('хранилище: DATABASE_URL не задан — данные живут в памяти и пропадут при перезапуске');
     return new MemoryRepo();
   }

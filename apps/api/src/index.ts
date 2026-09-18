@@ -1161,7 +1161,9 @@ app.log.info(
 
 // Бот живёт в этом же процессе: пока нагрузка — одно long-polling соединение,
 // отдельный сервис только добавил бы точку отказа.
-if (BOT_TOKEN) {
+// BOT_DISABLED=1 — для dev-экземпляра рядом с продом: два опроса одного
+// токена конфликтуют (Telegram отдаёт 409), и прод-бот замолкает.
+if (BOT_TOKEN && process.env.BOT_DISABLED !== '1') {
   bot = startBot({
     token: BOT_TOKEN,
     publicUrl: process.env.PUBLIC_URL,

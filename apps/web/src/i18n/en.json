@@ -106,7 +106,10 @@
       "netUnknown": "net {{value}} excluding funding"
     },
     "venueRemove": "Remove {{name}} from filter",
-    "venuesActive": "spread among selected"
+    "venuesActive": "spread among selected",
+    "tileBots": "Bots",
+    "tileBotsSub": "{{count}} soon",
+    "tileAlerts": "Notifications"
   },
   "positions": {
     "title": "Positions",
@@ -539,7 +542,8 @@
     "size": "Size",
     "fundingLeverageSub": "Low leverage: the position is long-lived, liquidation is unacceptable",
     "maxPositions": "Max positions at once",
-    "notifyPayout": "Funding payout received"
+    "notifyPayout": "Funding payout received",
+    "screenHint": "Trading bots arrive after real-trade testing. You can already look at the settings."
   },
   "chart": {
     "title": "Spread history",

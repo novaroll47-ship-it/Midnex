@@ -37,7 +37,7 @@ export const TOUR_MODULES: TourModule[] = [
       { target: '[data-tour="filters"]', key: 'filters', tab: 'screener' },
       { target: '[data-tour="sort"]', key: 'sort', tab: 'screener' },
       { target: '[data-tour="row"]', key: 'row', tab: 'screener' },
-      { target: '[data-tour="nav-alerts"]', key: 'alertsTab', tab: 'screener' },
+      { target: '[data-tour="alerts-tile"]', key: 'alertsTab', tab: 'screener' },
     ],
   },
   {
