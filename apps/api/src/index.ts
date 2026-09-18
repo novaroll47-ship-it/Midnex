@@ -382,7 +382,13 @@ app.get('/api/coin/:base', async (req, reply) => {
   if (!(await billing.hasAccess(req.state!.userId))) {
     return reply.code(402).send({ error: 'subscription required' });
   }
-  const detail = market.coinDetail(base);
+  const q = req.query as { venues?: string };
+  const valid = new Set(EXCHANGES.map((e) => e.id as string));
+  const venues = (q.venues ?? '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter((v): v is ExchangeId => valid.has(v));
+  const detail = market.coinDetail(base, venues.length >= 2 ? venues : undefined);
   if (!detail) return reply.code(404).send({ error: 'not found' });
   return detail;
 });
@@ -438,13 +444,33 @@ app.get('/api/history/:base', async (req, reply) => {
       cur.samples += m.samples;
     }
   }
-  return {
-    base: canonical,
-    tf,
-    from,
-    to,
-    candles: [...best.values()].sort((a, b) => a.ts - b.ts),
-  };
+  let candles = [...best.values()].sort((a, b) => a.ts - b.ts);
+  // Дыры (процесс не работал) на 1m/5m закрываем часовыми свечами — они
+  // есть за полгода благодаря backfill. Помечаем реконструкцией: это
+  // грубее, и на графике такой участок идёт пунктиром.
+  if (tf !== '1h' && candles.length < Math.floor((to - from) / tfMs) * 0.9) {
+    const hourly = history.queryCandles(canonical, '1h', Math.floor(from / 3_600_000) * 3_600_000, to);
+    const bestHour = new Map<number, (typeof hourly)[number]>();
+    for (const c of hourly) {
+      const cur = bestHour.get(c.ts);
+      if (!cur || c.high > cur.high) bestHour.set(c.ts, c);
+    }
+    const gapMs = tfMs * 3;
+    const filled: typeof candles = [];
+    let prevTs = from - gapMs;
+    const edges = [...candles, { ts: to } as (typeof candles)[number]];
+    for (const c of edges) {
+      if (c.ts - prevTs > gapMs) {
+        for (const h of bestHour.values()) {
+          if (h.ts > prevTs && h.ts + 3_600_000 <= c.ts) filled.push({ ...h, source: 'reconstructed' });
+        }
+      }
+      if (c.ts !== to) filled.push(c);
+      prevTs = c.ts;
+    }
+    candles = filled.sort((a, b) => a.ts - b.ts);
+  }
+  return { base: canonical, tf, from, to, candles };
 });
 
 /**

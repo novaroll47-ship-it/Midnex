@@ -76,16 +76,34 @@ export function SpreadChart({ base }: { base: string }) {
   } else {
     const from = data.from;
     const to = data.to;
-    const lo = Math.min(...candles.map((c) => c.close));
-    const hi = Math.max(...candles.map((c) => c.close));
+    // Шкала — по 98-му процентилю: один всплеск от замершей котировки не
+    // должен сплющивать весь график. Что выше — прижимается к верхнему краю.
+    const closes = candles.map((c) => c.close).sort((a, b) => a - b);
+    const lo = closes[0]!;
+    const realHi = closes[closes.length - 1]!;
+    const p98 = closes[Math.min(closes.length - 1, Math.floor(closes.length * 0.98))]!;
+    const hi = realHi > p98 * 1.5 ? p98 * 1.5 : realHi;
+    const clipped = hi < realHi;
     const span = hi - lo || Math.abs(hi) || 1;
     const x = (ts: number) => PAD_X + ((ts - from) / (to - from)) * (WIDTH - PAD_X * 2);
-    const y = (v: number) => HEIGHT - PAD_Y - ((v - lo) / span) * (HEIGHT - PAD_Y * 2);
+    const y = (v: number) =>
+      HEIGHT - PAD_Y - ((Math.min(v, hi) - lo) / span) * (HEIGHT - PAD_Y * 2);
 
     const pts = candles.map((c) => ({ x: x(c.ts), y: y(c.close), c }));
     const tfMs = RANGE[range].tf === '1m' ? 60_000 : RANGE[range].tf === '5m' ? 300_000 : 3_600_000;
     // Дыра в данных (процесс не работал) — разрыв, а не прямая через полночь.
-    const isGap = (i: number) => i > 0 && pts[i]!.c.ts - pts[i - 1]!.c.ts > tfMs * 3;
+    // Участки, восстановленные по часовым свечам, идут с часовым шагом —
+    // для них допустимый промежуток шире.
+    const isGap = (i: number) => {
+      if (i === 0) return false;
+      const a = pts[i - 1]!.c;
+      const b = pts[i]!.c;
+      const step =
+        a.source === 'reconstructed' || b.source === 'reconstructed'
+          ? Math.max(tfMs, 3_600_000)
+          : tfMs;
+      return b.ts - a.ts > step * 3;
+    };
 
     // Заливка — по непрерывным кускам, линия — ещё и по источнику: живые —
     // сплошные, реконструированные по свечам — пунктир.
@@ -173,7 +191,14 @@ export function SpreadChart({ base }: { base: string }) {
                   strokeWidth={1}
                   strokeDasharray="2 3"
                 />
-                <circle cx={h.x} cy={h.y} r={3.5} fill="var(--green)" stroke="var(--bg)" strokeWidth={1.5} />
+                <circle
+                  cx={h.x}
+                  cy={h.y}
+                  r={3.5}
+                  fill="var(--green)"
+                  stroke="var(--bg)"
+                  strokeWidth={1.5}
+                />
               </>
             )}
           </svg>
@@ -203,7 +228,8 @@ export function SpreadChart({ base }: { base: string }) {
             {t('chart.min')} {formatPct(lo)}
           </span>
           <span>
-            {t('chart.max')} {formatPct(hi)}
+            {t('chart.max')} {formatPct(realHi)}
+            {clipped ? ' ↑' : ''}
           </span>
           <span>
             {t('chart.last')} {formatPct(candles[candles.length - 1]!.close)}
@@ -241,7 +267,13 @@ export function SpreadChart({ base }: { base: string }) {
 /** Подписи оси времени: 4–5 круглых отметок внутри диапазона. */
 function timeTicks(from: number, to: number, range: Range): { ts: number; label: string }[] {
   const step =
-    range === '1h' ? 15 * 60_000 : range === '24h' ? 6 * 3_600_000 : range === '7d' ? 86_400_000 : 7 * 86_400_000;
+    range === '1h'
+      ? 15 * 60_000
+      : range === '24h'
+        ? 6 * 3_600_000
+        : range === '7d'
+          ? 86_400_000
+          : 7 * 86_400_000;
   const out: { ts: number; label: string }[] = [];
   const offset = new Date().getTimezoneOffset() * 60_000;
   // Круглые отметки — в местном времени, чтобы «00:00» стоял на полуночи.

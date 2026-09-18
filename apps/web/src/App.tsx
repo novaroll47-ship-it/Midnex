@@ -3,12 +3,14 @@ import { useTranslation } from 'react-i18next';
 
 import { AppHeader } from './components/AppHeader';
 import { BottomNav, type Tab } from './components/BottomNav';
-import { api } from './lib/api';
+import { api, ApiError } from './lib/api';
 import { backButton, initTelegram, isBrowserFallback, isTelegram } from './lib/telegram';
 import { initTheme } from './lib/theme';
+import { primeCache } from './lib/usePolling';
 import { useSettings } from './lib/useSettings';
 import { CoinDetailScreen } from './screens/CoinDetailScreen';
 import { CoachMarks } from './components/CoachMarks';
+import { Splash } from './components/Splash';
 import { pendingModules } from './onboarding/modules';
 import { AlertsScreen } from './screens/AlertsScreen';
 import { ComingSoonScreen } from './screens/ComingSoonScreen';
@@ -31,12 +33,68 @@ type Route =
   | { kind: 'position'; id: string; view: PositionView }
   | { kind: 'coin'; base: string };
 
+interface NavState {
+  tab: Tab;
+  route: Route;
+}
+
+const HISTORY_MAX = 30;
+
 export function App() {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<Tab>('screener');
-  const [route, setRoute] = useState<Route>({ kind: 'tab' });
+  // Вкладка и экран — одно состояние, плюс история переходов: «назад» ведёт
+  // туда, откуда пришли, будь то подэкран или другая вкладка.
+  const [nav, setNav] = useState<NavState>({ tab: 'screener', route: { kind: 'tab' } });
+  // Текущее состояние в ref: история пишется вне updater-функции, которую
+  // React в dev-режиме вызывает дважды.
+  const navRef = useRef(nav);
+  navRef.current = nav;
+  const historyRef = useRef<NavState[]>([]);
+  const [historyLen, setHistoryLen] = useState(0);
+  const { tab, route } = nav;
+  const go = useCallback((next: Partial<NavState>) => {
+    const cur = navRef.current;
+    const target = { ...cur, ...next };
+    if (target.tab === cur.tab && JSON.stringify(target.route) === JSON.stringify(cur.route))
+      return;
+    historyRef.current.push(cur);
+    if (historyRef.current.length > HISTORY_MAX) historyRef.current.shift();
+    setHistoryLen(historyRef.current.length);
+    navRef.current = target;
+    setNav(target);
+  }, []);
+  const setTab = useCallback((next: Tab) => go({ tab: next, route: { kind: 'tab' } }), [go]);
+  const setRoute = useCallback((next: Route) => go({ route: next }), [go]);
   const scrollRef = useRef<HTMLElement>(null);
   const settings = useSettings();
+
+  // Загрузочный экран: настройки и первый снимок скринера — потом интерфейс.
+  const [primed, setPrimed] = useState(false);
+  const [primeError, setPrimeError] = useState<string | null>(null);
+  const [primeAttempt, setPrimeAttempt] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    setPrimeError(null);
+    api
+      .screener()
+      .then((snap) => {
+        if (!alive) return;
+        primeCache('screener', snap);
+        setPrimed(true);
+      })
+      .catch((err: unknown) => {
+        if (!alive) return;
+        setPrimeError(
+          err instanceof ApiError && err.status === 401
+            ? t('app.unauthorized')
+            : t('app.loadError'),
+        );
+      });
+    return () => {
+      alive = false;
+    };
+  }, [primeAttempt, t]);
+  const ready = primed && settings.data !== null;
 
   // Обход авторизации включается на сервере, а не в браузере, поэтому
   // спрашиваем сервер: иначе плашка врёт про то, чего нет. /api/health —
@@ -52,14 +110,22 @@ export function App() {
       .catch(() => setDevBypass(null));
   }, []);
 
-  const goBack = useCallback(() => setRoute({ kind: 'tab' }), []);
+  const goBack = useCallback(() => {
+    const prev = historyRef.current.pop();
+    setHistoryLen(historyRef.current.length);
+    const target = prev ?? { ...navRef.current, route: { kind: 'tab' as const } };
+    navRef.current = target;
+    setNav(target);
+  }, []);
+  const canGoBack = historyLen > 0 || route.kind !== 'tab';
 
-  // Аппаратная кнопка «назад» Telegram должна закрывать подэкран, а не всё
-  // приложение — иначе пользователь вылетает из мини-аппа одним нажатием.
+  // Кнопка «назад» Telegram ведёт по истории: закрывает подэкран или
+  // возвращает на прошлую вкладку — и не выкидывает из мини-аппа, пока
+  // есть куда вернуться.
   useEffect(() => {
-    if (route.kind === 'tab') return backButton(false);
+    if (!canGoBack) return backButton(false);
     return backButton(true, goBack);
-  }, [route.kind, goBack]);
+  }, [canGoBack, goBack]);
 
   // Каждый экран открывается сверху, а не там, где его оставили в прошлый раз.
   useEffect(() => {
@@ -67,7 +133,6 @@ export function App() {
   }, [tab, route]);
 
   function switchTab(next: Tab) {
-    setRoute({ kind: 'tab' });
     setTab(next);
   }
 
@@ -98,14 +163,27 @@ export function App() {
     if (!completedModules || route.kind !== 'tab') return null;
     return pendingModules(completedModules)[0] ?? null;
   }, [replayModule, completedModules, route.kind]);
-  const switchTabForTour = useCallback((next: Tab) => {
-    setRoute({ kind: 'tab' });
-    setTab(next);
-  }, []);
+  const switchTabForTour = useCallback((next: Tab) => setTab(next), [setTab]);
+
+  if (!ready) {
+    const steps = Number(settings.data !== null) + Number(primed);
+    return (
+      <div className="app">
+        <Splash
+          progress={0.15 + (steps / 2) * 0.85}
+          error={primeError ?? (settings.error ? t('app.loadError') : null)}
+          onRetry={() => {
+            setPrimeAttempt((n) => n + 1);
+            settings.reload();
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="app">
-      <AppHeader title={headerTitle} onBack={route.kind === 'tab' ? undefined : goBack} />
+      <AppHeader title={headerTitle} onBack={canGoBack ? goBack : undefined} />
 
       <main
         className={`app__body${fixedLayout ? ' app__body--fixed' : ''}${
@@ -133,7 +211,6 @@ export function App() {
             base={route.base}
             onAlert={(base) => {
               setAlertPreset(base);
-              setRoute({ kind: 'tab' });
               setTab('alerts');
             }}
           />
@@ -149,14 +226,10 @@ export function App() {
             view={settings.data?.ui.view ?? 'list'}
             onSetView={(view) => settings.setUi({ view })}
             onOpenCoin={(base) => setRoute({ kind: 'coin', base })}
-            onOpenSubscription={() => {
-              setTab('settings');
-              setRoute({ kind: 'settings', view: 'subscription' });
-            }}
-            onOpenBot={(view) => {
-              setTab('settings');
-              setRoute({ kind: 'settings', view });
-            }}
+            onOpenSubscription={() =>
+              go({ tab: 'settings', route: { kind: 'settings', view: 'subscription' } })
+            }
+            onOpenBot={(view) => go({ tab: 'settings', route: { kind: 'settings', view } })}
           />
         )}
 
@@ -164,10 +237,9 @@ export function App() {
           <AlertsScreen
             presetBase={alertPreset}
             onPresetConsumed={() => setAlertPreset(null)}
-            onOpenSubscription={() => {
-              setTab('settings');
-              setRoute({ kind: 'settings', view: 'subscription' });
-            }}
+            onOpenSubscription={() =>
+              go({ tab: 'settings', route: { kind: 'settings', view: 'subscription' } })
+            }
           />
         )}
 
@@ -188,7 +260,7 @@ export function App() {
             trading={trading}
             onOpen={(view) => setRoute({ kind: 'settings', view })}
             onReplayTour={(id) => {
-              setRoute({ kind: 'tab' });
+              setTab('screener');
               setReplayModule(id);
             }}
           />

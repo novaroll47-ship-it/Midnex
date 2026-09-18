@@ -27,7 +27,7 @@ export interface MarketSource {
   /** Данные уже живые, а не мок. */
   live(): boolean;
   snapshot(minSpreadPct: number, venues?: ExchangeId[]): ScreenerSnapshot;
-  coinDetail(base: string): CoinDetail | undefined;
+  coinDetail(base: string, venues?: ExchangeId[]): CoinDetail | undefined;
   status(): EngineStatus | null;
   /** Сам движок — для сверки ног и фоновых задач; null в мок-режиме. */
   engine: MarketEngine | null;
@@ -99,7 +99,7 @@ export function createMarketSource(log: FastifyBaseLogger, hooks: MarketHooks = 
     live: isLive,
     snapshot: (min, venues) =>
       isLive() ? engine.snapshot(min, venues) : mock.screenerSnapshot(min, venues),
-    coinDetail: (base) => (isLive() ? engine.coinDetail(base) : mock.coinDetail(base)),
+    coinDetail: (base, venues) => (isLive() ? engine.coinDetail(base, venues) : mock.coinDetail(base)),
     status: () => engine.status(),
     engine,
     stop: () => engine.stop(),

@@ -35,7 +35,9 @@ export function FundingHistory({ base }: { base: string }) {
         setData(r);
         // Первой раскрываем биржу, где шорт получает больше всего.
         const top = [...r.venues].sort((a, b) => b.shortPct - a.shortPct)[0];
-        setOpen((cur) => (cur && r.venues.some((v) => v.exchange === cur) ? cur : (top?.exchange ?? null)));
+        setOpen((cur) =>
+          cur && r.venues.some((v) => v.exchange === cur) ? cur : (top?.exchange ?? null),
+        );
       })
       .catch(() => alive && setError(true));
     return () => {
@@ -72,7 +74,10 @@ export function FundingHistory({ base }: { base: string }) {
         {venues.map((v) => {
           const expanded = open === v.exchange;
           return (
-            <div key={v.exchange} className={`funding-venue${expanded ? ' funding-venue--open' : ''}`}>
+            <div
+              key={v.exchange}
+              className={`funding-venue${expanded ? ' funding-venue--open' : ''}`}
+            >
               <button
                 type="button"
                 className="list__item"
@@ -99,9 +104,18 @@ export function FundingHistory({ base }: { base: string }) {
                     {t('funding.short')} {formatSignedPct(v.shortPct, 2)}
                   </span>
                 </span>
-                <ChevronDownIcon size={14} className={`funding-venue__chevron${expanded ? ' funding-venue__chevron--open' : ''}`} />
+                <ChevronDownIcon
+                  size={14}
+                  className={`funding-venue__chevron${expanded ? ' funding-venue__chevron--open' : ''}`}
+                />
               </button>
-              {expanded && data && <Breakdown exchange={v.exchange} bucket={data.breakdown.bucket} rows={data.breakdown.rows} />}
+              {expanded && data && (
+                <Breakdown
+                  exchange={v.exchange}
+                  bucket={data.breakdown.bucket}
+                  rows={data.breakdown.rows}
+                />
+              )}
             </div>
           );
         })}
@@ -187,7 +201,10 @@ function fmtBucket(ts: number, bucket: FundingBucket): string {
     return `${day} ${d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
   }
   if (bucket === 'week') {
-    const end = new Date(ts + 6 * 86_400_000).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+    const end = new Date(ts + 6 * 86_400_000).toLocaleDateString('ru-RU', {
+      day: '2-digit',
+      month: '2-digit',
+    });
     return `${day} – ${end}`;
   }
   return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', weekday: 'short' });

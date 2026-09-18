@@ -21,6 +21,11 @@ export interface PollingState<T> {
  */
 const lastByKey = new Map<string, unknown>();
 
+/** Положить в кеш ответ, полученный до монтирования экрана (загрузочный экран). */
+export function primeCache<T>(key: string, value: T): void {
+  lastByKey.set(key, value);
+}
+
 export function usePolling<T>(
   fetcher: () => Promise<T>,
   intervalMs: number,

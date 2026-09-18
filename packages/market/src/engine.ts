@@ -590,10 +590,12 @@ export class MarketEngine {
     return value;
   }
 
-  coinDetail(base: string): CoinDetail | undefined {
+  coinDetail(base: string, filter?: ExchangeId[]): CoinDetail | undefined {
     const canonical = this.bases().find((b) => b.toLowerCase() === base.toLowerCase());
     if (!canonical) return undefined;
-    const row = this.buildRow(canonical);
+    // Лучшая пара — среди выбранных бирж, а список цен — по всем: видеть
+    // остальные полезно, даже если торговать на них не собираешься.
+    const row = this.buildRow(canonical, filter) ?? this.buildRow(canonical);
     if (!row) return undefined;
 
     const now = Date.now();

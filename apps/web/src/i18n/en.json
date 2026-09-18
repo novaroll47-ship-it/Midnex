@@ -12,7 +12,9 @@
     "working": "Working…",
     "needTelegram": "This is a Telegram mini app. Open it with the MIDNEX button in the @midnexbot chat — outside Telegram the data is unavailable.",
     "unauthorized": "No access: the app only opens from inside Telegram.",
-    "apply": "Apply"
+    "apply": "Apply",
+    "retry": "Retry",
+    "loadingData": "Loading markets…"
   },
   "nav": {
     "screener": "Screener",
@@ -102,7 +104,9 @@
       "short": "Short",
       "net": "net {{value}} after fees",
       "netUnknown": "net {{value}} excluding funding"
-    }
+    },
+    "venueRemove": "Remove {{name}} from filter",
+    "venuesActive": "spread among selected"
   },
   "positions": {
     "title": "Positions",
@@ -381,7 +385,8 @@
     "dearest": "dearest",
     "funding": "funding",
     "updatedAt": "Updated at {{time}}",
-    "fundingNote": "funding is shown per payment period, usually 8 hours"
+    "fundingNote": "funding is shown per payment period, usually 8 hours",
+    "venuesTitle": "Exchanges to compare"
   },
   "md": {
     "source": "Data source",

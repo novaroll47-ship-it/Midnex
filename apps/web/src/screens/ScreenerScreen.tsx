@@ -23,9 +23,19 @@ import { Switch } from '@/components/ui/switch';
 import { CoinIcon } from '../components/CoinIcon';
 import { ExchangeLogo } from '../components/ExchangeLogo';
 import { Sheet } from '../components/Sheet';
-import { CheckIcon, ChevronRightIcon, ClockIcon, GridIcon, ListIcon, SearchIcon, SlidersIcon, XIcon } from '../icons';
+import {
+  CheckIcon,
+  ChevronRightIcon,
+  ClockIcon,
+  GridIcon,
+  ListIcon,
+  SearchIcon,
+  SlidersIcon,
+  XIcon,
+} from '../icons';
 import { ApiError, api } from '../lib/api';
 import { haptic } from '../lib/telegram';
+import { loadVenues, saveVenues } from '../lib/venues';
 import { usePolling } from '../lib/usePolling';
 
 type SortKey = 'spread' | 'net' | 'name' | 'price';
@@ -64,24 +74,9 @@ interface Props {
   /** Без торговли закреплённые монеты — избранное без лимитов тарифа. */
   trading: boolean;
   minSpreadPct?: number;
-  refreshMs: number;  /** Вид списка: строки или карточки — личная настройка, хранится на сервере. */
+  refreshMs: number; /** Вид списка: строки или карточки — личная настройка, хранится на сервере. */
   view: 'list' | 'cards';
   onSetView: (view: 'list' | 'cards') => void;
-}
-
-const VENUES_KEY = 'midnex.screener.venues';
-
-function loadVenues(): ExchangeId[] {
-  try {
-    const raw = localStorage.getItem(VENUES_KEY);
-    const ids = new Set<string>(EXCHANGES.map((e) => e.id));
-    const list = raw ? (JSON.parse(raw) as unknown) : [];
-    if (!Array.isArray(list)) return [];
-    const out = list.filter((v): v is ExchangeId => typeof v === 'string' && ids.has(v));
-    return out.length >= 2 && out.length < EXCHANGES.length ? out : [];
-  } catch {
-    return [];
-  }
 }
 
 export function ScreenerScreen({
@@ -104,11 +99,7 @@ export function ScreenerScreen({
   const [venues, setVenuesState] = useState<ExchangeId[]>(() => loadVenues());
   const setVenues = (next: ExchangeId[]) => {
     setVenuesState(next);
-    try {
-      localStorage.setItem(VENUES_KEY, JSON.stringify(next));
-    } catch {
-      // Хранилище недоступно — фильтр живёт до перезапуска.
-    }
+    saveVenues(next);
   };
   const [extra, setExtra] = useState<ExtraFilters>(DEFAULT_EXTRA);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -327,6 +318,27 @@ export function ScreenerScreen({
             {extraCount > 0 && <span className="icon-btn-square__badge">{extraCount}</span>}
           </button>
         </section>
+
+        {venues.length > 0 && (
+          <div className="venue-chips" data-tour="venue-chips">
+            {venues.map((id) => (
+              <button
+                key={id}
+                type="button"
+                className="chip-mini chip-mini--tap"
+                aria-label={t('screener.venueRemove', { name: exchangeName(id) })}
+                onClick={() => {
+                  haptic('tap');
+                  const next = venues.filter((v) => v !== id);
+                  setVenues(next.length >= 2 ? next : []);
+                }}
+              >
+                <ExchangeLogo id={id} size={11} /> {exchangeName(id)} <XIcon size={10} />
+              </button>
+            ))}
+            <span className="venue-chips__hint">{t('screener.venuesActive')}</span>
+          </div>
+        )}
 
         <div className="list-head">
           <span className="list-head__title">{t('screener.spreadsNow')}</span>
@@ -732,7 +744,9 @@ function CoinCard({
 }) {
   const { t } = useTranslation();
   const decimals = priceDecimals(row.longPrice);
-  const heldMin = row.heldSinceAt ? Math.max(0, Math.floor((Date.now() - row.heldSinceAt) / 60_000)) : null;
+  const heldMin = row.heldSinceAt
+    ? Math.max(0, Math.floor((Date.now() - row.heldSinceAt) / 60_000))
+    : null;
   const cycles = row.cyclesToday ?? 0;
   const cycleText = row.isNew
     ? t('screener.card.listing')
@@ -802,7 +816,9 @@ function CoinCard({
           {exchangeName(row.shortExchange)} <b>{formatPrice(row.shortPrice, decimals)}</b>
         </span>
       </div>
-      <div className={`coin-card__net num${row.netPct > 0 && !row.suspect ? ' coin-card__net--good' : ''}`}>
+      <div
+        className={`coin-card__net num${row.netPct > 0 && !row.suspect ? ' coin-card__net--good' : ''}`}
+      >
         {row.suspect
           ? t('md.suspect')
           : t(row.fundingKnown === false ? 'screener.card.netUnknown' : 'screener.card.net', {

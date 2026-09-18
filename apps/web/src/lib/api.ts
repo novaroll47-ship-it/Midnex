@@ -272,7 +272,8 @@ export const api = {
 
   screener: (minSpread?: number, venues?: string) =>
     get<ScreenerSnapshot>('/api/screener', { minSpread, venues }),
-  coin: (base: string) => get<CoinDetail>(`/api/coin/${encodeURIComponent(base)}`),
+  coin: (base: string, venues?: string) =>
+    get<CoinDetail>(`/api/coin/${encodeURIComponent(base)}`, { venues }),
 
   settings: () => get<SettingsResponse>('/api/settings'),
   patchBot: (body: Partial<BotSettings>) =>

@@ -6,6 +6,7 @@
  * останется после комиссий и фандинга.
  */
 import {
+  EXCHANGES,
   exchange,
   formatClock,
   formatPct,
@@ -13,9 +14,10 @@ import {
   formatSignedPct,
   priceDecimals,
   type CoinDetail,
+  type ExchangeId,
   type VenueQuote,
 } from '@cs/shared';
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { CoinIcon } from '../components/CoinIcon';
@@ -25,6 +27,8 @@ import { SpreadChart } from '../components/SpreadChart';
 import { InfoRow, Section } from '../components/Form';
 import { ArrowDownIcon, ArrowUpIcon, BellIcon, ClockIcon } from '../icons';
 import { api } from '../lib/api';
+import { haptic } from '../lib/telegram';
+import { loadVenues } from '../lib/venues';
 import { usePolling } from '../lib/usePolling';
 
 export function CoinDetailScreen({
@@ -35,7 +39,11 @@ export function CoinDetailScreen({
   onAlert?: (base: string) => void;
 }) {
   const { t } = useTranslation();
-  const fetcher = useCallback(() => api.coin(base), [base]);
+  // Биржи для лучшей пары: по умолчанию — как в фильтре скринера; здесь
+  // можно переключать, не трогая общий фильтр.
+  const [venues, setVenues] = useState<ExchangeId[]>(() => loadVenues());
+  const venueKey = venues.join(',');
+  const fetcher = useCallback(() => api.coin(base, venueKey || undefined), [base, venueKey]);
   const { data, error } = usePolling<CoinDetail>(fetcher, 1000);
 
   if (error) return <div className="card empty">{t('app.loadError')}</div>;
@@ -65,6 +73,44 @@ export function CoinDetailScreen({
       </button>
 
       <SpreadChart base={data.base} />
+
+      <div className="section-label">{t('coin.venuesTitle')}</div>
+      <div className="venue-chips venue-chips--wrap">
+        {[...data.quotes]
+          // Порядок фиксированный, иначе чипы перестраиваются с каждой ценой.
+          .sort(
+            (a, b) =>
+              EXCHANGES.findIndex((e) => e.id === a.exchange) -
+              EXCHANGES.findIndex((e) => e.id === b.exchange),
+          )
+          .map((q) => {
+            const on = venues.length === 0 || venues.includes(q.exchange);
+            return (
+              <button
+                key={q.exchange}
+                type="button"
+                className={`chip-mini chip-mini--tap${on ? ' chip-mini--on' : ''}`}
+                aria-pressed={on}
+                onClick={() => {
+                  const all = data.quotes.map((x) => x.exchange);
+                  const cur = venues.length === 0 ? all : venues.filter((v) => all.includes(v));
+                  let next: ExchangeId[];
+                  if (cur.includes(q.exchange)) {
+                    if (cur.length <= 2) {
+                      haptic('warning');
+                      return;
+                    }
+                    next = cur.filter((v) => v !== q.exchange);
+                  } else next = [...cur, q.exchange];
+                  haptic('tap');
+                  setVenues(next.length >= all.length ? [] : next);
+                }}
+              >
+                <ExchangeLogo id={q.exchange} size={11} /> {exchange(q.exchange).name}
+              </button>
+            );
+          })}
+      </div>
 
       <Section title={t('coin.bestPair')} hint={t('coin.bestPairHint')}>
         <InfoRow

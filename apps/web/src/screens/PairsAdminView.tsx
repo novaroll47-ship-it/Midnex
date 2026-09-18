@@ -56,7 +56,11 @@ export function PairsAdminView() {
     );
   }, [pairs, query]);
 
-  async function act(p: PairView, status: 'verified' | 'rejected' | 'candidate', multiplier?: number) {
+  async function act(
+    p: PairView,
+    status: 'verified' | 'rejected' | 'candidate',
+    multiplier?: number,
+  ) {
     const key = pairId(p);
     setBusy(key);
     try {
@@ -113,7 +117,9 @@ export function PairsAdminView() {
 
       {pairs === null && <div className="empty">{t('app.loading')}</div>}
       {pairs !== null && visible.length === 0 && (
-        <div className="card empty">{tab === 'anomalies' ? t('pairs.emptyAnomalies') : t('pairs.empty')}</div>
+        <div className="card empty">
+          {tab === 'anomalies' ? t('pairs.emptyAnomalies') : t('pairs.empty')}
+        </div>
       )}
 
       {visible.length > 0 && (
@@ -135,7 +141,8 @@ function pairId(p: PairView): string {
 }
 
 function Cell({ label, value, tone }: { label: string; value: string; tone?: 'green' | 'yellow' }) {
-  const color = tone === 'green' ? 'var(--green)' : tone === 'yellow' ? 'var(--yellow)' : 'var(--text)';
+  const color =
+    tone === 'green' ? 'var(--green)' : tone === 'yellow' ? 'var(--yellow)' : 'var(--text)';
   return (
     <div className="summary__cell">
       <div className="summary__label">{label}</div>
@@ -158,7 +165,9 @@ function PairRow({
   const { t } = useTranslation();
   const ratio = p.liveRatio ?? p.ratio;
   // Множитель предзаполняем округлённым отношением — обычно это и есть ответ.
-  const [mult, setMult] = useState(() => (p.status === 'verified' ? String(p.multiplier) : suggestMultiplier(ratio)));
+  const [mult, setMult] = useState(() =>
+    p.status === 'verified' ? String(p.multiplier) : suggestMultiplier(ratio),
+  );
   const name = (id: string) => EXCHANGES.find((e) => e.id === id)?.name ?? id;
   const fmt = (v: number | null) => (v === null ? '—' : formatPrice(v, priceDecimals(v)));
 
@@ -185,7 +194,12 @@ function PairRow({
         <div className="pair-row__price num">
           <div>{ratio === null ? '—' : fmtRatio(ratio)}</div>
           {p.externalA && p.externalB && (
-            <div style={{ fontSize: 11, color: p.externalA === p.externalB ? 'var(--green)' : 'var(--red)' }}>
+            <div
+              style={{
+                fontSize: 11,
+                color: p.externalA === p.externalB ? 'var(--green)' : 'var(--red)',
+              }}
+            >
               {p.externalA === p.externalB ? p.externalA : `${p.externalA} ≠ ${p.externalB}`}
             </div>
           )}
@@ -195,7 +209,12 @@ function PairRow({
       <div className="pair-row__actions">
         <label className="pair-row__mult">
           <span>{t('pairs.multiplier')}</span>
-          <input className="num" inputMode="decimal" value={mult} onChange={(e) => setMult(e.target.value)} />
+          <input
+            className="num"
+            inputMode="decimal"
+            value={mult}
+            onChange={(e) => setMult(e.target.value)}
+          />
         </label>
         {p.status !== 'verified' && (
           <Button size="sm" disabled={busy} onClick={() => onAct(p, 'verified', parseMult(mult))}>
@@ -203,12 +222,22 @@ function PairRow({
           </Button>
         )}
         {p.status !== 'rejected' && (
-          <Button size="sm" variant="secondary" disabled={busy} onClick={() => onAct(p, 'rejected')}>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={busy}
+            onClick={() => onAct(p, 'rejected')}
+          >
             {t('pairs.reject')}
           </Button>
         )}
         {p.status !== 'candidate' && (
-          <Button size="sm" variant="secondary" disabled={busy} onClick={() => onAct(p, 'candidate')}>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={busy}
+            onClick={() => onAct(p, 'candidate')}
+          >
             {t('pairs.reset')}
           </Button>
         )}
