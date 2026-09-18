@@ -67,7 +67,7 @@
     "sortName": "По названию",
     "sortPrice": "По цене",
     "resetFilters": "Сбросить",
-    "fundingUnknown": "чист. {{value}} без фанд.",
+    "fundingUnknown": "чист. ≈{{value}}",
     "botActive": "Бот активен",
     "botStopped": "Бот остановлен",
     "configure": "Настроить",

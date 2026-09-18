@@ -2454,3 +2454,22 @@
     text-overflow: ellipsis;
   }
 }
+
+@layer legacy {
+  /* Список никогда не едет вбок: длинная подпись в колонке обрезается, а не растягивает строку. */
+  .screener__list {
+    overflow-x: hidden;
+  }
+
+  .coin-row,
+  .coin-card {
+    overflow: hidden;
+  }
+
+  .spread__net {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+}
