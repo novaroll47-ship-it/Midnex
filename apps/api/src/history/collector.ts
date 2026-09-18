@@ -68,6 +68,12 @@ export class HistoryCollector {
     this.flushMinute(Date.now());
   }
 
+  /** Незакрытая минутная свеча монеты — чтобы график не отставал на минуту. */
+  current(base: string): SpreadCandle | null {
+    const b = this.buckets.get(base);
+    return b ? { ...b.candle } : null;
+  }
+
   /** Биржа перестала давать данные — открыть дыру (одну на биржу). */
   gapOpen(exchange: ExchangeId, reason: GapReason): void {
     if (this.openGaps.has(exchange)) return;

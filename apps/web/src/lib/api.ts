@@ -151,11 +151,20 @@ export interface FundingVenue {
   avgRatePct: number;
 }
 
+export type FundingBucket = 'payout' | 'day' | 'week';
+
+export interface FundingBreakdown {
+  bucket: FundingBucket;
+  /** По каждой корзине времени — сумма ставок по биржам, % (шорт получает, лонг платит). */
+  rows: { ts: number; rates: Partial<Record<ExchangeId, number>> }[];
+}
+
 export interface FundingResponse {
   base: string;
   period: FundingPeriod;
   venues: FundingVenue[];
   best: { longExchange: ExchangeId; shortExchange: ExchangeId; netPct: number } | null;
+  breakdown: FundingBreakdown;
 }
 
 export interface AlertRule {

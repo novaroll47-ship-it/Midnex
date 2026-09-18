@@ -1,12 +1,15 @@
 /**
- * График истории спреда по монете: 1 ч / 24 ч / 7 д.
+ * График истории спреда по монете: 1 ч / 24 ч / 7 д / 30 д.
  *
- * Простой SVG без библиотек: линия по close, тень high–low, подписи
- * минимума и максимума. Реконструированные (по свечам бирж) участки
- * рисуются пунктиром — это приближение, а не измерение.
+ * Простой SVG без библиотек: линия по close на шкале времени, заливка под
+ * ней, подписи минимума и максимума, ось времени. Обновляется каждые 5 с —
+ * правый край живёт вместе со скринером. Палец или курсор на графике
+ * показывает точку: дата, время, спред, разброс внутри свечи и пара бирж.
+ * Реконструированные (по свечам бирж) участки рисуются пунктиром — это
+ * приближение, а не измерение.
  */
-import { formatPct } from '@cs/shared';
-import { useEffect, useState, type ReactNode } from 'react';
+import { EXCHANGES, formatPct } from '@cs/shared';
+import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { api, type HistoryResponse } from '../lib/api';
@@ -20,83 +23,181 @@ const RANGE: Record<Range, { tf: '1m' | '5m' | '1h'; spanMs: number }> = {
   '30d': { tf: '1h', spanMs: 30 * 86_400_000 },
 };
 
+const REFRESH_MS = 5000;
+const WIDTH = 340;
+const HEIGHT = 120;
+const PAD_X = 6;
+const PAD_Y = 8;
+
 export function SpreadChart({ base }: { base: string }) {
   const { t } = useTranslation();
   const [range, setRange] = useState<Range>('24h');
   const [data, setData] = useState<HistoryResponse | null>(null);
   const [error, setError] = useState(false);
+  const [hover, setHover] = useState<number | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
 
   useEffect(() => {
     let alive = true;
     setData(null);
     setError(false);
+    setHover(null);
     const { tf, spanMs } = RANGE[range];
-    const to = Date.now();
-    api
-      .history(base, tf, to - spanMs, to)
-      .then((r) => alive && setData(r))
-      .catch(() => alive && setError(true));
+    const load = () => {
+      if (document.hidden) return;
+      const to = Date.now();
+      api
+        .history(base, tf, to - spanMs, to)
+        .then((r) => {
+          if (!alive) return;
+          setData(r);
+          setError(false);
+        })
+        .catch(() => alive && setError(true));
+    };
+    load();
+    const timer = setInterval(load, REFRESH_MS);
     return () => {
       alive = false;
+      clearInterval(timer);
     };
   }, [base, range]);
 
   const candles = data?.candles ?? [];
-  const width = 340;
-  const height = 120;
-  const pad = 6;
+  const exName = (id: string) => EXCHANGES.find((e) => e.id === id)?.name ?? id;
 
   let body: ReactNode;
-  if (error) {
+  if (error && !data) {
     body = <div className="chart__empty">{t('chart.unavailable')}</div>;
   } else if (!data) {
     body = <div className="chart__empty">{t('app.loading')}</div>;
   } else if (candles.length < 2) {
     body = <div className="chart__empty">{t('chart.noData')}</div>;
   } else {
-    const lo = Math.min(...candles.map((c) => c.low));
-    const hi = Math.max(...candles.map((c) => c.high));
-    const span = hi - lo || 1;
-    const x = (i: number) => pad + (i / (candles.length - 1)) * (width - pad * 2);
-    const y = (v: number) => height - pad - ((v - lo) / span) * (height - pad * 2);
+    const from = data.from;
+    const to = data.to;
+    const lo = Math.min(...candles.map((c) => c.close));
+    const hi = Math.max(...candles.map((c) => c.close));
+    const span = hi - lo || Math.abs(hi) || 1;
+    const x = (ts: number) => PAD_X + ((ts - from) / (to - from)) * (WIDTH - PAD_X * 2);
+    const y = (v: number) => HEIGHT - PAD_Y - ((v - lo) / span) * (HEIGHT - PAD_Y * 2);
 
-    const area =
-      candles.map((c, i) => `${x(i).toFixed(1)},${y(c.high).toFixed(1)}`).join(' ') +
-      ' ' +
-      [...candles]
-        .reverse()
-        .map((c, i) => `${x(candles.length - 1 - i).toFixed(1)},${y(c.low).toFixed(1)}`)
-        .join(' ');
+    const pts = candles.map((c) => ({ x: x(c.ts), y: y(c.close), c }));
+    const tfMs = RANGE[range].tf === '1m' ? 60_000 : RANGE[range].tf === '5m' ? 300_000 : 3_600_000;
+    // Дыра в данных (процесс не работал) — разрыв, а не прямая через полночь.
+    const isGap = (i: number) => i > 0 && pts[i]!.c.ts - pts[i - 1]!.c.ts > tfMs * 3;
 
-    // Линию режем на отрезки по источнику: живые — сплошные, свечи — пунктир.
+    // Заливка — по непрерывным кускам, линия — ещё и по источнику: живые —
+    // сплошные, реконструированные по свечам — пунктир.
+    const areas: string[] = [];
     const segments: { source: string; points: string[] }[] = [];
-    candles.forEach((c, i) => {
-      const pt = `${x(i).toFixed(1)},${y(c.close).toFixed(1)}`;
+    let run: typeof pts = [];
+    const flushArea = () => {
+      if (run.length === 0) return;
+      areas.push(
+        `${run[0]!.x.toFixed(1)},${HEIGHT} ` +
+          run.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ') +
+          ` ${run[run.length - 1]!.x.toFixed(1)},${HEIGHT}`,
+      );
+      run = [];
+    };
+    pts.forEach((p, i) => {
+      const gap = isGap(i);
+      if (gap) flushArea();
+      run.push(p);
+      const pt = `${p.x.toFixed(1)},${p.y.toFixed(1)}`;
       const last = segments[segments.length - 1];
-      if (last && last.source === c.source) last.points.push(pt);
+      if (last && last.source === p.c.source && !gap) last.points.push(pt);
       else {
-        if (last) last.points.push(pt);
-        segments.push({ source: c.source, points: [pt] });
+        if (last && !gap) last.points.push(pt);
+        segments.push({ source: p.c.source, points: [pt] });
       }
     });
+    flushArea();
+
+    const onPointer = (e: PointerEvent<SVGSVGElement>) => {
+      const svg = svgRef.current;
+      if (!svg) return;
+      const rect = svg.getBoundingClientRect();
+      const px = ((e.clientX - rect.left) / rect.width) * WIDTH;
+      let best = 0;
+      let dist = Infinity;
+      pts.forEach((p, i) => {
+        const d = Math.abs(p.x - px);
+        if (d < dist) {
+          dist = d;
+          best = i;
+        }
+      });
+      setHover(best);
+    };
+
+    const h = hover !== null && hover < pts.length ? pts[hover]! : null;
+    const tipLeftPct = h ? Math.min(Math.max((h.x / WIDTH) * 100, 22), 78) : 0;
+    const ticks = timeTicks(from, to, range);
 
     body = (
       <>
-        <svg viewBox={`0 0 ${width} ${height}`} className="chart__svg" aria-hidden="true">
-          <polygon points={area} fill="var(--green)" opacity={0.12} />
-          {segments.map((s, i) => (
-            <polyline
-              key={i}
-              points={s.points.join(' ')}
-              fill="none"
-              stroke="var(--green)"
-              strokeWidth={1.8}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeDasharray={s.source === 'reconstructed' ? '4 4' : undefined}
-            />
+        <div className="chart__plot">
+          <svg
+            ref={svgRef}
+            viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+            className="chart__svg"
+            onPointerMove={onPointer}
+            onPointerDown={onPointer}
+            onPointerLeave={() => setHover(null)}
+          >
+            {areas.map((a, i) => (
+              <polygon key={i} points={a} fill="var(--green)" opacity={0.1} />
+            ))}
+            {segments.map((s, i) => (
+              <polyline
+                key={i}
+                points={s.points.join(' ')}
+                fill="none"
+                stroke="var(--green)"
+                strokeWidth={1.8}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeDasharray={s.source === 'reconstructed' ? '4 4' : undefined}
+              />
+            ))}
+            {h && (
+              <>
+                <line
+                  x1={h.x}
+                  x2={h.x}
+                  y1={0}
+                  y2={HEIGHT}
+                  stroke="var(--text-mute)"
+                  strokeWidth={1}
+                  strokeDasharray="2 3"
+                />
+                <circle cx={h.x} cy={h.y} r={3.5} fill="var(--green)" stroke="var(--bg)" strokeWidth={1.5} />
+              </>
+            )}
+          </svg>
+          {h && (
+            <div className="chart__tip num" style={{ left: `${tipLeftPct}%` }}>
+              <div className="chart__tip-time">{fmtStamp(h.c.ts, range)}</div>
+              <div className="chart__tip-main">{formatPct(h.c.close)}</div>
+              <div className="chart__tip-sub">
+                {formatPct(h.c.low)} – {formatPct(h.c.high)}
+              </div>
+              <div className="chart__tip-sub">
+                {exName(h.c.exA)} → {exName(h.c.exB)}
+                {h.c.source === 'reconstructed' ? ' ≈' : ''}
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="chart__axis num">
+          {ticks.map((tk) => (
+            <span key={tk.ts} style={{ left: `${(x(tk.ts) / WIDTH) * 100}%` }}>
+              {tk.label}
+            </span>
           ))}
-        </svg>
+        </div>
         <div className="chart__legend num">
           <span>
             {t('chart.min')} {formatPct(lo)}
@@ -135,4 +236,35 @@ export function SpreadChart({ base }: { base: string }) {
       {body}
     </section>
   );
+}
+
+/** Подписи оси времени: 4–5 круглых отметок внутри диапазона. */
+function timeTicks(from: number, to: number, range: Range): { ts: number; label: string }[] {
+  const step =
+    range === '1h' ? 15 * 60_000 : range === '24h' ? 6 * 3_600_000 : range === '7d' ? 86_400_000 : 7 * 86_400_000;
+  const out: { ts: number; label: string }[] = [];
+  const offset = new Date().getTimezoneOffset() * 60_000;
+  // Круглые отметки — в местном времени, чтобы «00:00» стоял на полуночи.
+  let ts = Math.ceil((from - offset) / step) * step + offset;
+  for (; ts <= to; ts += step) {
+    // Крайние подписи налезают на рамку — их пропускаем.
+    if (ts - from < (to - from) * 0.06 || to - ts < (to - from) * 0.06) continue;
+    out.push({ ts, label: range === '1h' || range === '24h' ? fmtTime(ts) : fmtDay(ts) });
+  }
+  return out;
+}
+
+function fmtTime(ts: number): string {
+  return new Date(ts).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+}
+
+function fmtDay(ts: number): string {
+  return new Date(ts).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+}
+
+function fmtStamp(ts: number, range: Range): string {
+  const d = new Date(ts);
+  const day = d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+  const time = fmtTime(ts);
+  return range === '1h' ? time : `${day} ${time}`;
 }

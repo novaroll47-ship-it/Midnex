@@ -37,6 +37,22 @@ export interface FundingAggregate {
   avgRatePct: number;
 }
 
+/** Разбивка фандинга по времени: сутки — по выплатам, неделя и месяц — по дням, полгода — по неделям. */
+export type FundingBucket = 'payout' | 'day' | 'week';
+export const FUNDING_BUCKET: Record<FundingPeriod, FundingBucket> = {
+  '1d': 'payout',
+  '7d': 'day',
+  '30d': 'day',
+  '180d': 'week',
+};
+const BUCKET_MS: Record<FundingBucket, number> = { payout: 0, day: 86_400_000, week: 7 * 86_400_000 };
+
+export interface FundingBreakdown {
+  bucket: FundingBucket;
+  /** Точки по времени; по каждой бирже — сумма ставок за корзину, % (шорт получает, лонг платит). */
+  rows: { ts: number; rates: Partial<Record<ExchangeId, number>> }[];
+}
+
 export interface FundingHistoryOptions {
   store: HistoryStore;
   engine: MarketEngine | null;
@@ -130,6 +146,27 @@ export class FundingHistory {
       since = last + 1;
     }
     return total;
+  }
+
+  /** Разбивка по корзинам времени — для таблицы и столбиков на экране монеты. */
+  breakdown(legs: { exchange: ExchangeId; symbol: string }[], period: FundingPeriod): FundingBreakdown {
+    const bucket = FUNDING_BUCKET[period];
+    const to = Date.now();
+    const from = to - PERIOD_MS[period];
+    const byTs = new Map<number, Partial<Record<ExchangeId, number>>>();
+    for (const leg of legs) {
+      for (const r of this.o.store.queryFundingRates(leg.exchange, leg.symbol, from, to)) {
+        // По выплатам биржи расходятся на минуты — сводим к 5 минутам, чтобы строки совпали.
+        const ts = bucket === 'payout' ? Math.round(r.ts / 300_000) * 300_000 : Math.floor(r.ts / BUCKET_MS[bucket]) * BUCKET_MS[bucket];
+        const row = byTs.get(ts) ?? {};
+        row[leg.exchange] = (row[leg.exchange] ?? 0) + r.rate * 100;
+        byTs.set(ts, row);
+      }
+    }
+    return {
+      bucket,
+      rows: [...byTs.entries()].sort((a, b) => a[0] - b[0]).map(([ts, rates]) => ({ ts, rates })),
+    };
   }
 
   /** Агрегаты по всем ногам монеты за период. */

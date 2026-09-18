@@ -1788,6 +1788,52 @@
     height: 120px;
   }
 
+  .chart__plot {
+    position: relative;
+    touch-action: pan-y;
+  }
+
+  .chart__tip {
+    position: absolute;
+    top: 4px;
+    transform: translateX(-50%);
+    padding: 6px 9px;
+    border-radius: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    font-size: 11px;
+    line-height: 1.35;
+    color: var(--text-dim);
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  .chart__tip-main {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--green);
+  }
+
+  .chart__tip-time {
+    color: var(--text-mute);
+  }
+
+  .chart__axis {
+    position: relative;
+    height: 14px;
+    margin-top: 2px;
+    font-size: 10px;
+    color: var(--text-mute);
+  }
+
+  .chart__axis span {
+    position: absolute;
+    top: 0;
+    transform: translateX(-50%);
+  }
+
   .chart__legend {
     display: flex;
     justify-content: space-between;
@@ -1885,6 +1931,58 @@
     gap: 2px;
     font-size: 12px;
     font-weight: 600;
+  }
+
+  .funding-venue__chevron {
+    color: var(--text-mute);
+    transition: transform 0.2s;
+  }
+
+  .funding-venue__chevron--open {
+    transform: rotate(180deg);
+  }
+
+  .funding-venue--open > .list__item {
+    border-bottom: none;
+  }
+
+  .funding-break {
+    padding: 0 13px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .funding-break__svg {
+    display: block;
+    width: 100%;
+    height: 56px;
+  }
+
+  .funding-break__caption {
+    margin: 4px 0 6px;
+    font-size: 11px;
+    color: var(--text-mute);
+  }
+
+  .funding-break__table {
+    display: flex;
+    flex-direction: column;
+    max-height: 220px;
+    overflow-y: auto;
+    font-size: 12px;
+  }
+
+  .funding-break__row {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    border-top: 1px solid var(--border);
+    color: var(--text-dim);
+  }
+
+  .funding-break__empty {
+    padding: 8px 13px 12px;
+    font-size: 12px;
+    color: var(--text-mute);
   }
 
   .alert-glyph {

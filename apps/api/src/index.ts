@@ -388,14 +388,40 @@ app.get('/api/history/:base', async (req, reply) => {
   const to = Number(q.to) || Date.now();
   const spanDefault = tf === '1m' ? 6 * 3_600_000 : tf === '5m' ? 2 * 86_400_000 : 30 * 86_400_000;
   const from = Number(q.from) || to - spanDefault;
-  const all = history.queryCandles(base.toUpperCase(), tf, from, to);
+  const canonical = base.toUpperCase();
+  const tfMs = tf === '1m' ? 60_000 : tf === '5m' ? 300_000 : 3_600_000;
+  const all = history.queryCandles(canonical, tf, from, to);
   const best = new Map<number, (typeof all)[number]>();
   for (const c of all) {
     const cur = best.get(c.ts);
     if (!cur || c.high > cur.high) best.set(c.ts, c);
   }
+  // Хвост «вживую»: 5m/1h сворачиваются раз в час, а минутная свеча
+  // закрывается по минуте — без этого график отставал бы. Досчитываем
+  // недостающие свечи из минутных и незакрытой минуты сборщика.
+  const lastTs = Math.max(-1, ...best.keys());
+  const tailFrom = Math.max(from, lastTs + tfMs);
+  const minutes = tf === '1m' ? [] : history.queryCandles(canonical, '1m', tailFrom, to);
+  const partial = collector.current(canonical);
+  if (partial && partial.ts >= tailFrom) minutes.push(partial);
+  for (const m of minutes) {
+    const ts = Math.floor(m.ts / tfMs) * tfMs;
+    if (ts < tailFrom) continue;
+    const cur = best.get(ts);
+    if (!cur) best.set(ts, { ...m, ts });
+    else {
+      if (m.high > cur.high) {
+        cur.high = m.high;
+        cur.exA = m.exA;
+        cur.exB = m.exB;
+      }
+      cur.low = Math.min(cur.low, m.low);
+      cur.close = m.close;
+      cur.samples += m.samples;
+    }
+  }
   return {
-    base: base.toUpperCase(),
+    base: canonical,
     tf,
     from,
     to,
@@ -417,8 +443,13 @@ app.get('/api/coin/:base/funding', async (req, reply) => {
     FUNDING_PERIODS.includes(q.period as FundingPeriod) ? q.period : '7d'
   ) as FundingPeriod;
   const canonical = base.toUpperCase();
-  const legs = market.engine?.legsOf(canonical) ?? [];
+  // Без движка (мок) ног нет — берём стандартные символы, чтобы экран
+  // фандинга можно было смотреть на данных из истории.
+  const legs =
+    market.engine?.legsOf(canonical) ??
+    EXCHANGES.map((e) => ({ exchange: e.id, symbol: `${canonical}/USDT:USDT` }));
   const venues = fundingHistory.aggregate(legs, period);
+  const breakdown = fundingHistory.breakdown(legs, period);
   const sorted = [...venues].sort((a, b) => a.avgRatePct - b.avgRatePct);
   const best =
     sorted.length >= 2
@@ -428,7 +459,7 @@ app.get('/api/coin/:base/funding', async (req, reply) => {
           netPct: sorted[sorted.length - 1]!.shortPct + sorted[0]!.longPct,
         }
       : null;
-  return { base: canonical, period, venues, best };
+  return { base: canonical, period, venues, best, breakdown };
 });
 
 /** Состояние сборщика истории — только администратору. */
