@@ -420,6 +420,18 @@ export class PostgresRepo implements Repo {
     }));
   }
 
+  async getConfig(key: string): Promise<string | null> {
+    const rows = await this.sql`select value from app_config where key = ${key}`;
+    return rows.length ? String(rows[0]!['value']) : null;
+  }
+
+  async setConfig(key: string, value: string): Promise<void> {
+    await this.sql`
+      insert into app_config (key, value, updated_at) values (${key}, ${value}, now())
+      on conflict (key) do update set value = excluded.value, updated_at = now()
+    `;
+  }
+
   async listVerifiedPairs(): Promise<VerifiedPairRecord[]> {
     const rows = await this.sql`select * from verified_pairs`;
     return rows.map((r) => ({

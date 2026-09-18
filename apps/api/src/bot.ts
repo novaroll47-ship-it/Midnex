@@ -65,6 +65,9 @@ export interface BotOptions {
   log: FastifyBaseLogger;
   billing: Billing;
   repo: Repo;
+  /** Переключить «бумажную торговлю» для пользователя; возвращает новое состояние. */
+  togglePaper?: (userId: number) => Promise<boolean>;
+  isPaper?: (userId: number) => boolean;
 }
 
 /** Что бот умеет наружу: слать сообщения из API и останавливаться. */
@@ -122,7 +125,8 @@ function greeting(appUrl: string | undefined, name: string): string {
   );
 }
 
-export function startBot({ token, publicUrl, log, billing, repo }: BotOptions): BotHandle {
+export function startBot(opts: BotOptions): BotHandle {
+  const { token, publicUrl, log, billing, repo } = opts;
   let offset = 0;
   let stopped = false;
 
@@ -162,6 +166,7 @@ export function startBot({ token, publicUrl, log, billing, repo }: BotOptions): 
       { text: '🚫 Отозвать', callback_data: 'adm:revoke' },
     ],
     [{ text: '🔎 Статус подписки', callback_data: 'adm:sub' }],
+    [{ text: '🧪 Бумажная торговля: вкл/выкл для меня', callback_data: 'adm:paper' }],
   ];
   const BACK: Keyboard = [[{ text: '← Меню', callback_data: 'adm:menu' }]];
   const CANCEL: Keyboard = [[{ text: 'Отмена', callback_data: 'adm:menu' }]];
@@ -314,6 +319,17 @@ export function startBot({ token, publicUrl, log, billing, repo }: BotOptions): 
         chatId,
         'У кого отозвать доступ? Отправь @username или ID.',
         kb(CANCEL),
+      ));
+    }
+    if (data === 'adm:paper') {
+      if (!opts.togglePaper) return void (await send(chatId, 'Недоступно.', kb(BACK)));
+      const on = await opts.togglePaper(chatId);
+      return void (await send(
+        chatId,
+        on
+          ? '🧪 Бумажная торговля включена для тебя: сделки бота — виртуальные, без реальных ордеров.'
+          : 'Бумажная торговля выключена: бот торгует реальными деньгами.',
+        kb(BACK),
       ));
     }
     if (data === 'adm:sub') {

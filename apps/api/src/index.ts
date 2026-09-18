@@ -186,6 +186,24 @@ const listings = new ListingsMonitor({
 if (market.mode === 'live') listings.start();
 
 // Новому пользователю — пробная неделя «Скринера» и сообщение об этом в чат.
+// Скрытый флаг «бумажной торговли»: список Telegram ID в app_config,
+// переключается кнопкой в админ-меню бота — без пересборки.
+const PAPER_KEY = 'paper_trading_users';
+state.paperUsers = new Set(
+  ((await repo.getConfig(PAPER_KEY)) ?? '')
+    .split(',')
+    .map((v) => Number(v.trim()))
+    .filter((v) => Number.isInteger(v) && v > 0),
+);
+if (state.paperUsers.size) app.log.info(`бумажная торговля включена для: ${[...state.paperUsers].join(', ')}`);
+async function togglePaper(userId: number): Promise<boolean> {
+  if (state.paperUsers.has(userId)) state.paperUsers.delete(userId);
+  else state.paperUsers.add(userId);
+  await repo.setConfig(PAPER_KEY, [...state.paperUsers].join(','));
+  state.invalidate(userId);
+  return state.paperUsers.has(userId);
+}
+
 state.onNewUser = async (user) => {
   const sub = await billing.grantTrialIfEligible(user.id, user.trialUsedAt);
   if (sub && bot) {
@@ -560,16 +578,24 @@ function patch<T extends object>(target: T, body: unknown): T {
   return target;
 }
 
-app.patch('/api/settings/bot', async (req) => {
+app.patch('/api/settings/bot', async (req, reply) => {
   const s = req.state!;
-  patch(s.settings.bot, req.body);
+  const body = { ...(req.body as Record<string, unknown>) };
+  // Исполнение пользователю не выставить: реальные деньги всегда, «бумага» — служебный флаг.
+  delete body['executionMode'];
+  if (body['mode'] !== undefined && body['mode'] !== 'semi' && body['mode'] !== 'auto') delete body['mode'];
+  patch(s.settings.bot, body);
   // Список бирж приходит массивом — общая проверка типов его не покрывает.
-  const body = req.body as { enabledExchanges?: unknown };
-  if (Array.isArray(body?.enabledExchanges)) {
+  if (Array.isArray(body['enabledExchanges'])) {
     const valid = new Set(EXCHANGES.map((e) => e.id as string));
-    s.settings.bot.enabledExchanges = body.enabledExchanges.filter(
+    const wanted = body['enabledExchanges'].filter(
       (id): id is ExchangeId => typeof id === 'string' && valid.has(id),
     );
+    // Торговать можно только там, где есть ключ — иначе бот не сможет открыть сделку.
+    const withKeys = new Set((await repo.listKeys(s.userId)).map((k) => k.exchange));
+    const missing = wanted.find((id) => !withKeys.has(id));
+    if (missing) return reply.code(400).send({ error: 'key required', exchange: missing });
+    s.settings.bot.enabledExchanges = wanted;
   }
   await state.saveSettings(s);
   return settingsPayload(s);
@@ -1082,6 +1108,8 @@ if (BOT_TOKEN) {
     log: app.log,
     billing,
     repo,
+    togglePaper,
+    isPaper: (userId) => state.paperUsers.has(userId),
   });
   if (ADMIN_TELEGRAM_ID === null) {
     app.log.warn('ADMIN_TELEGRAM_ID не задан — админ-команды бота выключены');

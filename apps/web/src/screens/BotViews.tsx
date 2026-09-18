@@ -10,7 +10,7 @@ import { DEFAULT_FUNDING_BOT, EXCHANGES } from '@cs/shared';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { CheckRow, NumberRow, RadioRow, Section, ToggleRow } from '../components/Form';
+import { CheckRow, NumberRow, Section, ToggleRow } from '../components/Form';
 import { ClockIcon } from '../icons';
 import type { SettingsController } from '../lib/useSettings';
 import { GeneralView, NotificationsView, OpportunitiesView, RiskView } from './SettingsDetail';
@@ -76,16 +76,6 @@ export function BotFundingView({ settings }: { settings: SettingsController }) {
           sub={t('bots.fundingRunningSub')}
           value={false}
           onChange={noop}
-        />
-      </Section>
-
-      <Section title={t('sd.execution')} hint={t('sd.executionHint')}>
-        <RadioRow title={t('sd.execPaper')} sub={t('sd.execPaperSub')} selected onSelect={noop} />
-        <RadioRow
-          title={t('sd.execLive')}
-          sub={t('sd.execLiveSub')}
-          selected={false}
-          onSelect={noop}
         />
       </Section>
 

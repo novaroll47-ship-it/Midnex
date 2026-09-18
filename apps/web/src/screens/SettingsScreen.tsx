@@ -52,15 +52,7 @@ export function SettingsScreen({
   const lang = currentLanguage();
   const langLabel = LANGUAGES.find((l) => l.code === lang)?.label ?? lang;
 
-  const modeLabel = data
-    ? t(
-        data.bot.mode === 'auto'
-          ? 'sd.modeAuto'
-          : data.bot.mode === 'semi'
-            ? 'sd.modeSemi'
-            : 'sd.modeScreener',
-      )
-    : '';
+  const modeLabel = data ? t(data.bot.mode === 'auto' ? 'sd.modeAuto' : 'sd.modeSemi') : '';
 
   return (
     <div className="stack">

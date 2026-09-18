@@ -30,8 +30,8 @@ export const DEFAULT_RISK: RiskSettings = {
 };
 
 export const DEFAULT_BOT: BotSettings = {
-  mode: 'screener',
-  executionMode: 'paper',
+  mode: 'semi',
+  executionMode: 'live',
   running: true,
   refreshMs: 1_000,
   minSpreadPct: 0.5,
@@ -62,7 +62,7 @@ export const APP_VERSION = '0.2.0';
 
 export const DEFAULT_FUNDING_BOT: FundingBotSettings = {
   running: false,
-  executionMode: 'paper',
+  executionMode: 'live',
   exchanges: ['binance', 'bybit', 'okx', 'bitget', 'bingx', 'gate'],
   minRateDiffPct: 0.03,
   minAprPct: 20,

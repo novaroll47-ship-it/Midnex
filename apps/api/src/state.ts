@@ -38,6 +38,8 @@ export class StateService {
   private readonly cache = new Map<number, Promise<UserState>>();
   /** Вызывается при первом появлении пользователя — например, чтобы выдать пробный период. */
   onNewUser: ((user: UserRecord) => Promise<void>) | null = null;
+  /** Кто торгует «на бумаге» — скрытый флаг разработчика (app_config.paper_trading_users). */
+  paperUsers = new Set<number>();
 
   constructor(
     private readonly repo: Repo,
@@ -45,6 +47,11 @@ export class StateService {
   ) {}
 
   // ---------------------------------------------------------------- загрузка
+
+  /** Сбросить кеш пользователя — следующий запрос перечитает состояние. */
+  invalidate(userId: number): void {
+    this.cache.delete(userId);
+  }
 
   async forUser(
     userId: number,
@@ -96,6 +103,11 @@ export class StateService {
         onboarding: { completed: [...(settings.onboarding?.completed ?? [])] },
       };
     }
+
+    // Старые значения из базы: режима «Скринер» и testnet больше нет.
+    if ((settings.bot.mode as string) === 'screener') settings.bot.mode = 'semi';
+    // Исполнение задаёт не пользователь, а служебный список «бумажной торговли».
+    settings.bot.executionMode = this.paperUsers.has(userId) ? 'paper' : 'live';
 
     let positions = await this.repo.listPositions(userId);
     // Без базы показываем две демонстрационные позиции — иначе экран

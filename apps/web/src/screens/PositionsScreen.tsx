@@ -404,13 +404,7 @@ function PositionCard({
           </div>
           <div className="pos__pnl-pct num">({formatSignedPct(p.pnlPct)})</div>
           <span className="badge badge--soon" style={{ marginTop: 6 }}>
-            {t(
-              p.executionMode === 'paper'
-                ? 'positions.modePaper'
-                : p.executionMode === 'testnet'
-                  ? 'positions.modeTestnet'
-                  : 'positions.modeLive',
-            )}
+            {t(p.executionMode === 'paper' ? 'positions.modePaper' : 'positions.modeLive')}
           </span>
         </div>
       </div>

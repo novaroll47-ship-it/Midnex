@@ -1,7 +1,12 @@
 import type { ExchangeId } from './exchanges.js';
 
-export type BotMode = 'screener' | 'semi' | 'auto';
-export type ExecutionMode = 'paper' | 'testnet' | 'live';
+/** Режим бота: полуавтомат подтверждает вход, автомат входит сам. */
+export type BotMode = 'semi' | 'auto';
+/**
+ * Исполнение: реальные деньги; «бумажная торговля» — скрытый режим для
+ * обкатки разработчиком, пользователю не показывается и не выбирается.
+ */
+export type ExecutionMode = 'paper' | 'live';
 export type PlanId = 'screener' | 'limited' | 'unlimited';
 
 /** Одна строка скринера: лучшая пара бирж по конкретной монете. */

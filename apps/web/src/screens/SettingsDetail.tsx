@@ -16,6 +16,8 @@ import {
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { KeyIcon } from '../icons';
+
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ExchangeLogo } from '../components/ExchangeLogo';
 import { CheckRow, InfoRow, NumberRow, RadioRow, Section, ToggleRow } from '../components/Form';
@@ -69,9 +71,12 @@ export function settingsViewTitle(view: SettingsView, t: (k: string) => string):
 export function SettingsDetail({
   view,
   settings,
+  onOpen,
 }: {
   view: SettingsView;
   settings: SettingsController;
+  /** Переход к другому разделу настроек (например, к ключам из списка бирж). */
+  onOpen?: (view: SettingsView) => void;
 }) {
   const { t } = useTranslation();
 
@@ -83,7 +88,7 @@ export function SettingsDetail({
     case 'general':
       return <GeneralView settings={settings} />;
     case 'opportunities':
-      return <OpportunitiesView settings={settings} />;
+      return <OpportunitiesView settings={settings} onOpen={onOpen} />;
     case 'notifications':
       return <NotificationsView settings={settings} />;
     case 'risk':
@@ -130,12 +135,6 @@ export function GeneralView({ settings }: { settings: SettingsController }) {
 
       <Section title={t('sd.mode')} hint={t('sd.modeHint')}>
         <RadioRow
-          title={t('sd.modeScreener')}
-          sub={t('sd.modeScreenerSub')}
-          selected={bot.mode === 'screener'}
-          onSelect={() => settings.patchBot({ mode: 'screener' })}
-        />
-        <RadioRow
           title={t('sd.modeSemi')}
           sub={t('sd.modeSemiSub')}
           selected={bot.mode === 'semi'}
@@ -148,60 +147,40 @@ export function GeneralView({ settings }: { settings: SettingsController }) {
           onSelect={() => settings.patchBot({ mode: 'auto' })}
         />
       </Section>
-
-      <Section title={t('sd.execution')} hint={t('sd.executionHint')}>
-        <RadioRow
-          title={t('sd.execPaper')}
-          sub={t('sd.execPaperSub')}
-          selected={bot.executionMode === 'paper'}
-          onSelect={() => settings.patchBot({ executionMode: 'paper' })}
-        />
-        <RadioRow
-          title={t('sd.execTestnet')}
-          sub={t('sd.execTestnetSub')}
-          selected={bot.executionMode === 'testnet'}
-          onSelect={() => settings.patchBot({ executionMode: 'testnet' })}
-          badge={t('sd.stageM5')}
-          disabled
-        />
-        <RadioRow
-          title={t('sd.execLive')}
-          sub={t('sd.execLiveSub')}
-          selected={bot.executionMode === 'live'}
-          onSelect={() => settings.patchBot({ executionMode: 'live' })}
-          badge={t('sd.stageM5')}
-          disabled
-        />
-      </Section>
-
-      <Section title={t('sd.refresh')}>
-        <NumberRow
-          title={t('sd.refreshRate')}
-          sub={t('sd.refreshRateSub')}
-          value={Math.round(bot.refreshMs / 1000)}
-          unit={t('sd.unitSec')}
-          min={1}
-          max={60}
-          onCommit={(sec) => settings.patchBot({ refreshMs: sec * 1000 })}
-        />
-      </Section>
     </div>
   );
 }
 
 // ------------------------------------------------------------- возможности
 
-export function OpportunitiesView({ settings }: { settings: SettingsController }) {
+export function OpportunitiesView({
+  settings,
+  onOpen,
+}: {
+  settings: SettingsController;
+  onOpen?: (view: SettingsView) => void;
+}) {
   const { t } = useTranslation();
   const bot = settings.data!.bot;
   const enabled = new Set(bot.enabledExchanges);
+  // Торговать можно только там, где введён ключ: без него бот не откроет сделку.
+  const withKey = new Set(
+    (settings.data!.apiKeys ?? []).filter((k) => k.connected).map((k) => k.exchange),
+  );
+  const [needKey, setNeedKey] = useState<string | null>(null);
 
   function toggleExchange(id: (typeof EXCHANGES)[number]['id']) {
     const next = new Set(enabled);
     if (next.has(id)) next.delete(id);
-    else next.add(id);
-    // Спред считается между двумя биржами — с одной сравнивать не с чем.
-    if (next.size < 2) return;
+    else {
+      if (!withKey.has(id)) {
+        haptic('warning');
+        setNeedKey(EXCHANGES.find((e) => e.id === id)?.name ?? id);
+        return;
+      }
+      next.add(id);
+    }
+    setNeedKey(null);
     settings.patchBot({ enabledExchanges: [...next] });
   }
 
@@ -212,12 +191,19 @@ export function OpportunitiesView({ settings }: { settings: SettingsController }
           <CheckRow
             key={ex.id}
             title={ex.name}
-            sub={ex.needsPassphrase ? t('sd.needsPassphrase') : undefined}
+            sub={withKey.has(ex.id) ? undefined : t('sd.noKey')}
             checked={enabled.has(ex.id)}
+            disabled={!withKey.has(ex.id) && !enabled.has(ex.id)}
             onToggle={() => toggleExchange(ex.id)}
           />
         ))}
       </Section>
+      {needKey && (
+        <button type="button" className="card notice notice--warn" onClick={() => onOpen?.('apikeys')}>
+          <KeyIcon className="notice__icon" />
+          <span>{t('sd.needKeyNotice', { exchange: needKey })}</span>
+        </button>
+      )}
 
       <Section title={t('sd.entryParams')} hint={t('sd.minSpreadHint')}>
         <NumberRow

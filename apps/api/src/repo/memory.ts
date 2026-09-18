@@ -35,6 +35,7 @@ export class MemoryRepo implements Repo {
   private payments = new Map<string, PaymentRecord>();
   private verified = new Map<string, VerifiedSymbolRecord>();
   private pairs = new Map<string, VerifiedPairRecord>();
+  private config = new Map<string, string>();
   private alerts = new Map<string, AlertRuleRecord>();
 
   async upsertUser(u: {
@@ -239,6 +240,14 @@ export class MemoryRepo implements Repo {
 
   async listVerifiedSymbols(): Promise<VerifiedSymbolRecord[]> {
     return [...this.verified.values()];
+  }
+
+  async getConfig(key: string): Promise<string | null> {
+    return this.config.get(key) ?? null;
+  }
+
+  async setConfig(key: string, value: string): Promise<void> {
+    this.config.set(key, value);
   }
 
   async listVerifiedPairs(): Promise<VerifiedPairRecord[]> {

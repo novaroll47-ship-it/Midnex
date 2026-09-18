@@ -118,7 +118,13 @@ export function App() {
           <div className="dev-banner">{devBypass ? t('app.devBanner') : t('app.needTelegram')}</div>
         )}
 
-        {route.kind === 'settings' && <SettingsDetail view={route.view} settings={settings} />}
+        {route.kind === 'settings' && (
+          <SettingsDetail
+            view={route.view}
+            settings={settings}
+            onOpen={(view) => setRoute({ kind: 'settings', view })}
+          />
+        )}
 
         {route.kind === 'position' && <PositionDetailScreen id={route.id} view={route.view} />}
 

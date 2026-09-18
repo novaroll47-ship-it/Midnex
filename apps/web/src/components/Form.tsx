@@ -115,15 +115,28 @@ export function CheckRow({
   checked,
   onToggle,
   accent,
+  disabled,
 }: {
   title: string;
   sub?: string;
   checked: boolean;
   onToggle: () => void;
   accent?: string;
+  /** Включить нельзя (например, нет ключа); тап всё равно зовёт onToggle — чтобы показать подсказку. */
+  disabled?: boolean;
 }) {
   return (
-    <label className="list__item cursor-pointer">
+    <label
+      className={`list__item cursor-pointer${disabled ? ' list__item--disabled' : ''}`}
+      onClick={
+        disabled
+          ? (e) => {
+              e.preventDefault();
+              onToggle();
+            }
+          : undefined
+      }
+    >
       <span>
         <span className="list__title" style={accent ? { color: accent } : undefined}>
           {title}
@@ -133,6 +146,7 @@ export function CheckRow({
       <span />
       <Checkbox
         checked={checked}
+        disabled={disabled}
         aria-label={title}
         onCheckedChange={() => {
           haptic('tap');

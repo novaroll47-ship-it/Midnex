@@ -40,7 +40,7 @@ export interface PositionRecord {
   id: string;
   userId: number;
   base: string;
-  executionMode: 'paper' | 'testnet' | 'live';
+  executionMode: 'paper' | 'live';
   longExchange: ExchangeId;
   shortExchange: ExchangeId;
   longEntry: number;
@@ -234,6 +234,10 @@ export interface Repo {
     lastFiredAt: number | null,
     lastBase: string | null,
   ): Promise<void>;
+
+  /** Служебные настройки приложения (app_config): ключ → значение. */
+  getConfig(key: string): Promise<string | null>;
+  setConfig(key: string, value: string): Promise<void>;
 
   /** Старая таблица ног — только для переноса ручных решений. */
   listVerifiedSymbols(): Promise<VerifiedSymbolRecord[]>;
