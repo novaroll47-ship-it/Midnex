@@ -1,6 +1,7 @@
-# Сервер — Linux, поэтому в репозитории всё хранится с LF.
 # Иначе shell-скрипты, уехавшие с Windows с CRLF, не запустятся на сервере.
+# Сервер — Linux, поэтому в репозитории всё хранится с LF.
 * text=auto eol=lf
-*.sh text eol=lf
-*.png binary
+*.bat text eol=crlf
 *.docx binary
+*.png binary
+*.sh text eol=lf
