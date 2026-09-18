@@ -97,9 +97,19 @@ export class AlertEngine {
     }
   }
 
+  /** Сколько секунд подряд спред должен держать порог, прежде чем слать: одиночный тик — не сигнал. */
+  private static readonly CONFIRM_TICKS = 3;
+  private readonly aboveTicks = new Map<string, number>();
+
   private async check(rule: AlertRuleRecord, row: SpreadRow): Promise<void> {
     const above = row.spreadPct >= rule.thresholdPct;
-    if (rule.isArmed && above) {
+    // Замершая котировка или одиночный всплеск дают порог на секунду — такое
+    // не шлём; спред должен продержаться несколько тиков подряд.
+    const key = `${rule.id}|${row.base}`;
+    const streak = above ? (this.aboveTicks.get(key) ?? 0) + 1 : 0;
+    if (above) this.aboveTicks.set(key, streak);
+    else this.aboveTicks.delete(key);
+    if (rule.isArmed && above && streak >= AlertEngine.CONFIRM_TICKS) {
       if (!(await this.hasAccess(rule.userId))) return;
       rule.isArmed = false;
       rule.lastFiredAt = Date.now();

@@ -84,14 +84,21 @@ async function call<T>(
   body?: unknown,
   timeoutMs = 20_000,
 ): Promise<TgResponse<T>> {
-  // Без таймаута обрыв сети превращается в вечно висящий запрос.
-  const res = await fetch(`${API}/bot${token}/${method}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body ?? {}),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  return (await res.json()) as TgResponse<T>;
+  // Без таймаута обрыв сети превращается в вечно висящий запрос. Сетевую
+  // ошибку не бросаем, а отдаём как неудачный ответ: вызовы вроде
+  // `void bot.send(...)` иначе роняли процесс необработанным отказом, когда
+  // пропадал интернет.
+  try {
+    const res = await fetch(`${API}/bot${token}/${method}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body ?? {}),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    return (await res.json()) as TgResponse<T>;
+  } catch (err) {
+    return { ok: false, description: `network: ${String(err).slice(0, 160)}` } as TgResponse<T>;
+  }
 }
 
 /**

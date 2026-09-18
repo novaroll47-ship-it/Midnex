@@ -72,7 +72,11 @@ export function CoinDetailScreen({
         {t('alerts.tileFull', { base: data.base })}
       </button>
 
-      <SpreadChart base={data.base} />
+      <SpreadChart
+        base={data.base}
+        pairs={data.pairs ?? []}
+        currentPair={{ exA: data.best.longExchange, exB: data.best.shortExchange }}
+      />
 
       <div className="section-label">{t('coin.venuesTitle')}</div>
       <div className="venue-chips venue-chips--wrap">

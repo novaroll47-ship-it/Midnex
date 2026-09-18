@@ -67,7 +67,7 @@
     "sortName": "По названию",
     "sortPrice": "По цене",
     "resetFilters": "Сбросить",
-    "fundingUnknown": "чист. {{value}} ?",
+    "fundingUnknown": "чист. {{value}} без фанд.",
     "botActive": "Бот активен",
     "botStopped": "Бот остановлен",
     "configure": "Настроить",
@@ -554,7 +554,8 @@
     "max": "макс",
     "last": "сейчас",
     "noData": "История ещё копится — загляните позже",
-    "unavailable": "История недоступна"
+    "unavailable": "История недоступна",
+    "bestPair": "Лучшая пара"
   },
   "pairs": {
     "title": "Сверка пар",

@@ -2335,3 +2335,18 @@
     max-width: 280px;
   }
 }
+
+@layer legacy {
+  .chart__pairs {
+    display: flex;
+    gap: 6px;
+    margin: 0 0 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .chart__pairs::-webkit-scrollbar {
+    display: none;
+  }
+}

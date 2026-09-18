@@ -48,7 +48,7 @@ import { ExternalTickers } from './pairs-external.js';
 import { HistoryCollector } from './history/collector.js';
 import { FUNDING_PERIODS, FundingHistory, type FundingPeriod } from './history/funding.js';
 import { SqliteHistoryStore } from './history/sqlite.js';
-import type { Timeframe } from './history/store.js';
+import type { PairTimeframe, Timeframe } from './history/store.js';
 import { createRepo, type ExchangeKeyRecord } from './repo/index.js';
 import { StateService, type UserState } from './state.js';
 
@@ -390,7 +390,7 @@ app.get('/api/coin/:base', async (req, reply) => {
     .filter((v): v is ExchangeId => valid.has(v));
   const detail = market.coinDetail(base, venues.length >= 2 ? venues : undefined);
   if (!detail) return reply.code(404).send({ error: 'not found' });
-  return detail;
+  return { ...detail, pairs: market.engine?.pairsOf(detail.base) ?? [] };
 });
 
 // ---------------------------------------------------------------- история спредов
@@ -407,7 +407,25 @@ app.get('/api/history/:base', async (req, reply) => {
     return reply.code(402).send({ error: 'subscription required' });
   }
   const { base } = req.params as { base: string };
-  const q = req.query as { tf?: string; from?: string; to?: string };
+  const q = req.query as { tf?: string; from?: string; to?: string; exA?: string; exB?: string };
+  // История по конкретной паре бирж: свои таблицы (15m/1h) и незакрытая свеча.
+  if (q.exA && q.exB) {
+    const valid = new Set(EXCHANGES.map((e) => e.id as string));
+    if (!valid.has(q.exA) || !valid.has(q.exB) || q.exA === q.exB) {
+      return reply.code(400).send({ error: 'bad pair' });
+    }
+    const [exA, exB] = ([q.exA, q.exB] as ExchangeId[]).sort() as [ExchangeId, ExchangeId];
+    const tf: PairTimeframe = q.tf === '1h' ? '1h' : '15m';
+    const tfMs = tf === '1h' ? 3_600_000 : 900_000;
+    const to = Number(q.to) || Date.now();
+    const from = Number(q.from) || to - (tf === '1h' ? 7 : 1) * 86_400_000;
+    const canonical = base.toUpperCase();
+    const candles = history.queryPairCandles(canonical, exA, exB, tf, from, to);
+    const partial = collector.currentPair(canonical, exA, exB, tf);
+    if (partial && !candles.some((c) => c.ts === partial.ts)) candles.push(partial);
+    candles.sort((a, b) => a.ts - b.ts);
+    return { base: canonical, tf, from, to, exA, exB, tfMs, candles };
+  }
   const tf = (TIMEFRAMES.includes(q.tf as Timeframe) ? q.tf : '1m') as Timeframe;
   const to = Number(q.to) || Date.now();
   const spanDefault = tf === '1m' ? 6 * 3_600_000 : tf === '5m' ? 2 * 86_400_000 : 30 * 86_400_000;
@@ -1128,6 +1146,12 @@ app.addHook('onClose', async () => {
   history.close();
   await market.stop();
   await repo.close();
+});
+
+// Страховка: необработанный отказ промиса (обычно сетевой сбой в фоновой
+// задаче) не должен ронять процесс с восемью биржами и ботом.
+process.on('unhandledRejection', (err) => {
+  app.log.error({ err: String(err).slice(0, 300) }, 'необработанный отказ промиса');
 });
 
 await app.listen({ port: PORT, host: '0.0.0.0' });

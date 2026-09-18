@@ -75,9 +75,22 @@ export interface HistoryStatus {
   gapsLast24h: number;
 }
 
+/** Таймфреймы свечей по паре бирж: 15m — на двое суток, 1h — на месяц. */
+export type PairTimeframe = '15m' | '1h';
+
 export interface HistoryStore {
   writeTicks(rows: SpreadTick[]): void;
   writeCandles(tf: Timeframe, rows: SpreadCandle[]): void;
+  /** Свечи по конкретной паре бирж — для графика «сравнить биржи». */
+  writePairCandles(tf: PairTimeframe, rows: SpreadCandle[]): void;
+  queryPairCandles(
+    base: string,
+    exA: ExchangeId,
+    exB: ExchangeId,
+    tf: PairTimeframe,
+    from: number,
+    to: number,
+  ): SpreadCandle[];
   /** Открыть дыру; возвращает id, чтобы закрыть её при восстановлении. */
   openGap(gap: Omit<SpreadGap, 'toTs'>): number;
   closeGap(id: number, toTs: number): void;

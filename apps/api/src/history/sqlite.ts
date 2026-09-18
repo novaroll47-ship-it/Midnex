@@ -17,6 +17,7 @@ import type {
   FundingRateRow,
   HistoryStatus,
   HistoryStore,
+  PairTimeframe,
   SpreadCandle,
   SpreadGap,
   SpreadTick,
@@ -24,6 +25,13 @@ import type {
 } from './store.js';
 
 const TF_MS: Record<Timeframe, number> = { '1m': 60_000, '5m': 300_000, '1h': 3_600_000 };
+const PAIR_TABLE: Record<PairTimeframe, string> = {
+  '15m': 'pair_candles_15m',
+  '1h': 'pair_candles_1h',
+};
+/** Сколько держим свечи по парам: 14 тысяч пар — это миллионы строк в месяц. */
+const PAIR_RETENTION_DAYS: Record<PairTimeframe, number> = { '15m': 2, '1h': 30 };
+
 const CANDLE_TABLE: Record<Timeframe, string> = {
   '1m': 'spread_candles_1m',
   '5m': 'spread_candles_5m',
@@ -64,6 +72,20 @@ create table if not exists spread_gaps (
 );
 create index if not exists spread_gaps_from on spread_gaps (from_ts);
 
+create table if not exists pair_candles_15m (
+  ts integer not null, base text not null, ex_a text not null, ex_b text not null,
+  open real not null, high real not null, low real not null, close real not null,
+  samples integer not null, source text not null,
+  primary key (base, ex_a, ex_b, ts)
+);
+create index if not exists pair_candles_15m_ts on pair_candles_15m (ts);
+create table if not exists pair_candles_1h (
+  ts integer not null, base text not null, ex_a text not null, ex_b text not null,
+  open real not null, high real not null, low real not null, close real not null,
+  samples integer not null, source text not null,
+  primary key (base, ex_a, ex_b, ts)
+);
+create index if not exists pair_candles_1h_ts on pair_candles_1h (ts);
 create table if not exists funding_rates (
   exchange text not null, symbol text not null, ts integer not null, rate real not null,
   primary key (exchange, symbol, ts)
@@ -220,6 +242,56 @@ export class SqliteHistoryStore implements HistoryStore {
     this.db
       .prepare('delete from spread_candles_1m where ts < ?')
       .run(now - minuteDays * 86_400_000);
+    for (const tf of Object.keys(PAIR_TABLE) as PairTimeframe[]) {
+      this.db
+        .prepare(`delete from ${PAIR_TABLE[tf]} where ts < ?`)
+        .run(now - PAIR_RETENTION_DAYS[tf] * 86_400_000);
+    }
+  }
+
+  writePairCandles(tf: PairTimeframe, rows: SpreadCandle[]): void {
+    if (rows.length === 0) return;
+    const stmt = this.db.prepare(
+      `insert or replace into ${PAIR_TABLE[tf]} (ts, base, ex_a, ex_b, open, high, low, close, samples, source)
+       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    this.db.exec('begin');
+    try {
+      for (const r of rows) {
+        stmt.run(r.ts, r.base, r.exA, r.exB, r.open, r.high, r.low, r.close, r.samples, r.source);
+      }
+      this.db.exec('commit');
+    } catch (err) {
+      this.db.exec('rollback');
+      throw err;
+    }
+  }
+
+  queryPairCandles(
+    base: string,
+    exA: ExchangeId,
+    exB: ExchangeId,
+    tf: PairTimeframe,
+    from: number,
+    to: number,
+  ): SpreadCandle[] {
+    const rows = this.db
+      .prepare(
+        `select * from ${PAIR_TABLE[tf]} where base = ? and ex_a = ? and ex_b = ? and ts >= ? and ts < ? order by ts`,
+      )
+      .all(base, exA, exB, from, to) as Record<string, unknown>[];
+    return rows.map((r) => ({
+      ts: Number(r['ts']),
+      base: String(r['base']),
+      exA: r['ex_a'] as ExchangeId,
+      exB: r['ex_b'] as ExchangeId,
+      open: Number(r['open']),
+      high: Number(r['high']),
+      low: Number(r['low']),
+      close: Number(r['close']),
+      samples: Number(r['samples']),
+      source: r['source'] as SpreadCandle['source'],
+    }));
   }
 
   // ---------------------------------------------------------------- фандинг

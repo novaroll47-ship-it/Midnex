@@ -8,20 +8,34 @@
  * Реконструированные (по свечам бирж) участки рисуются пунктиром — это
  * приближение, а не измерение.
  */
-import { EXCHANGES, formatPct } from '@cs/shared';
+import { EXCHANGES, formatPct, type ExchangeId } from '@cs/shared';
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { api, type HistoryResponse } from '../lib/api';
 
 type Range = '1h' | '24h' | '7d' | '30d';
+type Tf = '1m' | '5m' | '15m' | '1h';
+export type ChartPair = { exA: ExchangeId; exB: ExchangeId };
 
-const RANGE: Record<Range, { tf: '1m' | '5m' | '1h'; spanMs: number }> = {
+const RANGE: Record<Range, { tf: Tf; spanMs: number }> = {
   '1h': { tf: '1m', spanMs: 3_600_000 },
   '24h': { tf: '5m', spanMs: 86_400_000 },
   '7d': { tf: '1h', spanMs: 7 * 86_400_000 },
   '30d': { tf: '1h', spanMs: 30 * 86_400_000 },
 };
+/** По конкретной паре свечи крупнее (15m/1h), и часового диапазона нет. */
+const PAIR_RANGE: Record<Exclude<Range, '1h'>, { tf: Tf; spanMs: number }> = {
+  '24h': { tf: '15m', spanMs: 86_400_000 },
+  '7d': { tf: '1h', spanMs: 7 * 86_400_000 },
+  '30d': { tf: '1h', spanMs: 30 * 86_400_000 },
+};
+const TF_MS: Record<Tf, number> = { '1m': 60_000, '5m': 300_000, '15m': 900_000, '1h': 3_600_000 };
+
+function samePair(a: ChartPair | null, b: ChartPair | null): boolean {
+  if (!a || !b) return a === b;
+  return (a.exA === b.exA && a.exB === b.exB) || (a.exA === b.exB && a.exB === b.exA);
+}
 
 const REFRESH_MS = 5000;
 const WIDTH = 340;
@@ -29,9 +43,29 @@ const HEIGHT = 120;
 const PAD_X = 6;
 const PAD_Y = 8;
 
-export function SpreadChart({ base }: { base: string }) {
+export function SpreadChart({
+  base,
+  pairs = [],
+  currentPair = null,
+}: {
+  base: string;
+  /** Сверенные пары монеты — для сравнения бирж. */
+  pairs?: ChartPair[];
+  /** Пара из таблицы (лучшая сейчас) — открывается первой. */
+  currentPair?: ChartPair | null;
+}) {
   const { t } = useTranslation();
   const [range, setRange] = useState<Range>('24h');
+  // null — «лучшая пара монеты» (история по монете), иначе — конкретная пара.
+  const [pair, setPair] = useState<ChartPair | null>(currentPair);
+  const [pairTouched, setPairTouched] = useState(false);
+  useEffect(() => {
+    // Пока пользователь не выбирал сам, следуем за парой из таблицы.
+    if (!pairTouched && currentPair && !samePair(pair, currentPair)) setPair(currentPair);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPair?.exA, currentPair?.exB]);
+  const effectiveRange: Range = pair && range === '1h' ? '24h' : range;
+  const pairKeyStr = pair ? `${pair.exA}|${pair.exB}` : '';
   const [data, setData] = useState<HistoryResponse | null>(null);
   const [error, setError] = useState(false);
   const [hover, setHover] = useState<number | null>(null);
@@ -42,12 +76,12 @@ export function SpreadChart({ base }: { base: string }) {
     setData(null);
     setError(false);
     setHover(null);
-    const { tf, spanMs } = RANGE[range];
+    const { tf, spanMs } = pair ? PAIR_RANGE[effectiveRange as Exclude<Range, '1h'>] : RANGE[effectiveRange];
     const load = () => {
       if (document.hidden) return;
       const to = Date.now();
       api
-        .history(base, tf, to - spanMs, to)
+        .history(base, tf, to - spanMs, to, pair ?? undefined)
         .then((r) => {
           if (!alive) return;
           setData(r);
@@ -61,7 +95,8 @@ export function SpreadChart({ base }: { base: string }) {
       alive = false;
       clearInterval(timer);
     };
-  }, [base, range]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [base, effectiveRange, pairKeyStr]);
 
   const candles = data?.candles ?? [];
   const exName = (id: string) => EXCHANGES.find((e) => e.id === id)?.name ?? id;
@@ -90,7 +125,7 @@ export function SpreadChart({ base }: { base: string }) {
       HEIGHT - PAD_Y - ((Math.min(v, hi) - lo) / span) * (HEIGHT - PAD_Y * 2);
 
     const pts = candles.map((c) => ({ x: x(c.ts), y: y(c.close), c }));
-    const tfMs = RANGE[range].tf === '1m' ? 60_000 : RANGE[range].tf === '5m' ? 300_000 : 3_600_000;
+    const tfMs = TF_MS[(pair ? PAIR_RANGE[effectiveRange as Exclude<Range, '1h'>] : RANGE[effectiveRange]).tf];
     // Дыра в данных (процесс не работал) — разрыв, а не прямая через полночь.
     // Участки, восстановленные по часовым свечам, идут с часовым шагом —
     // для них допустимый промежуток шире.
@@ -152,7 +187,7 @@ export function SpreadChart({ base }: { base: string }) {
 
     const h = hover !== null && hover < pts.length ? pts[hover]! : null;
     const tipLeftPct = h ? Math.min(Math.max((h.x / WIDTH) * 100, 22), 78) : 0;
-    const ticks = timeTicks(from, to, range);
+    const ticks = timeTicks(from, to, effectiveRange);
 
     body = (
       <>
@@ -204,7 +239,7 @@ export function SpreadChart({ base }: { base: string }) {
           </svg>
           {h && (
             <div className="chart__tip num" style={{ left: `${tipLeftPct}%` }}>
-              <div className="chart__tip-time">{fmtStamp(h.c.ts, range)}</div>
+              <div className="chart__tip-time">{fmtStamp(h.c.ts, effectiveRange)}</div>
               <div className="chart__tip-main">{formatPct(h.c.close)}</div>
               <div className="chart__tip-sub">
                 {formatPct(h.c.low)} – {formatPct(h.c.high)}
@@ -247,11 +282,11 @@ export function SpreadChart({ base }: { base: string }) {
       <div className="chart__head">
         <span className="chart__title">{t('chart.title')}</span>
         <div className="segmented segmented--mini">
-          {(['1h', '24h', '7d', '30d'] as Range[]).map((r) => (
+          {(pair ? (['24h', '7d', '30d'] as Range[]) : (['1h', '24h', '7d', '30d'] as Range[])).map((r) => (
             <button
               key={r}
               type="button"
-              className={`segmented__item${range === r ? ' segmented__item--active' : ''}`}
+              className={`segmented__item${effectiveRange === r ? ' segmented__item--active' : ''}`}
               onClick={() => setRange(r)}
             >
               {t(`chart.range_${r}`)}
@@ -259,6 +294,33 @@ export function SpreadChart({ base }: { base: string }) {
           ))}
         </div>
       </div>
+      {pairs.length > 0 && (
+        <div className="chart__pairs">
+          <button
+            type="button"
+            className={`chip-mini chip-mini--tap${pair === null ? ' chip-mini--on' : ''}`}
+            onClick={() => {
+              setPairTouched(true);
+              setPair(null);
+            }}
+          >
+            {t('chart.bestPair')}
+          </button>
+          {pairs.map((p) => (
+            <button
+              key={`${p.exA}|${p.exB}`}
+              type="button"
+              className={`chip-mini chip-mini--tap${samePair(pair, p) ? ' chip-mini--on' : ''}`}
+              onClick={() => {
+                setPairTouched(true);
+                setPair(p);
+              }}
+            >
+              {exName(p.exA)} ↔ {exName(p.exB)}
+            </button>
+          ))}
+        </div>
+      )}
       {body}
     </section>
   );

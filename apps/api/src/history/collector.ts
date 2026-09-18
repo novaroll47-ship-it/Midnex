@@ -17,7 +17,7 @@ import type { FastifyBaseLogger } from 'fastify';
 import type { ExchangeId, SpreadRow } from '@cs/shared';
 
 import type { MarketSource } from '../market.js';
-import type { GapReason, HistoryStore, SpreadCandle, SpreadTick } from './store.js';
+import type { GapReason, HistoryStore, PairTimeframe, SpreadCandle, SpreadTick } from './store.js';
 
 export interface CollectorOptions {
   store: HistoryStore;
@@ -66,6 +66,8 @@ export class HistoryCollector {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     this.flushMinute(Date.now());
+    this.flushPairs('15m');
+    this.flushPairs('1h');
   }
 
   /** Незакрытая минутная свеча монеты — чтобы график не отставал на минуту. */
@@ -133,6 +135,7 @@ export class HistoryCollector {
         }
       }
       this.o.store.writeTicks(ticks);
+      this.accumulatePairs(now);
       this.followExchangeGaps();
 
       const hour = Math.floor(now / 3_600_000);
@@ -185,6 +188,70 @@ export class HistoryCollector {
     c.low = Math.min(c.low, r.spreadPct);
     c.close = r.spreadPct;
     c.samples++;
+  }
+
+  // ---------------------------------------------------------------- по парам
+
+  /**
+   * Свечи по каждой сверенной паре: 15m и 1h. Пар около четырнадцати тысяч,
+   * поэтому таймфреймы крупнее, чем у свечей «лучшая пара монеты», а
+   * накопление — в памяти с записью раз в 15 минут / раз в час.
+   */
+  private pairBuckets: Record<PairTimeframe, Map<string, SpreadCandle>> = { '15m': new Map(), '1h': new Map() };
+  private pairBucketStart: Record<PairTimeframe, number> = { '15m': 0, '1h': 0 };
+  private static readonly PAIR_TF_MS: Record<PairTimeframe, number> = { '15m': 900_000, '1h': 3_600_000 };
+
+  private accumulatePairs(now: number): void {
+    const engine = this.o.market.engine;
+    if (!engine) return;
+    const spreads = engine.pairSpreads();
+    for (const tf of ['15m', '1h'] as PairTimeframe[]) {
+      const ms = HistoryCollector.PAIR_TF_MS[tf];
+      const start = Math.floor(now / ms) * ms;
+      if (this.pairBucketStart[tf] && start !== this.pairBucketStart[tf]) this.flushPairs(tf);
+      this.pairBucketStart[tf] = start;
+      const buckets = this.pairBuckets[tf];
+      for (const p of spreads) {
+        const key = `${p.base}|${p.exA}|${p.exB}`;
+        const c = buckets.get(key);
+        if (!c) {
+          buckets.set(key, {
+            ts: start,
+            base: p.base,
+            exA: p.exA,
+            exB: p.exB,
+            open: p.spreadPct,
+            high: p.spreadPct,
+            low: p.spreadPct,
+            close: p.spreadPct,
+            samples: 1,
+            source: 'live',
+          });
+          continue;
+        }
+        if (p.spreadPct > c.high) c.high = p.spreadPct;
+        if (p.spreadPct < c.low) c.low = p.spreadPct;
+        c.close = p.spreadPct;
+        c.samples++;
+      }
+    }
+  }
+
+  private flushPairs(tf: PairTimeframe): void {
+    const rows = [...this.pairBuckets[tf].values()];
+    this.pairBuckets[tf] = new Map();
+    if (rows.length === 0) return;
+    try {
+      this.o.store.writePairCandles(tf, rows);
+    } catch (err) {
+      this.o.log.warn({ err: String(err) }, `история: свечи по парам ${tf} не записаны`);
+    }
+  }
+
+  /** Незакрытая свеча пары — чтобы график не отставал. */
+  currentPair(base: string, exA: ExchangeId, exB: ExchangeId, tf: PairTimeframe): SpreadCandle | null {
+    const c = this.pairBuckets[tf].get(`${base}|${exA}|${exB}`);
+    return c ? { ...c } : null;
   }
 
   private flushMinute(minute: number): void {

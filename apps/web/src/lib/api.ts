@@ -122,9 +122,12 @@ export interface HistoryCandle {
 
 export interface HistoryResponse {
   base: string;
-  tf: '1m' | '5m' | '1h';
+  tf: '1m' | '5m' | '15m' | '1h';
   from: number;
   to: number;
+  /** Заданы, если история по конкретной паре бирж. */
+  exA?: ExchangeId;
+  exB?: ExchangeId;
   candles: HistoryCandle[];
 }
 
@@ -312,8 +315,20 @@ export const api = {
     ),
   deleteKey: (exchange: ExchangeId) => request<{ ok: true }>('DELETE', `/api/keys/${exchange}`),
 
-  history: (base: string, tf: '1m' | '5m' | '1h', from: number, to: number) =>
-    get<HistoryResponse>(`/api/history/${encodeURIComponent(base)}`, { tf, from, to }),
+  history: (
+    base: string,
+    tf: '1m' | '5m' | '15m' | '1h',
+    from: number,
+    to: number,
+    pair?: { exA: ExchangeId; exB: ExchangeId },
+  ) =>
+    get<HistoryResponse>(`/api/history/${encodeURIComponent(base)}`, {
+      tf,
+      from,
+      to,
+      exA: pair?.exA,
+      exB: pair?.exB,
+    }),
 
   adminPairs: (filter: 'anomalies' | 'verified' | 'rejected') =>
     get<{ pairs: PairView[]; total: number; counts: PairCounts }>('/api/admin/pairs', { filter }),

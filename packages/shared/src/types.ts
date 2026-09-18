@@ -212,6 +212,8 @@ export interface CoinDetail {
     fundingPct: number;
   };
   updatedAt: number;
+  /** Сверенные пары бирж этой монеты — для выбора на графике. */
+  pairs?: { exA: ExchangeId; exB: ExchangeId }[];
 }
 
 /**

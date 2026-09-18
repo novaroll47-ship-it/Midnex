@@ -9,6 +9,10 @@
 # Это временный режим: приложение живёт, только пока включён ПК.
 # Постоянный вариант — deploy/README.md.
 
+# -TunnelOnly: перезапустить только туннель и перепривязать постоянный адрес,
+# не трогая работающее приложение (так делает сторож, когда упал лишь туннель).
+param([switch]$TunnelOnly)
+
 $ErrorActionPreference = 'Stop'
 
 $Root = Split-Path -Parent $PSScriptRoot
@@ -36,12 +40,14 @@ if (-not (Test-Path $Cloudflared)) {
 
 Write-Host '==> Останавливаю прошлый запуск'
 Get-Process cloudflared -ErrorAction SilentlyContinue | Stop-Process -Force
-Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" |
-    Where-Object { $_.CommandLine -like '*apps/api/dist/index.js*' } |
-    ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+if (-not $TunnelOnly) {
+    Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" |
+        Where-Object { $_.CommandLine -like '*apps/api/dist/index.js*' } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 
-Write-Host '==> Собираю'
-npm run build | Out-Null
+    Write-Host '==> Собираю'
+    npm run build | Out-Null
+}
 
 # http2 (TCP) вместо quic (UDP): домашние провайдеры и VPN часто режут UDP,
 # и туннель тогда молча отваливается от Cloudflare с ошибкой 530.
@@ -93,6 +99,11 @@ if ($pat) {
     $StableUrl = $url
 }
 
+if ($TunnelOnly) {
+    Write-Host "Туннель перезапущен: $StableUrl -> $url"
+    exit 0
+}
+
 Write-Host '==> Запускаю приложение и бота'
 # NODE_ENV=production включает настоящую проверку подписи Telegram:
 # открыть приложение можно будет только из клиента Telegram.
@@ -114,7 +125,7 @@ Start-Process -FilePath 'node' -ArgumentList '--max-old-space-size=1024', 'apps/
 $health = $null
 foreach ($i in 1..150) {
     Start-Sleep -Seconds 2
-    try { $health = Invoke-RestMethod -Uri 'http://localhost:8787/api/health' -TimeoutSec 5 } catch { }
+    try { $health = Invoke-RestMethod -Uri 'http://127.0.0.1:8787/api/health' -TimeoutSec 5 } catch { }
     if ($health -and $health.ok) { break }
 }
 if (-not ($health -and $health.ok)) { throw 'Приложение не поднялось, смотри .tools/api.log' }

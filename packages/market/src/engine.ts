@@ -590,6 +590,50 @@ export class MarketEngine {
     return value;
   }
 
+  /**
+   * Спред по каждой сверенной паре бирж (в лучшую сторону) — для истории
+   * по парам. Биржи в паре — по алфавиту, как в таблице сверки.
+   */
+  pairSpreads(): { base: string; exA: ExchangeId; exB: ExchangeId; spreadPct: number }[] {
+    const out: { base: string; exA: ExchangeId; exB: ExchangeId; spreadPct: number }[] = [];
+    for (const base of this.universe.byBase.keys()) {
+      const venues = this.venuesFor(base).filter((v) => v.fresh);
+      if (venues.length < 2) continue;
+      const allowed = this.universe.pairsByBase.get(base);
+      for (let i = 0; i < venues.length; i++) {
+        for (let j = i + 1; j < venues.length; j++) {
+          const a = venues[i]!;
+          const b = venues[j]!;
+          const key = pairKey(a.market.exchange, b.market.exchange);
+          if (allowed && !allowed.has(key)) continue;
+          const ab = ((b.quote.bid - a.quote.ask) / a.quote.ask) * 100;
+          const ba = ((a.quote.bid - b.quote.ask) / b.quote.ask) * 100;
+          const spreadPct = Math.max(ab, ba);
+          if (!Number.isFinite(spreadPct) || Math.abs(spreadPct) > MAX_PLAUSIBLE_SPREAD_PCT) continue;
+          const [exA, exB] = key.split('|') as [ExchangeId, ExchangeId];
+          out.push({ base, exA, exB, spreadPct: Math.round(spreadPct * 10_000) / 10_000 });
+        }
+      }
+    }
+    return out;
+  }
+
+  /** Сверенные пары монеты — для выбора на графике. */
+  pairsOf(base: string): { exA: ExchangeId; exB: ExchangeId }[] {
+    const allowed = this.universe.pairsByBase.get(base);
+    const legs = (this.universe.byBase.get(base) ?? []).map((m) => m.exchange);
+    const out: { exA: ExchangeId; exB: ExchangeId }[] = [];
+    for (let i = 0; i < legs.length; i++) {
+      for (let j = i + 1; j < legs.length; j++) {
+        const key = pairKey(legs[i]!, legs[j]!);
+        if (allowed && !allowed.has(key)) continue;
+        const [exA, exB] = key.split('|') as [ExchangeId, ExchangeId];
+        out.push({ exA, exB });
+      }
+    }
+    return out;
+  }
+
   coinDetail(base: string, filter?: ExchangeId[]): CoinDetail | undefined {
     const canonical = this.bases().find((b) => b.toLowerCase() === base.toLowerCase());
     if (!canonical) return undefined;

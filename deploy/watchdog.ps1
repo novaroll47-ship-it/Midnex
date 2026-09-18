@@ -22,7 +22,7 @@ function Write-Log([string]$msg) {
 
 function Test-Local {
     try {
-        $h = Invoke-RestMethod -Uri 'http://localhost:8787/api/health' -TimeoutSec 5
+        $h = Invoke-RestMethod -Uri 'http://127.0.0.1:8787/api/health' -TimeoutSec 5
         return [bool]$h.ok
     } catch { return $false }
 }
@@ -48,6 +48,18 @@ function Restart-All([string]$why) {
     }
 }
 
+# Приложение живо, упал только туннель: поднимаем туннель, приложение не трогаем —
+# так простой длится секунды, а не минуты пересборки и прогрева бирж.
+function Restart-Tunnel([string]$why) {
+    Write-Log "перезапуск туннеля: $why"
+    try {
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $RunLocal -TunnelOnly 2>&1 |
+            ForEach-Object { Write-Log "  run-local: $_" }
+    } catch {
+        Write-Log "  run-local упал: $_"
+    }
+}
+
 Write-Log 'сторож запущен'
 if (-not (Test-Local)) { Restart-All 'приложение не запущено' }
 
@@ -66,7 +78,7 @@ while ($true) {
     if (Test-Tunnel) { $tunnelFails = 0 } else { $tunnelFails++ }
     # Туннелю даём больше времени: Cloudflare бывает недоступен минуту-две сам.
     if ($tunnelFails -ge 3) {
-        Restart-All 'туннель не отвечает три минуты'
+        Restart-Tunnel 'туннель не отвечает три минуты'
         $localFails = 0; $tunnelFails = 0
     }
 }

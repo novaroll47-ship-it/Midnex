@@ -66,7 +66,7 @@
     "sortName": "Name",
     "sortPrice": "Price",
     "resetFilters": "Reset",
-    "fundingUnknown": "net {{value}} ?",
+    "fundingUnknown": "net {{value}} excl. funding",
     "botActive": "Bot active",
     "botStopped": "Bot stopped",
     "configure": "Configure",
@@ -552,7 +552,8 @@
     "max": "max",
     "last": "now",
     "noData": "History is still accumulating — check back later",
-    "unavailable": "History unavailable"
+    "unavailable": "History unavailable",
+    "bestPair": "Best pair"
   },
   "pairs": {
     "title": "Pair verification",
