@@ -522,6 +522,8 @@
     "range_1h": "1 h",
     "range_24h": "24 h",
     "range_7d": "7 d",
+    "range_30d": "30 d",
+    "reconstructed": "Dashed — approximated from exchange candles (before the live recording began)",
     "min": "min",
     "max": "max",
     "last": "now",

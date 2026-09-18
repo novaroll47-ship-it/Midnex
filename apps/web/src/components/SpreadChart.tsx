@@ -11,12 +11,13 @@ import { useTranslation } from 'react-i18next';
 
 import { api, type HistoryResponse } from '../lib/api';
 
-type Range = '1h' | '24h' | '7d';
+type Range = '1h' | '24h' | '7d' | '30d';
 
 const RANGE: Record<Range, { tf: '1m' | '5m' | '1h'; spanMs: number }> = {
   '1h': { tf: '1m', spanMs: 3_600_000 },
   '24h': { tf: '5m', spanMs: 86_400_000 },
   '7d': { tf: '1h', spanMs: 7 * 86_400_000 },
+  '30d': { tf: '1h', spanMs: 30 * 86_400_000 },
 };
 
 export function SpreadChart({ base }: { base: string }) {
@@ -107,6 +108,9 @@ export function SpreadChart({ base }: { base: string }) {
             {t('chart.last')} {formatPct(candles[candles.length - 1]!.close)}
           </span>
         </div>
+        {candles.some((c) => c.source === 'reconstructed') && (
+          <div className="chart__note">{t('chart.reconstructed')}</div>
+        )}
       </>
     );
   }
@@ -116,7 +120,7 @@ export function SpreadChart({ base }: { base: string }) {
       <div className="chart__head">
         <span className="chart__title">{t('chart.title')}</span>
         <div className="segmented segmented--mini">
-          {(['1h', '24h', '7d'] as Range[]).map((r) => (
+          {(['1h', '24h', '7d', '30d'] as Range[]).map((r) => (
             <button
               key={r}
               type="button"

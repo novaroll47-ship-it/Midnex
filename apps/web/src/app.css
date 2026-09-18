@@ -1796,6 +1796,12 @@
     color: var(--text-dim);
   }
 
+  .chart__note {
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--text-mute);
+  }
+
   .chart__empty {
     height: 120px;
     display: grid;

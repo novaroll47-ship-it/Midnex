@@ -77,7 +77,7 @@ export class SqliteHistoryStore implements HistoryStore {
     mkdirSync(dirname(path), { recursive: true });
     this.db = new DatabaseSync(path);
     this.db.exec(
-      'pragma journal_mode = wal; pragma synchronous = normal; pragma temp_store = memory;',
+      'pragma journal_mode = wal; pragma synchronous = normal; pragma temp_store = memory; pragma busy_timeout = 5000;',
     );
     this.db.exec(SCHEMA);
   }
