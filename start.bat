@@ -12,6 +12,8 @@ if errorlevel 1 (
 )
 
 echo ==^> Запускаю сторож: перезапустит всё сам, если туннель или приложение упадут
+rem Старый сторож, если остался от прошлого запуска, останавливаем: два сторожа мешают друг другу.
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process -Filter \"Name = 'powershell.exe'\" | Where-Object { $_.CommandLine -like '*watchdog.ps1*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"
 start "" /min powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "deploy\watchdog.ps1"
 
 echo.
