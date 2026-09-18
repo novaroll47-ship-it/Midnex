@@ -49,11 +49,19 @@ export function CoachMarks({
       if (cancelled) return;
       const el = document.querySelector<HTMLElement>(step.target);
       if (el) {
-        el.scrollIntoView({ block: 'center', behavior: 'instant' as ScrollBehavior });
+        // Нижнюю панель прокручивать нельзя: в iOS-клиенте scrollIntoView
+        // на fixed-элементе сдвигает весь документ, и панель уезжает за край.
+        if (!el.closest('.nav')) {
+          el.scrollIntoView({ block: 'center', behavior: 'instant' as ScrollBehavior });
+        }
         measure(el);
-        // Экран ещё догружается (подписка, список) и элементы сдвигаются —
-        // подсветка следует за элементом, пока шаг открыт.
-        follow = setInterval(() => measure(el), 250);
+        // Экран ещё догружается, список пересортировывается — подсветка
+        // каждый раз заново ищет элемент по селектору (первая строка списка
+        // может стать другой монетой), а не держится за старый узел.
+        follow = setInterval(() => {
+          const cur = document.querySelector<HTMLElement>(step.target);
+          if (cur) measure(cur);
+        }, 250);
         return;
       }
       if (++attempts < 15) setTimeout(find, 100);
@@ -73,9 +81,13 @@ export function CoachMarks({
   if (!step || !rect) return null;
 
   const last = index === module.steps.length - 1;
-  // Карточка — под элементом, если есть место, иначе над ним.
+  // Карточка — под элементом, если есть место, иначе над ним; в любом
+  // случае — в пределах экрана.
   const below = rect.top + rect.height + 190 < window.innerHeight;
-  const cardTop = below ? rect.top + rect.height + 10 : Math.max(10, rect.top - 180);
+  const cardTop = Math.min(
+    Math.max(10, below ? rect.top + rect.height + 10 : rect.top - 180),
+    Math.max(10, window.innerHeight - 190),
+  );
 
   return (
     <div className="coach" role="dialog" aria-modal="true">

@@ -126,18 +126,39 @@ export interface HistoryResponse {
   candles: HistoryCandle[];
 }
 
-export interface LegView {
+export type PairStatus = 'candidate' | 'verified' | 'rejected' | 'delisted';
+export type VerificationSource = 'auto_price' | 'auto_multiplier' | 'external_match' | 'manual';
+
+export interface PairView {
   base: string;
-  exchange: ExchangeId;
-  symbol: string;
+  exchangeA: ExchangeId;
+  symbolA: string;
+  exchangeB: ExchangeId;
+  symbolB: string;
+  /** цена_A ≈ multiplier × цена_B. */
   multiplier: number;
-  status: 'candidate' | 'verified' | 'rejected' | 'delisted';
+  status: PairStatus;
+  verificationSource: VerificationSource | null;
+  ratio: number | null;
+  externalA: string | null;
+  externalB: string | null;
   note: string | null;
   updatedAt: number;
   updatedBy: string | null;
-  price: number | null;
-  ratio: number | null;
-  peers: number;
+  verifiedAt: number | null;
+  priceA: number | null;
+  priceB: number | null;
+  liveRatio: number | null;
+}
+
+export interface PairCounts {
+  total: number;
+  verified: number;
+  auto: number;
+  manual: number;
+  anomalies: number;
+  pending: number;
+  rejected: number;
 }
 
 export type FundingPeriod = '1d' | '7d' | '30d' | '180d';
@@ -290,21 +311,18 @@ export const api = {
   history: (base: string, tf: '1m' | '5m' | '1h', from: number, to: number) =>
     get<HistoryResponse>(`/api/history/${encodeURIComponent(base)}`, { tf, from, to }),
 
-  adminPairs: () =>
-    get<{ legs: LegView[]; counts: { total: number; verified: number; candidate: number } }>(
-      '/api/admin/pairs',
-    ),
-  adminPairSet: (exchange: string, symbol: string, status: string, multiplier?: number) =>
-    request<{ leg: LegView }>(
-      'POST',
-      `/api/admin/pairs/${exchange}/${encodeURIComponent(symbol)}`,
-      { status, multiplier },
-    ),
-  adminPairsVerifyMatching: () =>
-    request<{ verified: number; counts: { total: number; verified: number; candidate: number } }>(
-      'POST',
-      '/api/admin/pairs/verify-matching',
-    ),
+  adminPairs: (filter: 'anomalies' | 'verified' | 'rejected') =>
+    get<{ pairs: PairView[]; total: number; counts: PairCounts }>('/api/admin/pairs', { filter }),
+  adminPairDecide: (
+    pair: Pick<PairView, 'exchangeA' | 'symbolA' | 'exchangeB' | 'symbolB'>,
+    status: 'verified' | 'rejected' | 'candidate',
+    multiplier?: number,
+  ) =>
+    request<{ pair: PairView; counts: PairCounts }>('POST', '/api/admin/pairs/decide', {
+      ...pair,
+      status,
+      multiplier,
+    }),
 
   coinFunding: (base: string, period: FundingPeriod) =>
     get<FundingResponse>(`/api/coin/${encodeURIComponent(base)}/funding`, { period }),

@@ -44,6 +44,7 @@ import { createMarketSource, type MarketHooks } from './market.js';
 import type { VenueMarket } from '@cs/market';
 import { ListingsMonitor } from './listings.js';
 import { PairsService } from './pairs.js';
+import { ExternalTickers } from './pairs-external.js';
 import { HistoryCollector } from './history/collector.js';
 import { FUNDING_PERIODS, FundingHistory, type FundingPeriod } from './history/funding.js';
 import { SqliteHistoryStore } from './history/sqlite.js';
@@ -132,16 +133,19 @@ const billing = new Billing({
 });
 let bot: BotHandle | null = null;
 
-// Сверка ног: таблица из базы → движок; новые рынки → кандидаты.
+// Сверка пар: таблица из базы → движок; новые рынки → пары-кандидаты;
+// раз в минуту — автосверка по ценам и CoinGecko.
+const externalTickers = new ExternalTickers(join(dirname(HISTORY_DB_PATH), 'external-tickers.json'), app.log);
 const pairs = new PairsService({
   repo,
   engine: market.engine,
   log: app.log,
-  onNewCandidates: (count) => {
+  external: externalTickers,
+  onAnomalies: (count) => {
     if (bot && billing.adminId !== null) {
       void bot.send(
         billing.adminId,
-        `Сверка: появилось ${count} новых кандидатов — Настройки → Сверка пар.`,
+        `Сверка: ${count} новых аномалий ждут решения — Настройки → Сверка пар.`,
       );
     }
   },
@@ -159,13 +163,9 @@ if (market.engine) {
     byExchange.set(m.exchange, [...(byExchange.get(m.exchange) ?? []), m]);
   }
   for (const [exchange, markets] of byExchange) void pairs.syncMarkets(exchange, markets);
+  externalTickers.start();
+  pairs.start();
 }
-// Нулевая сверка — через две минуты, когда котировки уже идут.
-setTimeout(() => {
-  void pairs.bootstrapIfEmpty().catch((err: unknown) => {
-    app.log.warn({ err: String(err) }, 'сверка: нулевая сверка не удалась');
-  });
-}, 120_000);
 
 // Уведомления — единая очередь в Telegram; алерты по спреду — поверх неё.
 const notifications = new NotificationService(() => bot, app.log, process.env.PUBLIC_URL);
@@ -775,32 +775,43 @@ app.delete('/api/alerts/:id', async (req, reply) => {
 
 app.get('/api/admin/pairs', async (req, reply) => {
   if (!billing.isAdmin(req.state!.userId)) return reply.code(403).send({ error: 'admin only' });
-  return { legs: await pairs.list(), counts: pairs.counts() };
+  const q = req.query as { filter?: string; limit?: string };
+  const filter = q.filter === 'verified' || q.filter === 'rejected' ? q.filter : 'anomalies';
+  const limit = Math.min(500, Math.max(1, Number(q.limit) || 200));
+  const all = pairs.list(filter);
+  return { pairs: all.slice(0, limit), total: all.length, counts: pairs.counts() };
 });
 
-app.post('/api/admin/pairs/:exchange/:symbol', async (req, reply) => {
+app.post('/api/admin/pairs/decide', async (req, reply) => {
   if (!billing.isAdmin(req.state!.userId)) return reply.code(403).send({ error: 'admin only' });
-  const { exchange, symbol } = req.params as { exchange: string; symbol: string };
-  const body = req.body as { status?: string; multiplier?: number };
+  const body = req.body as {
+    exchangeA?: string;
+    symbolA?: string;
+    exchangeB?: string;
+    symbolB?: string;
+    status?: string;
+    multiplier?: number;
+  };
   const status = body?.status;
   if (status !== 'verified' && status !== 'rejected' && status !== 'candidate') {
     return reply.code(400).send({ error: 'bad status' });
   }
+  if (!body.exchangeA || !body.symbolA || !body.exchangeB || !body.symbolB) {
+    return reply.code(400).send({ error: 'pair required' });
+  }
   const rec = await pairs.setStatus(
-    exchange as ExchangeId,
-    decodeURIComponent(symbol),
+    {
+      exchangeA: body.exchangeA as ExchangeId,
+      symbolA: body.symbolA,
+      exchangeB: body.exchangeB as ExchangeId,
+      symbolB: body.symbolB,
+    },
     status,
     body.multiplier !== undefined ? Number(body.multiplier) : undefined,
     `admin:${req.state!.userId}`,
   );
   if (!rec) return reply.code(404).send({ error: 'not found' });
-  return { leg: rec };
-});
-
-app.post('/api/admin/pairs/verify-matching', async (req, reply) => {
-  if (!billing.isAdmin(req.state!.userId)) return reply.code(403).send({ error: 'admin only' });
-  const n = await pairs.verifyAllMatching(`admin:${req.state!.userId}`);
-  return { verified: n, counts: pairs.counts() };
+  return { pair: rec, counts: pairs.counts() };
 });
 
 // ---------------------------------------------------------------- ключи бирж

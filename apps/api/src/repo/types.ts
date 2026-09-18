@@ -130,6 +130,30 @@ export interface VerifiedSymbolRecord {
   verifiedAt: number | null;
 }
 
+export type PairStatus = 'candidate' | 'verified' | 'rejected' | 'delisted';
+export type VerificationSource = 'auto_price' | 'auto_multiplier' | 'external_match' | 'manual';
+
+/** Пара ног одной монеты на двух биржах (биржи по алфавиту) и решение по ней. */
+export interface VerifiedPairRecord {
+  base: string;
+  exchangeA: ExchangeId;
+  symbolA: string;
+  exchangeB: ExchangeId;
+  symbolB: string;
+  /** цена_A ≈ multiplier × цена_B по сырым ценам контрактов. */
+  multiplier: number;
+  status: PairStatus;
+  verificationSource: VerificationSource | null;
+  /** Последнее измеренное отношение цен A/B. */
+  ratio: number | null;
+  externalA: string | null;
+  externalB: string | null;
+  note: string | null;
+  updatedAt: number;
+  updatedBy: string | null;
+  verifiedAt: number | null;
+}
+
 /** Правило алерта: по монете (base) или общее (любая монета выше порога). */
 export interface AlertRuleRecord {
   id: string;
@@ -211,8 +235,10 @@ export interface Repo {
     lastBase: string | null,
   ): Promise<void>;
 
+  /** Старая таблица ног — только для переноса ручных решений. */
   listVerifiedSymbols(): Promise<VerifiedSymbolRecord[]>;
-  upsertVerifiedSymbols(rows: VerifiedSymbolRecord[]): Promise<void>;
+  listVerifiedPairs(): Promise<VerifiedPairRecord[]>;
+  upsertVerifiedPairs(rows: VerifiedPairRecord[]): Promise<void>;
 
   close(): Promise<void>;
 }

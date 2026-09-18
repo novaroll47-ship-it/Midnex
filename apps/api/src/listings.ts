@@ -59,7 +59,7 @@ export class ListingsMonitor {
           for (const m of diff.added) added.push(`${m.base} (${ex.name})`);
           for (const m of diff.removed) {
             removed.push({ base: m.base, exchange: m.exchange });
-            await this.o.pairs.setStatus(m.exchange, m.symbol, 'delisted', undefined, 'listings');
+            await this.o.pairs.markDelisted(m.exchange, m.symbol, 'listings');
           }
         } catch (err) {
           this.o.log.warn(
@@ -69,11 +69,9 @@ export class ListingsMonitor {
         }
       }
       if (added.length) {
-        this.o.log.info(`листинги: новых инструментов ${added.length}`);
-        this.o.notifyAdmin(
-          `🆕 Новые инструменты (${added.length}): ${added.slice(0, 15).join(', ')}${added.length > 15 ? '…' : ''}\n` +
-            'Они ждут сверки — Настройки → Сверка пар.',
-        );
+        // Сверит автосверка за минуту; администратора зовём только к аномалиям
+        // (PairsService.onAnomalies), здесь — лишь запись в лог.
+        this.o.log.info(`листинги: новых инструментов ${added.length}: ${added.slice(0, 15).join(', ')}`);
       }
       if (removed.length) {
         this.o.log.info(`листинги: делистинг ${removed.length}`);

@@ -13,6 +13,7 @@ import type {
   PaymentRecord,
   SubscriptionRecord,
   VerifiedSymbolRecord,
+  VerifiedPairRecord,
   ExchangeKeyRecord,
   PositionRecord,
   Repo,
@@ -33,6 +34,7 @@ export class MemoryRepo implements Repo {
   private subscriptions = new Map<number, SubscriptionRecord>();
   private payments = new Map<string, PaymentRecord>();
   private verified = new Map<string, VerifiedSymbolRecord>();
+  private pairs = new Map<string, VerifiedPairRecord>();
   private alerts = new Map<string, AlertRuleRecord>();
 
   async upsertUser(u: {
@@ -239,8 +241,12 @@ export class MemoryRepo implements Repo {
     return [...this.verified.values()];
   }
 
-  async upsertVerifiedSymbols(rows: VerifiedSymbolRecord[]): Promise<void> {
-    for (const r of rows) this.verified.set(`${r.exchange}:${r.symbol}`, r);
+  async listVerifiedPairs(): Promise<VerifiedPairRecord[]> {
+    return [...this.pairs.values()];
+  }
+
+  async upsertVerifiedPairs(rows: VerifiedPairRecord[]): Promise<void> {
+    for (const r of rows) this.pairs.set(`${r.exchangeA}:${r.symbolA}|${r.exchangeB}:${r.symbolB}`, r);
   }
 
   async listAlertRules(userId?: number): Promise<AlertRuleRecord[]> {

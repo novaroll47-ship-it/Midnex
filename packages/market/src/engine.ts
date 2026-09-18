@@ -18,11 +18,11 @@ import { FundingTracker } from './funding.js';
 import { coinName } from './names.js';
 import {
   buildUniverse,
-  legKey,
+  pairKey,
   venueMarkets,
-  type LegVerification,
   type Universe,
   type VenueMarket,
+  type VerifiedPairSet,
 } from './universe.js';
 
 /** Идентификаторы ccxt отличаются от наших только у KuCoin: фьючерсы у неё отдельный класс. */
@@ -104,7 +104,7 @@ export class MarketEngine {
   private clients = new Map<ExchangeId, Exchange>();
   private feeds = new Map<ExchangeId, Feed>();
   private funding: FundingTracker | null = null;
-  private universe: Universe = { byBase: new Map(), bySymbol: new Map() };
+  private universe: Universe = { byBase: new Map(), bySymbol: new Map(), pairsByBase: new Map() };
   /** base → exchange → последняя котировка. */
   private quotes = new Map<string, Map<ExchangeId, Quote>>();
   private startedAt: number | null = null;
@@ -256,12 +256,12 @@ export class MarketEngine {
     }
   }
 
-  /** Таблица сверки ног: пока пуста — вселенная строится без фильтра. */
-  private verification: Map<string, LegVerification> | null = null;
+  /** Сверенные пары по монетам: пока не заданы — вселенная строится без фильтра. */
+  private verification: Map<string, VerifiedPairSet> | null = null;
 
   /** Подставить таблицу сверки и пересобрать вселенную. */
-  setVerification(entries: Map<string, LegVerification>): void {
-    this.verification = entries;
+  setVerifiedPairs(byBase: Map<string, VerifiedPairSet>): void {
+    this.verification = byBase;
     this.rebuildUniverse();
   }
 
@@ -305,10 +305,23 @@ export class MarketEngine {
     return (q.last * market.multiplier) / multiplier;
   }
 
+  /**
+   * Сырые цены (last, за контракт как торгуется) всех ног всех бирж одним
+   * проходом — для автосверки, которой нужны тысячи цен разом.
+   */
+  rawPrices(): Map<string, number> {
+    const out = new Map<string, number>();
+    for (const [exchange, markets] of this.marketsByExchange) {
+      for (const m of markets) {
+        const q = this.quotes.get(m.base)?.get(exchange);
+        if (q) out.set(`${exchange}:${m.symbol}`, q.last * m.multiplier);
+      }
+    }
+    return out;
+  }
+
   private rebuildUniverse(): void {
-    const verify = this.verification
-      ? (m: VenueMarket) => this.verification!.get(legKey(m.exchange, m.symbol))
-      : undefined;
+    const verify = this.verification ? (base: string) => this.verification!.get(base) : undefined;
     this.universe = buildUniverse([...this.marketsByExchange.values()].flat(), verify);
   }
 
@@ -383,11 +396,46 @@ export class MarketEngine {
     const out: VenueSnapshot[] = [];
     for (const market of markets) {
       if (filter && !filter.includes(market.exchange)) continue;
-      const quote = byVenue.get(market.exchange);
+      let quote = byVenue.get(market.exchange);
       if (!quote) continue;
+      // Поток поделил цену на множитель из тикера; сверка могла задать свой.
+      const k = (market.tickerMultiplier ?? market.multiplier) / market.multiplier;
+      if (k !== 1) quote = { ...quote, bid: quote.bid * k, ask: quote.ask * k, last: quote.last * k };
       out.push({ market, quote, fresh: now - quote.receivedAt <= this.opts.staleMs });
     }
     return out;
+  }
+
+  /**
+   * Лучшая пара среди разрешённых: лонг там, где дешевле, шорт — где дороже.
+   * Без таблицы сверки разрешены все сочетания.
+   */
+  private bestPair(
+    base: string,
+    pool: VenueSnapshot[],
+  ): { long: VenueSnapshot; short: VenueSnapshot; verifiedAt?: number } | null {
+    const allowed = this.universe.pairsByBase.get(base);
+    let best: { long: VenueSnapshot; short: VenueSnapshot; verifiedAt?: number } | null = null;
+    let bestSpread = -Infinity;
+    for (let i = 0; i < pool.length; i++) {
+      for (let j = 0; j < pool.length; j++) {
+        if (i === j) continue;
+        const long = pool[i]!;
+        const short = pool[j]!;
+        let verifiedAt: number | undefined;
+        if (allowed) {
+          const key = pairKey(long.market.exchange, short.market.exchange);
+          if (!allowed.has(key)) continue;
+          verifiedAt = allowed.get(key);
+        }
+        const spread = short.quote.bid - long.quote.ask;
+        if (spread > bestSpread) {
+          bestSpread = spread;
+          best = { long, short, verifiedAt };
+        }
+      }
+    }
+    return best;
   }
 
   private fundingPct(exchange: ExchangeId, symbol: string): number | null {
@@ -406,22 +454,9 @@ export class MarketEngine {
     const pool = fresh.length >= 2 ? fresh : all;
     const stale = fresh.length < 2;
 
-    let long = pool[0]!;
-    let short = pool[0]!;
-    for (const v of pool) {
-      if (v.quote.ask < long.quote.ask) long = v;
-      if (v.quote.bid > short.quote.bid) short = v;
-    }
-    if (long.market.exchange === short.market.exchange) {
-      // Одна и та же биржа лучшая по обеим ногам — берём вторую лучшую для шорта.
-      let second: VenueSnapshot | null = null;
-      for (const v of pool) {
-        if (v.market.exchange === long.market.exchange) continue;
-        if (!second || v.quote.bid > second.quote.bid) second = v;
-      }
-      if (!second) return null;
-      short = second;
-    }
+    const pair = this.bestPair(base, pool);
+    if (!pair) return null;
+    const { long, short } = pair;
 
     const longPrice = long.quote.ask;
     const shortPrice = short.quote.bid;
@@ -470,10 +505,7 @@ export class MarketEngine {
       stale,
       fundingKnown,
       suspect,
-      isNew: all.some(
-        (v) =>
-          v.market.verifiedAt !== undefined && Date.now() - v.market.verifiedAt < NEW_LISTING_MS,
-      ),
+      isNew: pair.verifiedAt !== undefined && Date.now() - pair.verifiedAt < NEW_LISTING_MS,
     };
   }
 

@@ -20,6 +20,7 @@ import type {
   UserRecord,
   UserSettings,
   VerifiedSymbolRecord,
+  VerifiedPairRecord,
 } from './types.js';
 
 const ts = (v: unknown): number => (v instanceof Date ? v.getTime() : Number(v));
@@ -419,24 +420,53 @@ export class PostgresRepo implements Repo {
     }));
   }
 
-  async upsertVerifiedSymbols(rows: VerifiedSymbolRecord[]): Promise<void> {
-    // Пачками по 200: у первой загрузки восемь бирж по ~500 символов.
+  async listVerifiedPairs(): Promise<VerifiedPairRecord[]> {
+    const rows = await this.sql`select * from verified_pairs`;
+    return rows.map((r) => ({
+      base: r['base'] as string,
+      exchangeA: r['exchange_a'] as ExchangeId,
+      symbolA: r['symbol_a'] as string,
+      exchangeB: r['exchange_b'] as ExchangeId,
+      symbolB: r['symbol_b'] as string,
+      multiplier: Number(r['multiplier']),
+      status: r['status'] as VerifiedPairRecord['status'],
+      verificationSource: (r['verification_source'] as VerifiedPairRecord['verificationSource']) ?? null,
+      ratio: r['ratio'] == null ? null : Number(r['ratio']),
+      externalA: (r['external_a'] as string | null) ?? null,
+      externalB: (r['external_b'] as string | null) ?? null,
+      note: (r['note'] as string | null) ?? null,
+      updatedAt: ts(r['updated_at']),
+      updatedBy: (r['updated_by'] as string | null) ?? null,
+      verifiedAt: tsOrNull(r['verified_at']),
+    }));
+  }
+
+  async upsertVerifiedPairs(rows: VerifiedPairRecord[]): Promise<void> {
+    // Пачками по 200: у первой загрузки десятки тысяч пар.
     for (let i = 0; i < rows.length; i += 200) {
       const chunk = rows.slice(i, i + 200).map((r) => ({
-        exchange: r.exchange,
-        symbol: r.symbol,
         base: r.base,
+        exchange_a: r.exchangeA,
+        symbol_a: r.symbolA,
+        exchange_b: r.exchangeB,
+        symbol_b: r.symbolB,
         multiplier: r.multiplier,
         status: r.status,
+        verification_source: r.verificationSource,
+        ratio: r.ratio,
+        external_a: r.externalA,
+        external_b: r.externalB,
         note: r.note,
         updated_at: new Date(r.updatedAt),
         updated_by: r.updatedBy,
         verified_at: r.verifiedAt == null ? null : new Date(r.verifiedAt),
       }));
       await this.sql`
-        insert into verified_symbols ${this.sql(chunk)}
-        on conflict (exchange, symbol) do update set
+        insert into verified_pairs ${this.sql(chunk)}
+        on conflict (exchange_a, symbol_a, exchange_b, symbol_b) do update set
           base = excluded.base, multiplier = excluded.multiplier, status = excluded.status,
+          verification_source = excluded.verification_source, ratio = excluded.ratio,
+          external_a = excluded.external_a, external_b = excluded.external_b,
           note = excluded.note, updated_at = excluded.updated_at, updated_by = excluded.updated_by,
           verified_at = excluded.verified_at
       `;

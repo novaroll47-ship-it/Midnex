@@ -1,278 +1,495 @@
 /**
- * Сверка ног: какой символ на какой бирже — та самая монета.
+ * Сверка пар: между какими ногами одной монеты спред считать можно.
  *
  * Одинаковый тикер на двух биржах ничего не доказывает: под «TA» или «BB»
  * могут торговаться разные проекты, а `1000SHIB` против `SHIB` — одна монета
- * с другим номиналом. Поэтому в ленту попадают только пары, у которых обе
- * ноги сверены (таблица verified_symbols), а множитель берётся оттуда же.
+ * с другим номиналом. Поэтому в ленту попадают только сверенные пары
+ * (таблица verified_pairs), а множитель берётся оттуда же.
  *
- * Кандидаты создаются автоматически при загрузке рынков; подтверждает их
- * администратор в приложении. Единственное исключение — нулевая сверка при
- * самом первом запуске: ноги, чья цена совпадает с медианой по другим биржам
- * в пределах 1 %, помечаются сверенными, чтобы лента не опустела в день
- * выкладки. Дальше — только руками.
+ * Сверка автоматическая, раз в минуту по живым ценам:
+ *  - цены совпадают в пределах допуска → auto_price;
+ *  - отношение цен — стандартный множитель контракта (10…1 000 000 или
+ *    обратный) в пределах допуска → auto_multiplier;
+ *  - CoinGecko знает обе ноги и это один coin id → external_match
+ *    (подтверждает ценовую проверку и расширяет допуск); разные id при
+ *    нестандартном отношении → отклонено автоматически.
+ * В ручную очередь попадают только аномалии: отношение не похоже ни на 1,
+ * ни на стандартный множитель, либо цена сходится, а внешний источник
+ * спорит. Сверенные автоматически пары перепроверяются: если цены разошлись
+ * сильнее допуска три прохода подряд — пара возвращается в очередь.
  */
 import type { FastifyBaseLogger } from 'fastify';
 import type { ExchangeId } from '@cs/shared';
-import {
-  legKey,
-  type LegStatus,
-  type LegVerification,
-  type MarketEngine,
-  type VenueMarket,
-} from '@cs/market';
+import { pairKey, type MarketEngine, type VenueMarket, type VerifiedPairSet } from '@cs/market';
 
-import type { Repo, VerifiedSymbolRecord } from './repo/index.js';
+import type { ExternalTickers } from './pairs-external.js';
+import type { PairStatus, Repo, VerifiedPairRecord } from './repo/index.js';
 
 export interface PairsOptions {
   repo: Repo;
   engine: MarketEngine | null;
   log: FastifyBaseLogger;
-  /** Кого звать, когда появились новые кандидаты. */
-  onNewCandidates?: (count: number) => void;
+  external: ExternalTickers;
+  /** Кого звать, когда после автосверки в ручной очереди появились новые аномалии. */
+  onAnomalies?: (count: number) => void;
 }
 
-/** Нога с живой ценой и отношением к медиане — для экрана сверки. */
-export interface LegView extends VerifiedSymbolRecord {
-  price: number | null;
-  /** price / медиана сверенных ног той же монеты; null — сравнивать не с чем. */
-  ratio: number | null;
-  /** Сколько сверенных ног у этой монеты (кроме этой). */
-  peers: number;
+/** Пара с живыми ценами — для экрана сверки. */
+export interface PairView extends VerifiedPairRecord {
+  priceA: number | null;
+  priceB: number | null;
+  /** priceA / priceB сейчас; null — одной из цен нет. */
+  liveRatio: number | null;
 }
 
-const AUTO_TOLERANCE = 0.01;
+/**
+ * Допуск по цене. Спред между биржами — это и есть то, что ищет скринер,
+ * поэтому 1 % слишком мало: у неликвидных монет расхождение в 2–4 % —
+ * норма, а не другой актив. Если CoinGecko подтверждает, что актив один,
+ * допуск шире — расхождение тогда лишь большой спред.
+ */
+const TOLERANCE = 0.05;
+const TOLERANCE_EXTERNAL = 0.25;
+const DRIFT_TOLERANCE = 0.15;
+const DRIFT_STRIKES = 3;
+const PASS_MS = 60_000;
+const STANDARD = [1, 10, 100, 1000, 10_000, 100_000, 1_000_000];
+
+function recordKey(r: { exchangeA: string; symbolA: string; exchangeB: string; symbolB: string }): string {
+  return `${r.exchangeA}:${r.symbolA}|${r.exchangeB}:${r.symbolB}`;
+}
+
+/** Ближайший стандартный множитель (или обратный), если отношение в допуске. */
+function standardMultiplier(ratio: number, tolerance = TOLERANCE): number | null {
+  for (const m of STANDARD) {
+    if (Math.abs(ratio / m - 1) <= tolerance) return m;
+    if (m !== 1 && Math.abs(ratio * m - 1) <= tolerance) return 1 / m;
+  }
+  return null;
+}
+
+/** CoinGecko заводит отдельные id для 1000-контрактов («1000bonk») — это та же монета. */
+function sameAsset(a: string, b: string): boolean {
+  const norm = (id: string) => id.replace(/^(1000000|100000|10000|1000)(?=[a-z])/, '');
+  return norm(a) === norm(b);
+}
+
+function fmtRatio(r: number): string {
+  return r >= 1 ? `×${r >= 100 ? Math.round(r) : r.toFixed(2)}` : `×1/${(1 / r) >= 100 ? Math.round(1 / r) : (1 / r).toFixed(2)}`;
+}
 
 export class PairsService {
-  private entries = new Map<string, LegVerification>();
-  private bootstrapped = false;
+  private pairs = new Map<string, VerifiedPairRecord>();
+  private strikes = new Map<string, number>();
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private passing = false;
+  private syncChain: Promise<void> = Promise.resolve();
 
   constructor(private readonly o: PairsOptions) {}
 
   /** Загрузить таблицу из базы и отдать движку. */
   async load(): Promise<void> {
-    const rows = await this.o.repo.listVerifiedSymbols();
-    this.entries = new Map(
-      rows.map((r) => [
-        legKey(r.exchange, r.symbol),
-        { status: r.status, multiplier: r.multiplier, verifiedAt: r.verifiedAt ?? undefined },
-      ]),
-    );
-    this.o.engine?.setVerification(this.entries);
-    this.o.log.info(
-      `сверка: ног в таблице ${rows.length}, сверено ${rows.filter((r) => r.status === 'verified').length}`,
-    );
+    let rows = await this.o.repo.listVerifiedPairs();
+    if (rows.length === 0) rows = await this.migrateManual();
+    this.pairs = new Map(rows.map((r) => [recordKey(r), r]));
+    this.push();
+    const c = this.counts();
+    this.o.log.info(`сверка: пар ${c.total}, сверено ${c.verified} (авто ${c.auto}), в очереди ${c.anomalies}`);
+  }
+
+  start(): void {
+    if (this.timer) return;
+    this.timer = setInterval(() => void this.autoVerifyPass(), PASS_MS);
+  }
+
+  stop(): void {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
   }
 
   /**
-   * Биржа отдала рынки: всё, чего нет в таблице, становится кандидатом.
-   * Множитель по умолчанию — из тикера (1000PEPE → 1000).
+   * Перенос из старой таблицы ног: только ручные решения администратора.
+   * Всё остальное автосверка пересчитает сама за минуту.
    */
-  private syncChain: Promise<void> = Promise.resolve();
+  private async migrateManual(): Promise<VerifiedPairRecord[]> {
+    const legs = (await this.o.repo.listVerifiedSymbols()).filter((l) => l.updatedBy?.startsWith('admin:'));
+    if (legs.length === 0) return [];
+    const byBase = new Map<string, typeof legs>();
+    for (const l of legs) byBase.set(l.base, [...(byBase.get(l.base) ?? []), l]);
+    const out: VerifiedPairRecord[] = [];
+    const now = Date.now();
+    for (const list of byBase.values()) {
+      for (let i = 0; i < list.length; i++) {
+        for (let j = i + 1; j < list.length; j++) {
+          const a = list[i]!;
+          const b = list[j]!;
+          if (a.exchange === b.exchange) continue;
+          const [x, y] = a.exchange < b.exchange ? [a, b] : [b, a];
+          const bothVerified = x.status === 'verified' && y.status === 'verified';
+          const anyRejected = x.status === 'rejected' || y.status === 'rejected';
+          if (!bothVerified && !anyRejected) continue;
+          out.push({
+            base: x.base,
+            exchangeA: x.exchange,
+            symbolA: x.symbol,
+            exchangeB: y.exchange,
+            symbolB: y.symbol,
+            multiplier: x.multiplier / y.multiplier,
+            status: anyRejected ? 'rejected' : 'verified',
+            verificationSource: 'manual',
+            ratio: null,
+            externalA: null,
+            externalB: null,
+            note: 'перенос из сверки ног',
+            updatedAt: now,
+            updatedBy: x.updatedBy ?? y.updatedBy,
+            verifiedAt: anyRejected ? null : now,
+          });
+        }
+      }
+    }
+    if (out.length) await this.o.repo.upsertVerifiedPairs(out);
+    this.o.log.info(`сверка: перенесено ручных решений — ${out.length}`);
+    return out;
+  }
 
-  /** Вызовы идут по очереди: параллельные создавали бы одних и тех же кандидатов дважды. */
+  // ---------------------------------------------------------------- кандидаты
+
+  /** Вызовы идут по очереди: параллельные создавали бы одни и те же пары дважды. */
   syncMarkets(exchange: ExchangeId, markets: VenueMarket[]): Promise<void> {
     const next = this.syncChain.then(() => this.syncMarketsNow(exchange, markets));
     this.syncChain = next.catch(() => {});
     return next;
   }
 
+  /** Биржа отдала рынки: каждая нога получает пару-кандидата с каждой ногой той же монеты на других биржах. */
   private async syncMarketsNow(exchange: ExchangeId, markets: VenueMarket[]): Promise<void> {
-    const fresh: VerifiedSymbolRecord[] = [];
+    if (!this.o.engine) return;
+    const byBase = new Map<string, VenueMarket[]>();
+    for (const m of this.o.engine.allMarkets()) {
+      if (m.exchange === exchange) continue;
+      byBase.set(m.base, [...(byBase.get(m.base) ?? []), m]);
+    }
+    const fresh: VerifiedPairRecord[] = [];
+    const now = Date.now();
     for (const m of markets) {
-      if (this.entries.has(legKey(m.exchange, m.symbol))) continue;
-      fresh.push({
-        base: m.base,
-        exchange: m.exchange,
-        symbol: m.symbol,
-        multiplier: m.multiplier,
-        status: 'candidate',
-        note: null,
-        updatedAt: Date.now(),
-        updatedBy: 'system',
-        verifiedAt: null,
-      });
+      for (const other of byBase.get(m.base) ?? []) {
+        const [a, b] = m.exchange < other.exchange ? [m, other] : [other, m];
+        const rec: VerifiedPairRecord = {
+          base: m.base,
+          exchangeA: a.exchange,
+          symbolA: a.symbol,
+          exchangeB: b.exchange,
+          symbolB: b.symbol,
+          multiplier: a.multiplier / b.multiplier,
+          status: 'candidate',
+          verificationSource: null,
+          ratio: null,
+          externalA: null,
+          externalB: null,
+          note: null,
+          updatedAt: now,
+          updatedBy: 'system',
+          verifiedAt: null,
+        };
+        const key = recordKey(rec);
+        if (this.pairs.has(key)) continue;
+        this.pairs.set(key, rec);
+        fresh.push(rec);
+      }
     }
     if (fresh.length === 0) return;
-    await this.o.repo.upsertVerifiedSymbols(fresh);
-    for (const r of fresh) {
-      this.entries.set(legKey(r.exchange, r.symbol), {
-        status: r.status,
-        multiplier: r.multiplier,
-        verifiedAt: r.verifiedAt ?? undefined,
-      });
-    }
-    this.o.engine?.setVerification(this.entries);
-    this.o.log.info(`сверка: ${exchange} — новых кандидатов ${fresh.length}`);
-    if (this.bootstrapped) this.o.onNewCandidates?.(fresh.length);
+    await this.o.repo.upsertVerifiedPairs(fresh);
+    this.o.log.info(`сверка: ${exchange} — новых пар-кандидатов ${fresh.length}`);
   }
 
-  /**
-   * Нулевая сверка — только если в таблице ещё нет ни одной сверенной ноги.
-   * Вызывать, когда котировки уже идут (минуту-две после старта).
-   */
-  async bootstrapIfEmpty(): Promise<number> {
-    this.bootstrapped = true;
-    const rows = await this.o.repo.listVerifiedSymbols();
-    if (rows.some((r) => r.status === 'verified')) return 0;
-    if (!this.o.engine) return 0;
+  // ---------------------------------------------------------------- автосверка
 
-    // Цена каждой ноги за одну монету; медиана по монете; в пределах 1 % — сверено.
-    const byBase = new Map<string, { rec: VerifiedSymbolRecord; price: number }[]>();
-    for (const rec of rows) {
-      if (rec.status !== 'candidate') continue;
-      const price = this.o.engine.legPrice(rec.exchange, rec.symbol, rec.multiplier);
-      if (price === null) continue;
-      const list = byBase.get(rec.base) ?? [];
-      list.push({ rec, price });
-      byBase.set(rec.base, list);
-    }
-    const verified: VerifiedSymbolRecord[] = [];
-    for (const list of byBase.values()) {
-      if (list.length < 2) continue;
-      const med = median(list.map((x) => x.price));
-      const agree = list.filter((x) => Math.abs(x.price / med - 1) <= AUTO_TOLERANCE);
-      // Совпадение с медианой из двух ног — тавтология; нужна хотя бы третья
-      // или обе ноги в пределах допуска друг к другу.
-      if (agree.length >= 2) {
-        for (const x of agree) {
-          verified.push({
-            ...x.rec,
-            status: 'verified',
-            note: 'auto',
-            updatedBy: 'bootstrap',
-            updatedAt: Date.now(),
-            // Нулевая сверка — это не листинг: помечать сотни монет «новыми» незачем.
-            verifiedAt: Date.now() - 30 * 86_400_000,
+  async autoVerifyPass(): Promise<void> {
+    if (this.passing || !this.o.engine) return;
+    this.passing = true;
+    try {
+      const prices = this.o.engine.rawPrices();
+      const changed: VerifiedPairRecord[] = [];
+      let newAnomalies = 0;
+      const now = Date.now();
+
+      for (const rec of this.pairs.values()) {
+        if (rec.status === 'delisted' || rec.verificationSource === 'manual') continue;
+        const pa = prices.get(`${rec.exchangeA}:${rec.symbolA}`);
+        const pb = prices.get(`${rec.exchangeB}:${rec.symbolB}`);
+        const extA = this.o.external.coinId(rec.exchangeA, rec.symbolA);
+        const extB = this.o.external.coinId(rec.exchangeB, rec.symbolB);
+        const ext = extA && extB ? (sameAsset(extA, extB) ? 'match' : 'mismatch') : 'unknown';
+
+        if (rec.status === 'verified') {
+          // Перепроверка: цены разошлись — три прохода подряд, и пара снова в очереди.
+          if (pa === undefined || pb === undefined || pb <= 0) continue;
+          const drift = Math.abs(pa / pb / rec.multiplier - 1);
+          const key = recordKey(rec);
+          if (drift <= DRIFT_TOLERANCE) {
+            this.strikes.delete(key);
+            continue;
+          }
+          const n = (this.strikes.get(key) ?? 0) + 1;
+          this.strikes.set(key, n);
+          if (n < DRIFT_STRIKES) continue;
+          this.strikes.delete(key);
+          changed.push({
+            ...rec,
+            status: 'candidate',
+            verificationSource: null,
+            ratio: pa / pb,
+            note: `цены разошлись: ${fmtRatio(pa / pb)} при множителе ${fmtRatio(rec.multiplier)}`,
+            updatedAt: now,
+            updatedBy: 'auto',
           });
+          newAnomalies++;
+          continue;
+        }
+
+        if (rec.status === 'rejected') {
+          // Отклонённые автоматически пересматриваем, только если внешний источник передумал.
+          if (rec.updatedBy === 'auto' && ext === 'match') {
+            changed.push({ ...rec, status: 'candidate', note: null, updatedAt: now, updatedBy: 'auto' });
+          }
+          continue;
+        }
+
+        // Кандидат. Без цен решения нет: внешний источник — второй сигнал, не единственный.
+        if (pa === undefined || pb === undefined || pb <= 0 || pa <= 0) continue;
+        const ratio = pa / pb;
+        const std = standardMultiplier(ratio, ext === 'match' ? TOLERANCE_EXTERNAL : TOLERANCE);
+        const wasAnomaly = rec.note !== null;
+        let next: VerifiedPairRecord | null = null;
+
+        if (std !== null && ext !== 'mismatch') {
+          next = {
+            ...rec,
+            status: 'verified',
+            multiplier: std,
+            verificationSource: ext === 'match' ? 'external_match' : std === 1 ? 'auto_price' : 'auto_multiplier',
+            ratio,
+            externalA: extA,
+            externalB: extB,
+            note: null,
+            updatedAt: now,
+            updatedBy: 'auto',
+            verifiedAt: rec.verifiedAt ?? now,
+          };
+        } else if (std === null && ext === 'mismatch') {
+          next = {
+            ...rec,
+            status: 'rejected',
+            ratio,
+            externalA: extA,
+            externalB: extB,
+            note: `CoinGecko: ${extA} ≠ ${extB}, цены ${fmtRatio(ratio)}`,
+            updatedAt: now,
+            updatedBy: 'auto',
+          };
+        } else {
+          const note =
+            ext === 'mismatch'
+              ? `цены совпадают (${fmtRatio(ratio)}), но CoinGecko: ${extA} ≠ ${extB}`
+              : `${fmtRatio(ratio)} — нестандартный множитель${ext === 'match' ? `, CoinGecko: один актив (${extA})` : ''}`;
+          // Аномалия остаётся в очереди; обновляем только если отношение заметно сдвинулось.
+          const moved = rec.ratio === null || Math.abs(ratio / rec.ratio - 1) > 0.02 || rec.note !== note;
+          if (moved) {
+            next = { ...rec, ratio, externalA: extA, externalB: extB, note, updatedAt: now, updatedBy: 'auto' };
+          }
+          if (!wasAnomaly) newAnomalies++;
+        }
+        if (next) changed.push(next);
+      }
+
+      if (changed.length) {
+        for (const r of changed) this.pairs.set(recordKey(r), r);
+        await this.o.repo.upsertVerifiedPairs(changed);
+        if (changed.some((r) => r.status === 'verified' || r.status === 'candidate')) this.push();
+        const verified = changed.filter((r) => r.status === 'verified').length;
+        const rejected = changed.filter((r) => r.status === 'rejected').length;
+        if (verified || rejected) {
+          this.o.log.info(`сверка: автоматически сверено ${verified}, отклонено ${rejected}, в очередь ${newAnomalies}`);
         }
       }
+      if (newAnomalies > 0) this.o.onAnomalies?.(newAnomalies);
+    } catch (err) {
+      this.o.log.warn({ err: String(err).slice(0, 200) }, 'сверка: проход не удался');
+    } finally {
+      this.passing = false;
     }
-    if (verified.length) {
-      await this.o.repo.upsertVerifiedSymbols(verified);
-      for (const r of verified) {
-        this.entries.set(legKey(r.exchange, r.symbol), {
-          status: r.status,
-          multiplier: r.multiplier,
-        });
-      }
-      this.o.engine.setVerification(this.entries);
-    }
-    this.o.log.info(`сверка: нулевая сверка — сверено ${verified.length} ног из ${rows.length}`);
-    return verified.length;
   }
 
-  /** Ручное решение администратора. */
+  // ---------------------------------------------------------------- ручные решения
+
+  /** Решение администратора по паре. */
   async setStatus(
-    exchange: ExchangeId,
-    symbol: string,
-    status: LegStatus,
+    id: { exchangeA: ExchangeId; symbolA: string; exchangeB: ExchangeId; symbolB: string },
+    status: PairStatus,
     multiplier: number | undefined,
     by: string,
-  ): Promise<VerifiedSymbolRecord | null> {
-    const rows = await this.o.repo.listVerifiedSymbols();
-    const rec = rows.find((r) => r.exchange === exchange && r.symbol === symbol);
+  ): Promise<VerifiedPairRecord | null> {
+    const rec = this.pairs.get(recordKey(id));
     if (!rec) return null;
-    const next: VerifiedSymbolRecord = {
+    const next: VerifiedPairRecord = {
       ...rec,
       status,
       multiplier: multiplier && multiplier > 0 ? multiplier : rec.multiplier,
+      verificationSource: 'manual',
+      note: null,
       updatedAt: Date.now(),
       updatedBy: by,
       verifiedAt: status === 'verified' ? (rec.verifiedAt ?? Date.now()) : rec.verifiedAt,
     };
-    await this.o.repo.upsertVerifiedSymbols([next]);
-    this.entries.set(legKey(exchange, symbol), {
-      status: next.status,
-      multiplier: next.multiplier,
-      verifiedAt: next.verifiedAt ?? undefined,
-    });
-    this.o.engine?.setVerification(this.entries);
+    this.pairs.set(recordKey(next), next);
+    await this.o.repo.upsertVerifiedPairs([next]);
+    this.push();
     return next;
   }
 
-  /** Массово: все кандидаты, чья цена в пределах допуска к медиане сверенных ног. */
-  async verifyAllMatching(by: string, tolerance = AUTO_TOLERANCE): Promise<number> {
-    const legs = await this.list();
-    const ok = legs.filter(
-      (l) => l.status === 'candidate' && l.ratio !== null && Math.abs(l.ratio - 1) <= tolerance,
-    );
-    if (ok.length === 0) return 0;
-    const rows = ok.map((l) => ({
-      ...toRecord(l),
-      status: 'verified' as const,
-      note: 'auto-ratio',
-      updatedAt: Date.now(),
-      updatedBy: by,
-      verifiedAt: l.verifiedAt ?? Date.now(),
-    }));
-    await this.o.repo.upsertVerifiedSymbols(rows);
-    for (const r of rows) {
-      this.entries.set(legKey(r.exchange, r.symbol), {
-        status: r.status,
-        multiplier: r.multiplier,
-        verifiedAt: r.verifiedAt ?? undefined,
-      });
+  /** Нога исчезла с биржи — все её пары уходят из ленты. */
+  async markDelisted(exchange: ExchangeId, symbol: string, by: string): Promise<number> {
+    const changed: VerifiedPairRecord[] = [];
+    for (const rec of this.pairs.values()) {
+      const hit =
+        (rec.exchangeA === exchange && rec.symbolA === symbol) ||
+        (rec.exchangeB === exchange && rec.symbolB === symbol);
+      if (!hit || rec.status === 'delisted') continue;
+      const next: VerifiedPairRecord = { ...rec, status: 'delisted', updatedAt: Date.now(), updatedBy: by };
+      this.pairs.set(recordKey(next), next);
+      changed.push(next);
     }
-    this.o.engine?.setVerification(this.entries);
-    return rows.length;
+    if (changed.length) {
+      await this.o.repo.upsertVerifiedPairs(changed);
+      this.push();
+    }
+    return changed.length;
   }
 
-  /** Все ноги с ценой и отношением к медиане сверенных той же монеты. */
-  async list(): Promise<LegView[]> {
-    const rows = await this.o.repo.listVerifiedSymbols();
-    const engine = this.o.engine;
-    const verifiedPrices = new Map<string, number[]>();
-    const priceOf = new Map<string, number | null>();
-    for (const r of rows) {
-      const price = engine ? engine.legPrice(r.exchange, r.symbol, r.multiplier) : null;
-      priceOf.set(legKey(r.exchange, r.symbol), price);
-      if (r.status === 'verified' && price !== null) {
-        verifiedPrices.set(r.base, [...(verifiedPrices.get(r.base) ?? []), price]);
+  /** Есть ли у монеты сверенная пара с этой биржей — для предупреждений о делистинге. */
+  hasVerifiedLeg(base: string, exchange: ExchangeId): boolean {
+    for (const r of this.pairs.values()) {
+      if (r.base === base && r.status === 'verified' && (r.exchangeA === exchange || r.exchangeB === exchange)) {
+        return true;
       }
     }
-    return rows.map((r) => {
-      const price = priceOf.get(legKey(r.exchange, r.symbol)) ?? null;
-      const peersAll = verifiedPrices.get(r.base) ?? [];
-      // Свою цену из медианы исключаем, иначе одинокая сверенная нога всегда «совпадает».
-      const peers = r.status === 'verified' && price !== null ? without(peersAll, price) : peersAll;
-      const ratio = price !== null && peers.length > 0 ? price / median(peers) : null;
-      return { ...r, price, ratio, peers: peers.length };
-    });
+    return false;
   }
 
-  counts(): { total: number; verified: number; candidate: number } {
-    let verified = 0;
-    let candidate = 0;
-    for (const v of this.entries.values()) {
-      if (v.status === 'verified') verified++;
-      else if (v.status === 'candidate') candidate++;
+  // ---------------------------------------------------------------- чтение
+
+  list(filter: 'anomalies' | 'verified' | 'rejected'): PairView[] {
+    const prices = this.o.engine?.rawPrices() ?? new Map<string, number>();
+    const out: PairView[] = [];
+    for (const rec of this.pairs.values()) {
+      const ok =
+        filter === 'anomalies'
+          ? rec.status === 'candidate' && rec.note !== null
+          : filter === 'verified'
+            ? rec.status === 'verified'
+            : rec.status === 'rejected';
+      if (!ok) continue;
+      const priceA = prices.get(`${rec.exchangeA}:${rec.symbolA}`) ?? null;
+      const priceB = prices.get(`${rec.exchangeB}:${rec.symbolB}`) ?? null;
+      out.push({ ...rec, priceA, priceB, liveRatio: priceA !== null && priceB ? priceA / priceB : null });
     }
-    return { total: this.entries.size, verified, candidate };
+    // Свежие решения и аномалии — сверху.
+    return out.sort((a, b) => b.updatedAt - a.updatedAt);
   }
-}
 
-function toRecord(l: LegView): VerifiedSymbolRecord {
-  return {
-    base: l.base,
-    exchange: l.exchange,
-    symbol: l.symbol,
-    multiplier: l.multiplier,
-    status: l.status,
-    note: l.note,
-    updatedAt: l.updatedAt,
-    updatedBy: l.updatedBy,
-    verifiedAt: l.verifiedAt,
-  };
-}
+  counts(): { total: number; verified: number; auto: number; manual: number; anomalies: number; pending: number; rejected: number } {
+    const c = { total: 0, verified: 0, auto: 0, manual: 0, anomalies: 0, pending: 0, rejected: 0 };
+    for (const r of this.pairs.values()) {
+      c.total++;
+      if (r.status === 'verified') {
+        c.verified++;
+        if (r.verificationSource === 'manual') c.manual++;
+        else c.auto++;
+      } else if (r.status === 'candidate') {
+        if (r.note !== null) c.anomalies++;
+        else c.pending++;
+      } else if (r.status === 'rejected') c.rejected++;
+    }
+    return c;
+  }
 
-function median(values: number[]): number {
-  const s = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(s.length / 2);
-  return s.length % 2 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
-}
+  // ---------------------------------------------------------------- движок
 
-function without(values: number[], one: number): number[] {
-  const i = values.indexOf(one);
-  return i < 0 ? values : [...values.slice(0, i), ...values.slice(i + 1)];
+  /**
+   * Сверенные пары → множители ног. Множитель каждой ноги считается от
+   * опорной через цепочку пар, потом всё нормируется так, чтобы у самого
+   * «мелкого» контракта множитель был 1 — это и есть цена за монету.
+   */
+  private push(): void {
+    if (!this.o.engine) return;
+    const byBase = new Map<string, VerifiedPairRecord[]>();
+    for (const r of this.pairs.values()) {
+      if (r.status !== 'verified') continue;
+      byBase.set(r.base, [...(byBase.get(r.base) ?? []), r]);
+    }
+    const out = new Map<string, VerifiedPairSet>();
+    for (const [base, list] of byBase) {
+      // На бирже могут быть и PEPE, и 1000PEPE — берём символ с наибольшим числом пар.
+      const symbolVotes = new Map<string, number>();
+      for (const r of list) {
+        symbolVotes.set(`${r.exchangeA}:${r.symbolA}`, (symbolVotes.get(`${r.exchangeA}:${r.symbolA}`) ?? 0) + 1);
+        symbolVotes.set(`${r.exchangeB}:${r.symbolB}`, (symbolVotes.get(`${r.exchangeB}:${r.symbolB}`) ?? 0) + 1);
+      }
+      const symbolOf = new Map<ExchangeId, string>();
+      for (const [key, votes] of symbolVotes) {
+        const [exchange, symbol] = key.split(/:(.*)/s) as [ExchangeId, string];
+        const cur = symbolOf.get(exchange);
+        if (!cur || votes > (symbolVotes.get(`${exchange}:${cur}`) ?? 0)) symbolOf.set(exchange, symbol);
+      }
+      const edges = list.filter(
+        (r) => symbolOf.get(r.exchangeA) === r.symbolA && symbolOf.get(r.exchangeB) === r.symbolB,
+      );
+      if (edges.length === 0) continue;
+
+      // Обход графа от первой биржи: factor(A) = multiplier × factor(B).
+      const factor = new Map<ExchangeId, number>();
+      const queue: ExchangeId[] = [edges[0]!.exchangeA];
+      factor.set(edges[0]!.exchangeA, 1);
+      while (queue.length) {
+        const x = queue.shift()!;
+        for (const e of edges) {
+          if (e.exchangeA === x && !factor.has(e.exchangeB)) {
+            factor.set(e.exchangeB, factor.get(x)! / e.multiplier);
+            queue.push(e.exchangeB);
+          } else if (e.exchangeB === x && !factor.has(e.exchangeA)) {
+            factor.set(e.exchangeA, factor.get(x)! * e.multiplier);
+            queue.push(e.exchangeA);
+          }
+        }
+      }
+      // Несвязные куски (редкость) — отдельными обходами.
+      for (const e of edges) {
+        for (const ex of [e.exchangeA, e.exchangeB]) {
+          if (factor.has(ex)) continue;
+          factor.set(ex, 1);
+          queue.push(ex);
+          while (queue.length) {
+            const x = queue.shift()!;
+            for (const f of edges) {
+              if (f.exchangeA === x && !factor.has(f.exchangeB)) {
+                factor.set(f.exchangeB, factor.get(x)! / f.multiplier);
+                queue.push(f.exchangeB);
+              } else if (f.exchangeB === x && !factor.has(f.exchangeA)) {
+                factor.set(f.exchangeA, factor.get(x)! * f.multiplier);
+                queue.push(f.exchangeA);
+              }
+            }
+          }
+        }
+      }
+      const min = Math.min(...factor.values());
+      const legs = new Map<ExchangeId, { symbol: string; factor: number }>();
+      for (const [ex, f] of factor) legs.set(ex, { symbol: symbolOf.get(ex)!, factor: f / min });
+      const pairs = new Map<string, number | undefined>();
+      for (const e of edges) pairs.set(pairKey(e.exchangeA, e.exchangeB), e.verifiedAt ?? undefined);
+      out.set(base, { pairs, legs });
+    }
+    this.o.engine.setVerifiedPairs(out);
+  }
 }

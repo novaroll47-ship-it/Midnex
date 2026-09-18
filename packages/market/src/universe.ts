@@ -25,8 +25,11 @@ export interface VenueMarket {
   contractSize: number;
   /** Шаг цены, если биржа его сообщает. */
   pricePrecision: number | undefined;
-  /** Когда нога сверена (из таблицы сверки). */
-  verifiedAt?: number;
+  /**
+   * Множитель из названия тикера — тот, на который поток уже поделил цену.
+   * Отличается от multiplier только когда сверка задала свой.
+   */
+  tickerMultiplier?: number;
 }
 
 /** Множители, которые биржи приклеивают к тикеру. */
@@ -84,42 +87,53 @@ export interface Universe {
   byBase: Map<string, VenueMarket[]>;
   /** Обратный индекс: биржа + символ ccxt → рынок. */
   bySymbol: Map<string, VenueMarket>;
+  /** Монета → сверенные пары бирж; нет записи — сверка не задана, можно любые. */
+  pairsByBase: Map<string, Map<string, number | undefined>>;
 }
 
-/** Статус ноги (рынка на бирже) по таблице сверки. */
-export type LegStatus = 'candidate' | 'verified' | 'rejected' | 'delisted';
-
-export interface LegVerification {
-  status: LegStatus;
-  /** Множитель, подтверждённый вручную; перекрывает вычисленный из тикера. */
-  multiplier: number;
-  /** Когда нога была сверена — для пометки «новая пара». */
-  verifiedAt?: number;
+/** Ключ пары бирж в таблице сверки: биржи по алфавиту. */
+export function pairKey(a: ExchangeId, b: ExchangeId): string {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
 }
 
-/** Ключ ноги в таблице сверки. */
+/** Ключ ноги: биржа + символ ccxt. */
 export function legKey(exchange: ExchangeId, symbol: string): string {
   return `${exchange}:${symbol}`;
 }
 
 /**
+ * Сверенные пары одной монеты — то, что движку нужно знать из таблицы
+ * verified_pairs: между какими биржами спред считать можно и каким
+ * множителем привести цену каждой ноги к одной монете.
+ */
+export interface VerifiedPairSet {
+  /** pairKey → когда пара сверена (для пометки «новая»). */
+  pairs: Map<string, number | undefined>;
+  /** Биржа → её нога в этой монете: символ и множитель к канонической цене. */
+  legs: Map<ExchangeId, { symbol: string; factor: number }>;
+}
+
+/**
  * Пересечение: оставляем монеты, представленные хотя бы на двух биржах.
  *
- * Если передана таблица сверки, во вселенную попадают только сверенные
- * ноги — одинаковый тикер на двух биржах не доказывает, что это одна и та
- * же монета, и такую пару без ручной проверки не показываем вовсе.
+ * Если передана таблица сверки, во вселенную попадают только ноги из
+ * сверенных пар — одинаковый тикер на двух биржах не доказывает, что это
+ * одна и та же монета, и такую пару без проверки не показываем вовсе.
  */
 export function buildUniverse(
   all: VenueMarket[],
-  verify?: (m: VenueMarket) => LegVerification | undefined,
+  verify?: (base: string) => VerifiedPairSet | undefined,
 ): Universe {
   const grouped = new Map<string, VenueMarket[]>();
+  const pairsByBase = new Map<string, Map<string, number | undefined>>();
   for (const raw of all) {
     let m = raw;
     if (verify) {
-      const v = verify(raw);
-      if (!v || v.status !== 'verified') continue;
-      m = { ...raw, multiplier: v.multiplier, verifiedAt: v.verifiedAt };
+      const set = verify(raw.base);
+      const leg = set?.legs.get(raw.exchange);
+      if (!set || !leg || leg.symbol !== raw.symbol) continue;
+      m = { ...raw, multiplier: leg.factor, tickerMultiplier: raw.multiplier };
+      pairsByBase.set(raw.base, set.pairs);
     }
     // Одна биржа иногда листит и PEPE, и 1000PEPE — берём тот, у которого
     // множитель меньше: он ближе к «настоящей» монете.
@@ -140,5 +154,5 @@ export function buildUniverse(
     byBase.set(base, list);
     for (const m of list) bySymbol.set(`${m.exchange}:${m.symbol}`, m);
   }
-  return { byBase, bySymbol };
+  return { byBase, bySymbol, pairsByBase };
 }

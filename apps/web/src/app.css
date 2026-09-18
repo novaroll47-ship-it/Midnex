@@ -13,6 +13,10 @@
     margin: 0 auto;
     height: 100vh;
     height: 100dvh;
+    /* В Telegram окно бывает выше видимой области (клавиатура, свёрнутый
+       вид) — тогда нижняя панель уезжает за край. Клиент сообщает
+       настоящую высоту переменной. */
+    height: var(--tg-viewport-stable-height, 100dvh);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -568,7 +572,8 @@
     z-index: 20;
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    height: var(--h-nav);
+    height: calc(var(--h-nav) + env(safe-area-inset-bottom));
+    padding-top: 4px;
     padding-bottom: env(safe-area-inset-bottom);
     background: var(--nav-bg, rgba(6, 10, 13, 0.94));
     backdrop-filter: blur(12px);
