@@ -9,15 +9,28 @@
 import { useEffect, useState } from 'react';
 
 /**
- * Монограмма нейтральная, как и вся палитра: оттенок серого зависит от
- * тикера, чтобы соседние монеты без логотипа всё же различались, но цвета
- * в ней нет — он в этом интерфейсе означает прибыль или убыток.
+ * Палитра плашек для монограмм: десять оттенков по хэшу тикера, чтобы
+ * соседние монеты без логотипа различались с первого взгляда. Брендового
+ * зелёного и янтарного здесь нет — эти два цвета заняты смыслом (действие,
+ * предупреждение), а не декором.
  */
-function monogramColor(base: string): string {
+const PLATE_COLORS = [
+  '#3b82f6', // синий
+  '#8b5cf6', // фиолетовый
+  '#f97316', // оранжевый
+  '#ec4899', // розовый
+  '#06b6d4', // бирюзовый
+  '#6366f1', // индиго
+  '#f43f5e', // малиновый
+  '#0ea5e9', // голубой
+  '#d946ef', // фуксия
+  '#a855f7', // пурпурный
+];
+
+function plateColor(base: string): string {
   let h = 0;
   for (let i = 0; i < base.length; i++) h = (h * 31 + base.charCodeAt(i)) | 0;
-  const light = 26 + (Math.abs(h) % 5) * 4; // 26–42: тёмное серебро
-  return `hsl(0 0% ${light}%)`;
+  return PLATE_COLORS[Math.abs(h) % PLATE_COLORS.length]!;
 }
 
 /**
@@ -34,10 +47,11 @@ export function CoinIcon({ base, size = 28 }: { base: string; size?: number }) {
     setFailed(known404.has(key));
   }, [key]);
 
+  // Скруглённый квадрат: радиус — треть стороны.
   const style = {
     width: size,
     height: size,
-    borderRadius: '50%',
+    borderRadius: Math.round(size / 3),
     flexShrink: 0,
     display: 'block',
   } as const;
@@ -48,12 +62,13 @@ export function CoinIcon({ base, size = 28 }: { base: string; size?: number }) {
         aria-hidden="true"
         style={{
           ...style,
-          background: monogramColor(base),
-          color: 'rgba(255, 255, 255, 0.82)',
+          background: plateColor(base),
+          color: '#06130c',
           display: 'grid',
           placeItems: 'center',
-          fontSize: size * 0.44,
-          fontWeight: 700,
+          fontSize: size * (base.length > 3 ? 0.3 : 0.38),
+          fontWeight: 800,
+          letterSpacing: '-0.02em',
           lineHeight: 1,
           userSelect: 'none',
         }}
@@ -72,7 +87,7 @@ export function CoinIcon({ base, size = 28 }: { base: string; size?: number }) {
       height={size}
       loading="lazy"
       decoding="async"
-      style={{ ...style, background: '#1a1a1d' }}
+      style={{ ...style, background: 'var(--surface-2)' }}
       onError={() => {
         known404.add(key);
         setFailed(true);

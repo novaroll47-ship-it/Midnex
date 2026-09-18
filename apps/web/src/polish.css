@@ -424,3 +424,314 @@
   --surface-2: #f2f2f7;
   color-scheme: light;
 }
+
+/*
+ * ================================================================
+ * Дизайн-система v2 (сентябрь 2026): чёрный фон, нейтральные
+ * поверхности, брендовый зелёный только на действиях, мягкий зелёный —
+ * на цифрах роста, янтарный — на статусах. Форма — таблетки и крупные
+ * радиусы. Логика и размеры не трогаются, только вид.
+ * ================================================================
+ */
+@layer legacy {
+  :root {
+    --bg: #000000;
+    --surface: #141414;
+    --surface-2: #1e1e1e;
+    --surface-3: #2a2a2a;
+    --border: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.14);
+
+    --text: #f5f5f5;
+    --text-dim: #9c9c9f;
+    --text-mute: #6e6e71;
+
+    /* Бренд — заливка кнопок и активных переключателей; текст на нём тёмный. */
+    --brand: #00d67a;
+    --brand-ink: #06130c;
+    --brand-soft: rgba(0, 214, 122, 0.14);
+    --brand-line: rgba(0, 214, 122, 0.4);
+
+    /* Рост и падение — отдельно от бренда: кнопка и «цифра выросла» не сливаются. */
+    --positive: #4ade80;
+    --negative: #f87171;
+    --amber: #ffb020;
+    --amber-soft: rgba(255, 176, 32, 0.12);
+
+    --green: var(--positive);
+    --green-soft: rgba(74, 222, 128, 0.14);
+    --green-line: rgba(74, 222, 128, 0.4);
+    --red: var(--negative);
+    --red-soft: rgba(248, 113, 113, 0.14);
+    --red-line: rgba(248, 113, 113, 0.4);
+    --yellow: var(--amber);
+
+    /* Ссылки и навигация остаются холодными — это не кнопка-действие. */
+    --link: #3e8bff;
+    --blue: var(--link);
+    --blue-soft: rgba(62, 139, 255, 0.14);
+    --blue-line: rgba(62, 139, 255, 0.35);
+
+    --nav-bg: rgba(0, 0, 0, 0.94);
+
+    --radius-card: 16px;
+    --radius-control: 999px;
+  }
+
+  :root[data-theme='light'] {
+    --bg: #ffffff;
+    --surface: #f4f4f5;
+    --surface-2: #e9e9eb;
+    --surface-3: #dcdcdf;
+    --border: rgba(0, 0, 0, 0.08);
+    --border-strong: rgba(0, 0, 0, 0.16);
+
+    --text: #111111;
+    --text-dim: #6b6b70;
+    --text-mute: #9a9aa0;
+
+    --brand: #00b868;
+    --brand-ink: #06130c;
+    --brand-soft: rgba(0, 184, 104, 0.14);
+    --brand-line: rgba(0, 184, 104, 0.4);
+
+    --positive: #16a34a;
+    --negative: #dc2626;
+    --amber: #b7791f;
+    --amber-soft: rgba(183, 121, 31, 0.14);
+
+    --green: var(--positive);
+    --green-soft: rgba(22, 163, 74, 0.12);
+    --green-line: rgba(22, 163, 74, 0.4);
+    --red: var(--negative);
+    --red-soft: rgba(220, 38, 38, 0.1);
+    --red-line: rgba(220, 38, 38, 0.35);
+    --yellow: var(--amber);
+
+    --link: #007aff;
+    --blue: var(--link);
+    --blue-soft: rgba(0, 122, 255, 0.12);
+    --blue-line: rgba(0, 122, 255, 0.35);
+    --nav-bg: rgba(255, 255, 255, 0.94);
+  }
+
+  /* ---------- Форма ---------- */
+
+  .panel,
+  .sheet {
+    border-radius: 20px;
+  }
+
+  .sheet {
+    border-radius: 20px 20px 0 0;
+  }
+
+  .card.list,
+  .sheet__group,
+  .coin-row {
+    border-radius: 14px;
+  }
+
+  .search,
+  .search__input,
+  .num-field,
+  .num-field__input,
+  .sheet__input,
+  .input,
+  .btn-ghost,
+  .btn-outline,
+  .chip,
+  .segmented,
+  .segmented__item,
+  .panel__btn,
+  .paywall__cta,
+  .venue-tile {
+    border-radius: 999px;
+  }
+
+  .checkbox {
+    border-radius: 7px;
+  }
+
+  /* ---------- Действия: бренд ---------- */
+
+  .checkbox--on,
+  .switch--on,
+  .btn-ghost__badge,
+  .venue-tile__order,
+  .panel__dot:not(.panel__dot--off) {
+    background: var(--brand);
+    border-color: var(--brand);
+    color: var(--brand-ink);
+  }
+
+  .panel__dot:not(.panel__dot--off) {
+    box-shadow: 0 0 8px var(--brand);
+  }
+
+  .segmented__item--active {
+    border-color: var(--brand);
+    background: var(--brand);
+    color: var(--brand-ink);
+  }
+
+  .nav__item--active {
+    color: var(--brand);
+  }
+
+  .btn-ghost {
+    border-color: var(--brand-line);
+    background: var(--brand-soft);
+    color: var(--brand);
+  }
+
+  .btn-ghost--red {
+    border-color: var(--red-line);
+    background: var(--red-soft);
+    color: var(--red);
+  }
+
+  .icon-btn-round--active,
+  .icon-btn-square--active,
+  .chip--active,
+  .chip--pill.chip--active,
+  .venue-tile--on {
+    border-color: var(--brand-line);
+    background: var(--brand-soft);
+    color: var(--brand);
+  }
+
+  .coin-row--pinned {
+    border-color: var(--brand-line);
+  }
+
+  /* ---------- Бейджи: таблетка, полупрозрачная заливка, текст того же цвета ---------- */
+
+  .badge {
+    border-radius: 999px;
+    border: none;
+    padding: 3px 8px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .badge--long,
+  .badge--positive {
+    background: rgba(74, 222, 128, 0.14);
+    color: var(--positive);
+  }
+
+  .badge--short,
+  .badge--negative {
+    background: rgba(248, 113, 113, 0.14);
+    color: var(--negative);
+  }
+
+  .badge--new,
+  .badge--amber {
+    border-radius: 999px;
+    background: var(--amber-soft);
+    color: var(--amber);
+    font-size: 9px;
+    letter-spacing: 0.06em;
+  }
+
+  .badge--soon {
+    background: var(--surface-2);
+    color: var(--text-dim);
+  }
+
+  /* ---------- Типографика ---------- */
+
+  .section-label,
+  .section-label--sheet,
+  .chart__title,
+  .panel__label,
+  .stat__label,
+  .summary__label,
+  .pos__metric-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+  }
+
+  .screen-title h1,
+  .coin-head__ticker,
+  .coin-head__spread-value,
+  .panel__value,
+  .stat__value,
+  .summary__value,
+  .spread__pct,
+  .pos__pnl-value {
+    font-weight: 700;
+  }
+
+  .list-head__sort,
+  .panel__sub-cta,
+  .pos__link,
+  a {
+    color: var(--link);
+  }
+
+  /* Крупные цифры без серебряного градиента — просто плотный текст. */
+  .panel__value,
+  .stat__value {
+    background: none;
+    -webkit-text-fill-color: currentColor;
+    color: var(--text);
+  }
+
+  .panel__value--green {
+    color: var(--positive);
+    -webkit-text-fill-color: currentColor;
+  }
+}
+
+/* shadcn-токены — вне слоя, как и выше. */
+:root {
+  --background: #000000;
+  --card: #141414;
+  --popover: #1e1e1e;
+  --primary: #00d67a;
+  --primary-foreground: #06130c;
+  --secondary: #1e1e1e;
+  --muted: #1e1e1e;
+  --muted-foreground: #9c9c9f;
+  --accent: #2a2a2a;
+  --destructive: #f87171;
+  --border: rgba(255, 255, 255, 0.08);
+  --input: #2a2a2a;
+  --ring: #00d67a;
+  --profit: #4ade80;
+  --loss: #f87171;
+  --warning: #ffb020;
+  --link: #3e8bff;
+  --text-mute: #6e6e71;
+  --surface-2: #1e1e1e;
+}
+
+:root[data-theme='light'] {
+  --background: #ffffff;
+  --card: #f4f4f5;
+  --popover: #ffffff;
+  --primary: #00b868;
+  --primary-foreground: #06130c;
+  --secondary: #e9e9eb;
+  --muted: #f4f4f5;
+  --muted-foreground: #6b6b70;
+  --accent: #dcdcdf;
+  --destructive: #dc2626;
+  --border: rgba(0, 0, 0, 0.08);
+  --input: #e9e9eb;
+  --ring: #00b868;
+  --profit: #16a34a;
+  --loss: #dc2626;
+  --warning: #b7791f;
+  --link: #007aff;
+  --text-mute: #9a9aa0;
+  --surface-2: #e9e9eb;
+}

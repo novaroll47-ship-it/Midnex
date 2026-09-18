@@ -97,7 +97,6 @@ export function SettingsScreen({
           title={t('settings.apiKeysTitle')}
           sub={t('settings.apiKeysSub')}
           meta={t('settings.apiKeysMeta', { count: connectedKeys })}
-          metaGreen
           {...locked('apikeys')}
         />
         <Row
@@ -113,14 +112,12 @@ export function SettingsScreen({
           title={t('settings.themeTitle')}
           sub={t('settings.themeSub')}
           meta={t(`sd.theme_${currentThemeMode()}`)}
-          metaGreen
           onClick={() => onOpen('theme')}
         />
         <Row
           title={t('settings.languageTitle')}
           sub={t('settings.languageSub')}
           meta={langLabel}
-          metaGreen
           onClick={() => onOpen('language')}
         />
         <Row

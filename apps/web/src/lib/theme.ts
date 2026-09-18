@@ -13,7 +13,7 @@ export type ThemeMode = 'system' | 'dark' | 'light';
 export type ResolvedTheme = 'dark' | 'light';
 
 const STORAGE_KEY = 'midnex.theme';
-const BG: Record<ResolvedTheme, string> = { dark: '#141415', light: '#f2f2f7' };
+const BG: Record<ResolvedTheme, string> = { dark: '#000000', light: '#ffffff' };
 
 const listeners = new Set<(theme: ResolvedTheme) => void>();
 
