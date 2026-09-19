@@ -7,6 +7,7 @@
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/ui/button';
+import { LogoIcon } from './Logo';
 
 export function Splash({
   progress,
@@ -22,7 +23,7 @@ export function Splash({
   return (
     <div className="splash" role="status" aria-live="polite">
       <div className="splash__logo">
-        <span className="splash__mark">M</span>
+        <LogoIcon size={88} />
         <span className="splash__brand">{t('app.brand')}</span>
       </div>
       {error ? (

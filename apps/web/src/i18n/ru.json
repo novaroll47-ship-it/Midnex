@@ -1,6 +1,6 @@
 {
   "app": {
-    "title": "CryptoSpread Screener",
+    "title": "MidNex",
     "subtitle": "мини-приложение",
     "usdt": "USDT",
     "devBanner": "dev-режим: открыто вне Telegram, авторизация подменена (DEV_FAKE_USER=1).",

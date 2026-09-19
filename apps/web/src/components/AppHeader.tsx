@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 
 import { ChevronLeftIcon } from '../icons';
+import { LogoMark } from './Logo';
 import { haptic, isTelegram } from '../lib/telegram';
 
 /**
@@ -39,7 +40,14 @@ export function AppHeader({ title, onBack }: { title?: string; onBack?: () => vo
       )}
 
       <div className="header__title">
-        <strong>{title ?? t('app.brand')}</strong>
+        {showBrand ? (
+          <span className="header__brand">
+            <LogoMark height={22} />
+            <strong>{t('app.brand')}</strong>
+          </span>
+        ) : (
+          <strong>{title ?? t('app.brand')}</strong>
+        )}
         {showBrand && <span>{t('app.subtitle')}</span>}
       </div>
 

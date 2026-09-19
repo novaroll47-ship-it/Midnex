@@ -2565,3 +2565,26 @@
     font-weight: 700;
   }
 }
+
+@layer legacy {
+  .header__title .header__brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: inherit;
+    color: inherit;
+  }
+
+  /* Слово рядом со знаком: вес 700, разрядка .14em, кегль ≈ 0.7 высоты знака. */
+  .header__title .header__brand strong {
+    display: inline;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    font-size: 15.5px;
+  }
+
+  .splash__logo img {
+    border-radius: 50%;
+  }
+}
