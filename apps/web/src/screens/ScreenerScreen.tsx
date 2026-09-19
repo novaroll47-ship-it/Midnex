@@ -553,6 +553,27 @@ function FiltersSheet({
             <span className="num-field__unit">%</span>
           </span>
         </label>
+        <label className="sheet__row">
+          <span>
+            <span className="sheet__row-title">{t('screener.maxSpread')}</span>
+            <span className="sheet__row-sub">{t('screener.maxSpreadSub')}</span>
+          </span>
+          <span className="num-field">
+            <input
+              className="num-field__input num"
+              inputMode="decimal"
+              value={draft.maxSpreadPct || ''}
+              placeholder="—"
+              onChange={(e) =>
+                setDraft((d) => ({
+                  ...d,
+                  maxSpreadPct: Number(e.target.value.replace(',', '.')) || 0,
+                }))
+              }
+            />
+            <span className="num-field__unit">%</span>
+          </span>
+        </label>
       </div>
 
       <div className="section-label section-label--sheet">
@@ -609,28 +630,6 @@ function FiltersSheet({
             aria-label={t('sd.onlyProfitableFunding')}
             onCheckedChange={(v) => setDraft((d) => ({ ...d, onlyProfitableFunding: v }))}
           />
-        </label>
-
-        <label className="sheet__row">
-          <span>
-            <span className="sheet__row-title">{t('screener.maxSpread')}</span>
-            <span className="sheet__row-sub">{t('screener.maxSpreadSub')}</span>
-          </span>
-          <span className="num-field">
-            <input
-              className="num-field__input num"
-              inputMode="decimal"
-              value={draft.maxSpreadPct || ''}
-              placeholder="—"
-              onChange={(e) =>
-                setDraft((d) => ({
-                  ...d,
-                  maxSpreadPct: Number(e.target.value.replace(',', '.')) || 0,
-                }))
-              }
-            />
-            <span className="num-field__unit">%</span>
-          </span>
         </label>
       </div>
     </Sheet>

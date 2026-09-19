@@ -106,7 +106,9 @@ export class MarketEngine {
   private funding: FundingTracker | null = null;
   private universe: Universe = { byBase: new Map(), bySymbol: new Map(), pairsByBase: new Map() };
   /** base → exchange → последняя котировка. */
-  private quotes = new Map<string, Map<ExchangeId, Quote>>();
+  /** Котировки: монета → «биржа:символ» → котировка. По символу, а не по бирже:
+   *  одна биржа листит и CAT, и 1000CAT — с ключом по бирже они затирали друг друга. */
+  private quotes = new Map<string, Map<string, Quote>>();
   private startedAt: number | null = null;
   private ready = false;
 
@@ -308,7 +310,7 @@ export class MarketEngine {
   legPrice(exchange: ExchangeId, symbol: string, multiplier: number): number | null {
     const market = this.marketsByExchange.get(exchange)?.find((m) => m.symbol === symbol);
     if (!market) return null;
-    const q = this.quotes.get(market.base)?.get(exchange);
+    const q = this.quotes.get(market.base)?.get(`${exchange}:${symbol}`);
     if (!q) return null;
     // Поток уже поделил цену на множитель из тикера; возвращаем сырую и делим на нужный.
     return (q.last * market.multiplier) / multiplier;
@@ -320,11 +322,22 @@ export class MarketEngine {
    */
   rawPrices(): Map<string, number> {
     const out = new Map<string, number>();
+    const now = Date.now();
     for (const [exchange, markets] of this.marketsByExchange) {
       for (const m of markets) {
-        const q = this.quotes.get(m.base)?.get(exchange);
-        if (q) out.set(`${exchange}:${m.symbol}`, q.last * m.multiplier);
+        const q = this.quotes.get(m.base)?.get(`${exchange}:${m.symbol}`);
+        // Замершая котировка для сверки хуже отсутствующей: она рождает фантомные аномалии.
+        if (q && now - q.receivedAt <= this.opts.staleMs) out.set(`${exchange}:${m.symbol}`, q.last * m.multiplier);
       }
+    }
+    return out;
+  }
+
+  /** Размер контракта из метаданных биржи — источник номинала для сверки. */
+  contractSizes(): Map<string, number> {
+    const out = new Map<string, number>();
+    for (const [exchange, markets] of this.marketsByExchange) {
+      for (const m of markets) out.set(`${exchange}:${m.symbol}`, m.contractSize);
     }
     return out;
   }
@@ -376,7 +389,7 @@ export class MarketEngine {
       byVenue = new Map();
       this.quotes.set(market.base, byVenue);
     }
-    byVenue.set(market.exchange, quote);
+    byVenue.set(`${market.exchange}:${market.symbol}`, quote);
   }
 
   // ---------------------------------------------------------------- состояние
@@ -405,7 +418,7 @@ export class MarketEngine {
     const out: VenueSnapshot[] = [];
     for (const market of markets) {
       if (filter && !filter.includes(market.exchange)) continue;
-      let quote = byVenue.get(market.exchange);
+      let quote = byVenue.get(`${market.exchange}:${market.symbol}`);
       if (!quote) continue;
       // Поток поделил цену на множитель из тикера; сверка могла задать свой.
       const k = (market.tickerMultiplier ?? market.multiplier) / market.multiplier;

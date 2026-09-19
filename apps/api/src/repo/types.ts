@@ -151,9 +151,29 @@ export interface VerifiedPairRecord {
   externalA: string | null;
   externalB: string | null;
   note: string | null;
+  /** Класс аномалии для ручной очереди; null — не аномалия. */
+  category: PairCategory | null;
+  /** «Виноватая» нога (exchange:symbol) — для группировки очереди по инструменту. */
+  anomalyLeg: string | null;
   updatedAt: number;
   updatedBy: string | null;
   verifiedAt: number | null;
+}
+
+/**
+ * nominal — у ноги нестандартный номинал; identity — цены сходятся, а внешний
+ * источник спорит; data — актив один, а цены расходятся (проверить котировки);
+ * risky — короткий/цифровой тикер, автоматически не подтверждаем никогда.
+ */
+export type PairCategory = 'nominal' | 'identity' | 'data' | 'risky';
+
+/** Ручной номинал инструмента: сырая цена = factor × цена монеты; 0 — отклонён. */
+export interface InstrumentNominalRecord {
+  exchange: ExchangeId;
+  symbol: string;
+  factor: number;
+  updatedAt: number;
+  updatedBy: string | null;
 }
 
 /** Правило алерта: по монете (base) или общее (любая монета выше порога). */
@@ -245,6 +265,8 @@ export interface Repo {
   listVerifiedSymbols(): Promise<VerifiedSymbolRecord[]>;
   listVerifiedPairs(): Promise<VerifiedPairRecord[]>;
   upsertVerifiedPairs(rows: VerifiedPairRecord[]): Promise<void>;
+  listInstrumentNominals(): Promise<InstrumentNominalRecord[]>;
+  upsertInstrumentNominal(rec: InstrumentNominalRecord): Promise<void>;
 
   close(): Promise<void>;
 }

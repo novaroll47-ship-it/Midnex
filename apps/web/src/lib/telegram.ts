@@ -107,6 +107,35 @@ function syncViewportHeight(): void {
   } else {
     root.removeProperty('--app-height');
   }
+  resetDocumentScroll();
+}
+
+/**
+ * Клавиатура над полем ввода заставляет WebView прокрутить сам документ,
+ * хотя у приложения фиксированная высота и свой скролл внутри. После
+ * закрытия клавиатуры экран остаётся сдвинутым, снизу — чёрная пустота.
+ * Возвращаем документ на место; вызывается при смене viewport, закрытии
+ * шторок и потере фокуса полем.
+ */
+export function resetDocumentScroll(): void {
+  if (window.scrollY !== 0 || document.documentElement.scrollTop !== 0) {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }
+}
+
+if (typeof document !== 'undefined') {
+  // Поле потеряло фокус — клавиатура уходит, документ возвращаем.
+  document.addEventListener(
+    'focusout',
+    () => {
+      setTimeout(resetDocumentScroll, 50);
+      setTimeout(resetDocumentScroll, 350);
+    },
+    true,
+  );
+  window.addEventListener('resize', () => setTimeout(resetDocumentScroll, 50));
 }
 
 export function haptic(kind: 'tap' | 'success' | 'warning' | 'error' = 'tap'): void {

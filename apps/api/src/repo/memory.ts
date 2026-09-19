@@ -14,6 +14,7 @@ import type {
   SubscriptionRecord,
   VerifiedSymbolRecord,
   VerifiedPairRecord,
+  InstrumentNominalRecord,
   ExchangeKeyRecord,
   PositionRecord,
   Repo,
@@ -36,6 +37,7 @@ export class MemoryRepo implements Repo {
   private verified = new Map<string, VerifiedSymbolRecord>();
   private pairs = new Map<string, VerifiedPairRecord>();
   private config = new Map<string, string>();
+  private nominals = new Map<string, InstrumentNominalRecord>();
   private alerts = new Map<string, AlertRuleRecord>();
 
   async upsertUser(u: {
@@ -252,6 +254,14 @@ export class MemoryRepo implements Repo {
 
   async listVerifiedPairs(): Promise<VerifiedPairRecord[]> {
     return [...this.pairs.values()];
+  }
+
+  async listInstrumentNominals(): Promise<InstrumentNominalRecord[]> {
+    return [...this.nominals.values()];
+  }
+
+  async upsertInstrumentNominal(rec: InstrumentNominalRecord): Promise<void> {
+    this.nominals.set(`${rec.exchange}:${rec.symbol}`, rec);
   }
 
   async upsertVerifiedPairs(rows: VerifiedPairRecord[]): Promise<void> {

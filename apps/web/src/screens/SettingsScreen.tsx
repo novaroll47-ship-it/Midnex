@@ -73,24 +73,6 @@ export function SettingsScreen({
         />
       </section>
 
-      {/* Модуль ботов. Пока торговля выключена — это список того, что будет:
-          каждый бот получит свой экран настроек, когда появится. */}
-      <div className="section-label">{t('settings.botsSection')}</div>
-      <section className="card list">
-        <Row
-          title={t('bots.spreadName')}
-          sub={t('settings.botTradingSub')}
-          meta={trading ? undefined : t('settings.soon')}
-          onClick={() => onOpen('botSpread')}
-        />
-        <Row
-          title={t('bots.fundingName')}
-          sub={t('settings.botFundingSub')}
-          meta={t('settings.soon')}
-          onClick={() => onOpen('botFunding')}
-        />
-      </section>
-
       <div className="section-label">{t('settings.securitySection')}</div>
       <section className="card list">
         <Row

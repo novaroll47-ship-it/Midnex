@@ -21,6 +21,7 @@ import type {
   UserSettings,
   VerifiedSymbolRecord,
   VerifiedPairRecord,
+  InstrumentNominalRecord,
 } from './types.js';
 
 const ts = (v: unknown): number => (v instanceof Date ? v.getTime() : Number(v));
@@ -450,10 +451,32 @@ export class PostgresRepo implements Repo {
       externalA: (r['external_a'] as string | null) ?? null,
       externalB: (r['external_b'] as string | null) ?? null,
       note: (r['note'] as string | null) ?? null,
+      category: (r['category'] as VerifiedPairRecord['category']) ?? null,
+      anomalyLeg: (r['anomaly_leg'] as string | null) ?? null,
       updatedAt: ts(r['updated_at']),
       updatedBy: (r['updated_by'] as string | null) ?? null,
       verifiedAt: tsOrNull(r['verified_at']),
     }));
+  }
+
+  async listInstrumentNominals(): Promise<InstrumentNominalRecord[]> {
+    const rows = await this.sql`select * from instrument_nominals`;
+    return rows.map((r) => ({
+      exchange: r['exchange'] as ExchangeId,
+      symbol: r['symbol'] as string,
+      factor: Number(r['factor']),
+      updatedAt: ts(r['updated_at']),
+      updatedBy: (r['updated_by'] as string | null) ?? null,
+    }));
+  }
+
+  async upsertInstrumentNominal(rec: InstrumentNominalRecord): Promise<void> {
+    await this.sql`
+      insert into instrument_nominals (exchange, symbol, factor, updated_at, updated_by)
+      values (${rec.exchange}, ${rec.symbol}, ${rec.factor}, ${new Date(rec.updatedAt)}, ${rec.updatedBy})
+      on conflict (exchange, symbol) do update set
+        factor = excluded.factor, updated_at = excluded.updated_at, updated_by = excluded.updated_by
+    `;
   }
 
   async upsertVerifiedPairs(rows: VerifiedPairRecord[]): Promise<void> {
@@ -472,6 +495,8 @@ export class PostgresRepo implements Repo {
         external_a: r.externalA,
         external_b: r.externalB,
         note: r.note,
+        category: r.category,
+        anomaly_leg: r.anomalyLeg,
         updated_at: new Date(r.updatedAt),
         updated_by: r.updatedBy,
         verified_at: r.verifiedAt == null ? null : new Date(r.verifiedAt),
@@ -482,7 +507,8 @@ export class PostgresRepo implements Repo {
           base = excluded.base, multiplier = excluded.multiplier, status = excluded.status,
           verification_source = excluded.verification_source, ratio = excluded.ratio,
           external_a = excluded.external_a, external_b = excluded.external_b,
-          note = excluded.note, updated_at = excluded.updated_at, updated_by = excluded.updated_by,
+          note = excluded.note, category = excluded.category, anomaly_leg = excluded.anomaly_leg,
+          updated_at = excluded.updated_at, updated_by = excluded.updated_by,
           verified_at = excluded.verified_at
       `;
     }

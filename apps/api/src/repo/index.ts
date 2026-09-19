@@ -25,6 +25,8 @@ export type {
   VerifiedSymbolRecord,
   VerifiedPairRecord,
   PairStatus,
+  PairCategory,
+  InstrumentNominalRecord,
   VerificationSource,
 } from './types.js';
 

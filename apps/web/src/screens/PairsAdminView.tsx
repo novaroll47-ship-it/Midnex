@@ -7,7 +7,7 @@
  * По каждой: обе ноги с ценами, отношение, что сказал CoinGecko, кнопки
  * «Сверить» (множитель предзаполнен отношением) / «Отклонить».
  */
-import { EXCHANGES, formatPrice, priceDecimals } from '@cs/shared';
+import { EXCHANGES, formatPrice, priceDecimals, type ExchangeId } from '@cs/shared';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -55,6 +55,23 @@ export function PairsAdminView() {
         p.symbolB.toUpperCase().includes(q),
     );
   }, [pairs, query]);
+
+  // Решение по инструменту: номинал или отклонение — закрывает все его пары разом.
+  async function actLeg(exchange: ExchangeId, symbol: string, factor: number) {
+    const key = `leg:${exchange}:${symbol}`;
+    setBusy(key);
+    try {
+      const r = await api.adminPairLeg(exchange, symbol, factor);
+      haptic('success');
+      setCounts(r.counts);
+      reload();
+    } catch (e) {
+      haptic('error');
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function act(
     p: PairView,
@@ -122,17 +139,180 @@ export function PairsAdminView() {
         </div>
       )}
 
-      {visible.length > 0 && (
+      {visible.length > 0 && tab !== 'anomalies' && (
         <section className="card list">
           {visible.map((p) => (
             <PairRow key={pairId(p)} pair={p} busy={busy === pairId(p)} onAct={act} />
           ))}
         </section>
       )}
+
+      {visible.length > 0 && tab === 'anomalies' && (
+        <AnomalyGroups pairs={visible} busy={busy} onAct={act} onActLeg={actLeg} />
+      )}
       {total > (pairs?.length ?? 0) && (
         <p className="hint">{t('pairs.truncated', { shown: pairs?.length ?? 0, count: total })}</p>
       )}
     </div>
+  );
+}
+
+const CATEGORY_ORDER: NonNullable<PairView['category']>[] = [
+  'nominal',
+  'data',
+  'identity',
+  'risky',
+];
+
+/**
+ * Очередь аномалий по категориям; внутри «номинала» — одна карточка на
+ * инструмент («PURR · BingX — номинал отличается от Bybit, Bitget, OKX»)
+ * с решением сразу для всех его пар.
+ */
+function AnomalyGroups({
+  pairs,
+  busy,
+  onAct,
+  onActLeg,
+}: {
+  pairs: PairView[];
+  busy: string | null;
+  onAct: (p: PairView, status: 'verified' | 'rejected' | 'candidate', multiplier?: number) => void;
+  onActLeg: (exchange: ExchangeId, symbol: string, factor: number) => void;
+}) {
+  const { t } = useTranslation();
+  const byCategory = new Map<string, PairView[]>();
+  for (const p of pairs) {
+    const c = p.category ?? 'data';
+    byCategory.set(c, [...(byCategory.get(c) ?? []), p]);
+  }
+  return (
+    <>
+      {CATEGORY_ORDER.filter((c) => byCategory.has(c)).map((c) => {
+        const list = byCategory.get(c)!;
+        if (c === 'nominal') {
+          const byLeg = new Map<string, PairView[]>();
+          for (const p of list) {
+            const leg = p.anomalyLeg ?? `${p.exchangeA}:${p.symbolA}`;
+            byLeg.set(leg, [...(byLeg.get(leg) ?? []), p]);
+          }
+          return (
+            <div className="stack" key={c}>
+              <div className="section-label">
+                {t(`pairs.cat_${c}`)} · {byLeg.size}
+              </div>
+              <p className="hint">{t(`pairs.catHint_${c}`)}</p>
+              {[...byLeg.entries()].map(([leg, group]) => (
+                <LegCard
+                  key={leg}
+                  leg={leg}
+                  pairs={group}
+                  busy={busy === `leg:${leg}`}
+                  onActLeg={onActLeg}
+                />
+              ))}
+            </div>
+          );
+        }
+        return (
+          <div className="stack" key={c}>
+            <div className="section-label">
+              {t(`pairs.cat_${c}`)} · {list.length}
+            </div>
+            <p className="hint">{t(`pairs.catHint_${c}`)}</p>
+            <section className="card list">
+              {list.map((p) => (
+                <PairRow key={pairId(p)} pair={p} busy={busy === pairId(p)} onAct={onAct} />
+              ))}
+            </section>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function LegCard({
+  leg,
+  pairs,
+  busy,
+  onActLeg,
+}: {
+  leg: string;
+  pairs: PairView[];
+  busy: boolean;
+  onActLeg: (exchange: ExchangeId, symbol: string, factor: number) => void;
+}) {
+  const { t } = useTranslation();
+  const [exchange, symbol] = leg.split(/:(.*)/s) as [ExchangeId, string];
+  const first = pairs[0]!;
+  const name = (id: string) => EXCHANGES.find((e) => e.id === id)?.name ?? id;
+  // Цена этой ноги и медиана остальных — чтобы предложить номинал.
+  const mine =
+    pairs
+      .map((p) => (p.exchangeA === exchange && p.symbolA === symbol ? p.priceA : p.priceB))
+      .find((v) => v !== null) ?? null;
+  const others = pairs
+    .map((p) => ({
+      ex: p.exchangeA === exchange && p.symbolA === symbol ? p.exchangeB : p.exchangeA,
+      price: p.exchangeA === exchange && p.symbolA === symbol ? p.priceB : p.priceA,
+    }))
+    .filter((o) => o.price !== null) as { ex: ExchangeId; price: number }[];
+  const med = others.length
+    ? [...others].sort((a, b) => a.price - b.price)[Math.floor(others.length / 2)]!.price
+    : null;
+  const ratio = mine !== null && med ? mine / med : null;
+  const [factor, setFactor] = useState(() => suggestMultiplier(ratio));
+  const fmt = (v: number | null) => (v === null ? '—' : formatPrice(v, priceDecimals(v)));
+
+  return (
+    <section className="card pair-row">
+      <div className="pair-row__head">
+        <CoinIcon base={first.base} size={26} />
+        <div className="pair-row__id">
+          <div className="pair-row__base">
+            {first.base} · {name(exchange)}
+          </div>
+          <div className="pair-row__symbol">
+            <ExchangeLogo id={exchange} size={11} /> {symbol}{' '}
+            <span className="num">{fmt(mine)}</span>
+          </div>
+          <div className="pair-row__symbol">
+            {t('pairs.legOthers', {
+              list: others.map((o) => `${name(o.ex)} ${fmt(o.price)}`).join(', '),
+            })}
+          </div>
+        </div>
+        <div className="pair-row__price num">{ratio === null ? '—' : fmtRatio(ratio)}</div>
+      </div>
+      <div className="pair-row__note">{t('pairs.legNote', { count: pairs.length })}</div>
+      <div className="pair-row__actions">
+        <label className="pair-row__mult">
+          <span>{t('pairs.legFactor')}</span>
+          <input
+            className="num"
+            inputMode="decimal"
+            value={factor}
+            onChange={(e) => setFactor(e.target.value)}
+          />
+        </label>
+        <Button
+          size="sm"
+          disabled={busy}
+          onClick={() => onActLeg(exchange, symbol, parseMult(factor) ?? 1)}
+        >
+          {t('pairs.legApply')}
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={busy}
+          onClick={() => onActLeg(exchange, symbol, 0)}
+        >
+          {t('pairs.legReject')}
+        </Button>
+      </div>
+    </section>
   );
 }
 

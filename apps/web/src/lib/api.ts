@@ -148,6 +148,8 @@ export interface PairView {
   externalA: string | null;
   externalB: string | null;
   note: string | null;
+  category: 'nominal' | 'identity' | 'data' | 'risky' | null;
+  anomalyLeg: string | null;
   updatedAt: number;
   updatedBy: string | null;
   verifiedAt: number | null;
@@ -330,7 +332,9 @@ export const api = {
       exB: pair?.exB,
     }),
 
-  adminPairs: (filter: 'anomalies' | 'verified' | 'rejected') =>
+  adminPairLeg: (exchange: ExchangeId, symbol: string, factor: number) =>
+    request<{ ok: true; counts: PairCounts }>('POST', '/api/admin/pairs/leg', { exchange, symbol, factor }),
+  adminPairs: (filter: 'anomalies' | 'verified' | 'rejected' | 'pending') =>
     get<{ pairs: PairView[]; total: number; counts: PairCounts }>('/api/admin/pairs', { filter }),
   adminPairDecide: (
     pair: Pick<PairView, 'exchangeA' | 'symbolA' | 'exchangeB' | 'symbolB'>,

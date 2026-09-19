@@ -136,7 +136,10 @@ let bot: BotHandle | null = null;
 
 // Сверка пар: таблица из базы → движок; новые рынки → пары-кандидаты;
 // раз в минуту — автосверка по ценам и CoinGecko.
-const externalTickers = new ExternalTickers(join(dirname(HISTORY_DB_PATH), 'external-tickers.json'), app.log);
+const externalTickers = new ExternalTickers(
+  join(dirname(HISTORY_DB_PATH), 'external-tickers.json'),
+  app.log,
+);
 const pairs = new PairsService({
   repo,
   engine: market.engine,
@@ -196,7 +199,8 @@ state.paperUsers = new Set(
     .map((v) => Number(v.trim()))
     .filter((v) => Number.isInteger(v) && v > 0),
 );
-if (state.paperUsers.size) app.log.info(`бумажная торговля включена для: ${[...state.paperUsers].join(', ')}`);
+if (state.paperUsers.size)
+  app.log.info(`бумажная торговля включена для: ${[...state.paperUsers].join(', ')}`);
 async function togglePaper(userId: number): Promise<boolean> {
   if (state.paperUsers.has(userId)) state.paperUsers.delete(userId);
   else state.paperUsers.add(userId);
@@ -472,7 +476,12 @@ app.get('/api/history/:base', async (req, reply) => {
   // есть за полгода благодаря backfill. Помечаем реконструкцией: это
   // грубее, и на графике такой участок идёт пунктиром.
   if (tf !== '1h' && candles.length < Math.floor((to - from) / tfMs) * 0.9) {
-    const hourly = history.queryCandles(canonical, '1h', Math.floor(from / 3_600_000) * 3_600_000, to);
+    const hourly = history.queryCandles(
+      canonical,
+      '1h',
+      Math.floor(from / 3_600_000) * 3_600_000,
+      to,
+    );
     const bestHour = new Map<number, (typeof hourly)[number]>();
     for (const c of hourly) {
       const cur = bestHour.get(c.ts);
@@ -485,7 +494,8 @@ app.get('/api/history/:base', async (req, reply) => {
     for (const c of edges) {
       if (c.ts - prevTs > gapMs) {
         for (const h of bestHour.values()) {
-          if (h.ts > prevTs && h.ts + 3_600_000 <= c.ts) filled.push({ ...h, source: 'reconstructed' });
+          if (h.ts > prevTs && h.ts + 3_600_000 <= c.ts)
+            filled.push({ ...h, source: 'reconstructed' });
         }
       }
       if (c.ts !== to) filled.push(c);
@@ -632,7 +642,8 @@ app.patch('/api/settings/bot', async (req, reply) => {
   const body = { ...(req.body as Record<string, unknown>) };
   // Исполнение пользователю не выставить: реальные деньги всегда, «бумага» — служебный флаг.
   delete body['executionMode'];
-  if (body['mode'] !== undefined && body['mode'] !== 'semi' && body['mode'] !== 'auto') delete body['mode'];
+  if (body['mode'] !== undefined && body['mode'] !== 'semi' && body['mode'] !== 'auto')
+    delete body['mode'];
   patch(s.settings.bot, body);
   // Список бирж приходит массивом — общая проверка типов его не покрывает.
   if (Array.isArray(body['enabledExchanges'])) {
@@ -684,7 +695,8 @@ app.patch('/api/settings/onboarding', async (req, reply) => {
 app.patch('/api/settings/ui', async (req, reply) => {
   const s = req.state!;
   const body = req.body as { view?: unknown };
-  if (body?.view !== 'list' && body?.view !== 'cards') return reply.code(400).send({ error: 'bad view' });
+  if (body?.view !== 'list' && body?.view !== 'cards')
+    return reply.code(400).send({ error: 'bad view' });
   s.settings.ui = { ...s.settings.ui, view: body.view };
   await state.saveSettings(s);
   return settingsPayload(s);
@@ -861,10 +873,32 @@ app.delete('/api/alerts/:id', async (req, reply) => {
 app.get('/api/admin/pairs', async (req, reply) => {
   if (!billing.isAdmin(req.state!.userId)) return reply.code(403).send({ error: 'admin only' });
   const q = req.query as { filter?: string; limit?: string };
-  const filter = q.filter === 'verified' || q.filter === 'rejected' ? q.filter : 'anomalies';
+  const filter =
+    q.filter === 'verified' || q.filter === 'rejected' || q.filter === 'pending'
+      ? q.filter
+      : 'anomalies';
   const limit = Math.min(500, Math.max(1, Number(q.limit) || 200));
   const all = pairs.list(filter);
   return { pairs: all.slice(0, limit), total: all.length, counts: pairs.counts() };
+});
+
+/** Решение по инструменту: номинал (factor > 0) или отклонение (factor = 0) — закрывает все его пары. */
+app.post('/api/admin/pairs/leg', async (req, reply) => {
+  if (!billing.isAdmin(req.state!.userId)) return reply.code(403).send({ error: 'admin only' });
+  const body = req.body as { exchange?: string; symbol?: string; factor?: number };
+  const valid = new Set(EXCHANGES.map((e) => e.id as string));
+  if (!body?.exchange || !valid.has(body.exchange) || !body.symbol) {
+    return reply.code(400).send({ error: 'leg required' });
+  }
+  const factor = Number(body.factor);
+  if (!Number.isFinite(factor) || factor < 0) return reply.code(400).send({ error: 'bad factor' });
+  await pairs.setLegNominal(
+    body.exchange as ExchangeId,
+    body.symbol,
+    factor,
+    `admin:${req.state!.userId}`,
+  );
+  return { ok: true, counts: pairs.counts() };
 });
 
 app.post('/api/admin/pairs/decide', async (req, reply) => {

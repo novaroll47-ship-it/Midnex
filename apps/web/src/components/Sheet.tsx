@@ -7,7 +7,9 @@
  *
  * Внешний вид обёртки оставлен прежним, чтобы места вызова не менялись.
  */
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
+
+import { resetDocumentScroll } from '../lib/telegram';
 
 import {
   Drawer,
@@ -31,6 +33,13 @@ export function Sheet({
   children: ReactNode;
   footer?: ReactNode;
 }) {
+  // После закрытия шторки (и клавиатуры под ней) документ должен стоять на месте.
+  useEffect(
+    () => () => {
+      setTimeout(resetDocumentScroll, 50);
+    },
+    [],
+  );
   return (
     <Drawer open onOpenChange={(open) => !open && onClose()}>
       <DrawerContent className="max-w-[420px] mx-auto border-border bg-background">

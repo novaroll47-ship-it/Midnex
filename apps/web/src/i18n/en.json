@@ -577,7 +577,21 @@
     "multiplier": "Multiplier",
     "verify": "Verify",
     "reject": "Reject",
-    "reset": "To candidates"
+    "reset": "To candidates",
+    "cat_nominal": "Instrument nominal",
+    "catHint_nominal": "One leg's price differs from other exchanges by a non-standard factor. Set the nominal (raw price = nominal × coin price) or reject the instrument. Applies to all its pairs.",
+    "cat_data": "Check data",
+    "catHint_data": "Same asset by every sign, but prices diverge by more than 5%. Most likely a stale quote on one exchange — such pairs stay out of the feed.",
+    "cat_identity": "Asset identity",
+    "catHint_identity": "Prices match, but CoinGecko says these are different projects (PUMP ≠ pump-fun). Manual decision only.",
+    "cat_risky": "Short tickers",
+    "catHint_risky": "A 1–2 character or numeric ticker easily collides between projects. Never auto-verified.",
+    "legOthers": "Others: {{list}}",
+    "legNote": "Pairs with this leg in the queue: {{count}}",
+    "legFactor": "Nominal",
+    "legApply": "Set nominal",
+    "legReject": "Reject instrument",
+    "tab_pending": "No price"
   },
   "funding": {
     "title": "Funding over period",
