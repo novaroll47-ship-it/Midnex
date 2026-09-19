@@ -491,7 +491,7 @@
     "months_many": "месяцев",
     "perMonthWithDiscount": "${{price}}/мес · скидка {{discount}}%",
     "fullPrice": "Без скидки",
-    "payStars": "Звёзды Telegram",
+    "payStars": "Звёзды",
     "payCrypto": "USDT",
     "totalHint": "К оплате: ${{usd}} — {{plan}}, {{months}} мес. Срок добавится к текущей подписке.",
     "starsHint": "Оплата звёздами проходит внутри Telegram. После списания доступ откроется автоматически.",
@@ -524,7 +524,8 @@
     "cryptoBotWaiting": "Ждём подтверждения оплаты от CryptoBot… Шторку можно не закрывать.",
     "cryptoBotReopen": "Открыть счёт ещё раз",
     "cryptoBotPending": "Оплата пока не подтверждена. Если вы оплатили — доступ появится через пару минут.",
-    "cryptoBotOpenLink": "Открыть счёт в @CryptoBot"
+    "cryptoBotOpenLink": "Открыть счёт в @CryptoBot",
+    "payStarsTitle": "Звёзды Telegram"
   },
   "bots": {
     "spreadName": "Бот «Спред»",

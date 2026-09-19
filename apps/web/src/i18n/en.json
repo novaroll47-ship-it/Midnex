@@ -489,7 +489,7 @@
     "months_other": "months",
     "perMonthWithDiscount": "${{price}}/mo · {{discount}}% off",
     "fullPrice": "No discount",
-    "payStars": "Telegram Stars",
+    "payStars": "Stars",
     "payCrypto": "USDT",
     "totalHint": "Total: ${{usd}} — {{plan}}, {{months}} mo. The term is added to your current subscription.",
     "starsHint": "Stars payment happens inside Telegram. Access opens automatically after the charge.",
@@ -522,7 +522,8 @@
     "cryptoBotWaiting": "Waiting for CryptoBot to confirm the payment… You can keep this open.",
     "cryptoBotReopen": "Open the invoice again",
     "cryptoBotPending": "Payment not confirmed yet. If you paid, access appears within a couple of minutes.",
-    "cryptoBotOpenLink": "Open the invoice in @CryptoBot"
+    "cryptoBotOpenLink": "Open the invoice in @CryptoBot",
+    "payStarsTitle": "Telegram Stars"
   },
   "bots": {
     "spreadName": "Spread bot",

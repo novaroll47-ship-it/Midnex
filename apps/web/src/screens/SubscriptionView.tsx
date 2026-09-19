@@ -143,8 +143,10 @@ export function SubscriptionView({ settings }: { settings: SettingsController })
         })}
       </Section>
 
-      <div className={`grid gap-2 ${billing.cryptoBotAvailable ? 'grid-cols-3' : 'grid-cols-2'}`}>
-        {billing.cryptoBotAvailable && (
+      {/* Два способа: CryptoBot и звёзды. Ручной перевод USDT показываем,
+          только пока CryptoBot не настроен — иначе он лишний. */}
+      <div className="grid grid-cols-2 gap-2">
+        {billing.cryptoBotAvailable ? (
           <Button
             variant="secondary"
             disabled={!canBuy}
@@ -155,8 +157,20 @@ export function SubscriptionView({ settings }: { settings: SettingsController })
           >
             {t('sub.payCryptoBot')}
           </Button>
+        ) : (
+          <Button
+            variant="secondary"
+            disabled={!canBuy || billing.wallets.length === 0}
+            onClick={() => {
+              haptic('tap');
+              setPay('crypto');
+            }}
+          >
+            {t('sub.payCrypto')}
+          </Button>
         )}
         <Button
+          className="whitespace-nowrap"
           disabled={!canBuy || !billing.starsAvailable}
           onClick={() => {
             haptic('tap');
@@ -164,16 +178,6 @@ export function SubscriptionView({ settings }: { settings: SettingsController })
           }}
         >
           ⭐ {t('sub.payStars')}
-        </Button>
-        <Button
-          variant="secondary"
-          disabled={!canBuy || billing.wallets.length === 0}
-          onClick={() => {
-            haptic('tap');
-            setPay('crypto');
-          }}
-        >
-          {t('sub.payCrypto')}
         </Button>
       </div>
       <p className="hint">{t('sub.totalHint', { usd, plan: t(`sd.plan_${plan}`), months })}</p>
@@ -408,7 +412,7 @@ function StarsSheet({
 
   return (
     <Sheet
-      title={t('sub.payStars')}
+      title={t('sub.payStarsTitle')}
       description={t('sub.starsHint')}
       onClose={() => !busy && onClose()}
       footer={
