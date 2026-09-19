@@ -521,7 +521,8 @@
     "cryptoBotHint": "A USDT invoice opens in @CryptoBot inside Telegram. Pay it and the subscription activates automatically, usually within seconds.",
     "cryptoBotWaiting": "Waiting for CryptoBot to confirm the payment… You can keep this open.",
     "cryptoBotReopen": "Open the invoice again",
-    "cryptoBotPending": "Payment not confirmed yet. If you paid, access appears within a couple of minutes."
+    "cryptoBotPending": "Payment not confirmed yet. If you paid, access appears within a couple of minutes.",
+    "cryptoBotOpenLink": "Open the invoice in @CryptoBot"
   },
   "bots": {
     "spreadName": "Spread bot",

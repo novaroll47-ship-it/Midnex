@@ -50,6 +50,7 @@ interface TelegramWebApp {
   close?(): void;
   openInvoice?(url: string, callback?: (status: string) => void): void;
   openTelegramLink?(url: string): void;
+  openLink?(url: string, options?: { try_instant_view?: boolean }): void;
   disableVerticalSwipes?(): void;
   setHeaderColor(color: string): void;
   setBackgroundColor(color: string): void;
@@ -198,6 +199,19 @@ export function openInvoice(url: string, timeoutMs = 6000): Promise<string> {
 
 /** Открыть ссылку t.me внутри Telegram (чат с ботом, счёт). */
 export function openTelegramLink(url: string): void {
-  if (webApp?.openTelegramLink) webApp.openTelegramLink(url);
-  else window.open(url, '_blank', 'noopener');
+  // Внутри Telegram t.me-ссылки открывает сам клиент; если метода нет
+  // (старый клиент) — обычной ссылкой, её клиент тоже перехватит.
+  try {
+    if (webApp?.openTelegramLink) return webApp.openTelegramLink(url);
+    if (webApp?.openLink) return webApp.openLink(url);
+  } catch {
+    // Провалились — ниже запасной путь.
+  }
+  const a = document.createElement('a');
+  a.href = url;
+  a.target = '_blank';
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }

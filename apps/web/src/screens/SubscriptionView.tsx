@@ -288,7 +288,9 @@ function CryptoBotSheet({
       const r = await api.cryptoBotInvoice(plan, months);
       setInvoice({ id: r.payment.id, payUrl: r.payUrl, botUrl: r.botUrl });
       haptic('success');
-      openTelegramLink(r.payUrl);
+      // Ссылка на бота (t.me/CryptoBot?start=…) открывается во всех клиентах;
+      // мини-приложение счёта Desktop открывать не умеет.
+      openTelegramLink(r.botUrl);
     } catch (e) {
       haptic('error');
       setError(e instanceof Error ? e.message : String(e));
@@ -322,10 +324,16 @@ function CryptoBotSheet({
         <InfoRow label={t('sub.price')} value={`${usd} USDT`} tone="green" />
       </section>
       {invoice && (
-        <section className="card notice">
-          <ClockIcon className="notice__icon" />
-          <span>{t('sub.cryptoBotWaiting')}</span>
-        </section>
+        <>
+          <section className="card notice">
+            <ClockIcon className="notice__icon" />
+            <span>{t('sub.cryptoBotWaiting')}</span>
+          </section>
+          {/* Обычная ссылка — на случай, если программное открытие клиент проигнорировал. */}
+          <a className="btn-ghost coin-alert" href={invoice.botUrl} target="_blank" rel="noopener">
+            {t('sub.cryptoBotOpenLink')}
+          </a>
+        </>
       )}
       {error && <section className="card notice notice--warn">{error}</section>}
     </Sheet>
