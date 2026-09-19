@@ -39,7 +39,7 @@ export function SubscriptionView({ settings }: { settings: SettingsController })
   const [billing, setBilling] = useState<BillingResponse | null>(null);
   const [plan, setPlan] = useState<PlanId>('screener');
   const [months, setMonths] = useState<BillingMonths>(1);
-  const [pay, setPay] = useState<'stars' | 'crypto' | null>(null);
+  const [pay, setPay] = useState<'stars' | 'crypto' | 'cryptobot' | null>(null);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'warn'; text: string } | null>(null);
 
   const reload = useCallback(() => {
@@ -143,7 +143,19 @@ export function SubscriptionView({ settings }: { settings: SettingsController })
         })}
       </Section>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className={`grid gap-2 ${billing.cryptoBotAvailable ? 'grid-cols-3' : 'grid-cols-2'}`}>
+        {billing.cryptoBotAvailable && (
+          <Button
+            variant="secondary"
+            disabled={!canBuy}
+            onClick={() => {
+              haptic('tap');
+              setPay('cryptobot');
+            }}
+          >
+            {t('sub.payCryptoBot')}
+          </Button>
+        )}
         <Button
           disabled={!canBuy || !billing.starsAvailable}
           onClick={() => {
@@ -186,6 +198,24 @@ export function SubscriptionView({ settings }: { settings: SettingsController })
         />
       )}
 
+      {pay === 'cryptobot' && (
+        <CryptoBotSheet
+          plan={plan}
+          months={months}
+          usd={usd}
+          onClose={() => setPay(null)}
+          onDone={(ok) => {
+            setPay(null);
+            setNotice(
+              ok
+                ? { kind: 'ok', text: t('sub.starsPaid') }
+                : { kind: 'warn', text: t('sub.cryptoBotPending') },
+            );
+            void refreshAll();
+          }}
+        />
+      )}
+
       {pay === 'crypto' && (
         <CryptoSheet
           plan={plan}
@@ -201,6 +231,104 @@ export function SubscriptionView({ settings }: { settings: SettingsController })
         />
       )}
     </div>
+  );
+}
+
+// ------------------------------------------------------------- @CryptoBot
+
+/**
+ * Счёт в USDT через @CryptoBot: открываем ссылку на оплату внутри Telegram и
+ * ждём подтверждения — сервер узнаёт об оплате вебхуком, а мы опрашиваем
+ * статус заявки, пока шторка открыта.
+ */
+function CryptoBotSheet({
+  plan,
+  months,
+  usd,
+  onClose,
+  onDone,
+}: {
+  plan: PlanId;
+  months: BillingMonths;
+  usd: number;
+  onClose: () => void;
+  onDone: (paid: boolean) => void;
+}) {
+  const { t } = useTranslation();
+  const [busy, setBusy] = useState(false);
+  const [invoice, setInvoice] = useState<{ id: string; payUrl: string; botUrl: string } | null>(
+    null,
+  );
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!invoice) return;
+    let alive = true;
+    const timer = setInterval(() => {
+      api
+        .paymentStatus(invoice.id)
+        .then((r) => {
+          if (!alive) return;
+          if (r.payment.status === 'paid') onDone(true);
+          else if (r.payment.status === 'cancelled' || r.payment.status === 'rejected')
+            onDone(false);
+        })
+        .catch(() => {});
+    }, 3000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [invoice, onDone]);
+
+  async function create() {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api.cryptoBotInvoice(plan, months);
+      setInvoice({ id: r.payment.id, payUrl: r.payUrl, botUrl: r.botUrl });
+      haptic('success');
+      openTelegramLink(r.payUrl);
+    } catch (e) {
+      haptic('error');
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Sheet
+      title={t('sub.payCryptoBot')}
+      description={t('sub.cryptoBotHint')}
+      onClose={() => !busy && onClose()}
+      footer={
+        invoice ? (
+          <Button variant="secondary" onClick={() => openTelegramLink(invoice.botUrl)}>
+            {t('sub.cryptoBotReopen')}
+          </Button>
+        ) : (
+          <Button disabled={busy} onClick={create}>
+            {busy ? t('app.working') : t('sub.payAmount', { amount: `${usd} USDT` })}
+          </Button>
+        )
+      }
+    >
+      <section className="card list">
+        <InfoRow
+          label={t(`sd.plan_${plan}`)}
+          value={`${months} ${t('sub.months', { count: months })}`}
+        />
+        <InfoRow label={t('sub.price')} value={`${usd} USDT`} tone="green" />
+      </section>
+      {invoice && (
+        <section className="card notice">
+          <ClockIcon className="notice__icon" />
+          <span>{t('sub.cryptoBotWaiting')}</span>
+        </section>
+      )}
+      {error && <section className="card notice notice--warn">{error}</section>}
+    </Sheet>
   );
 }
 

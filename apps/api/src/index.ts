@@ -34,7 +34,8 @@ import {
 
 import { AuthError, DEV_USER, verifyInitData, type TelegramUser } from './auth.js';
 import { AlertEngine } from './alerts.js';
-import { Billing, toPaymentInfo } from './billing.js';
+import { Billing, planTitle, toPaymentInfo } from './billing.js';
+import { CryptoPay } from './cryptopay.js';
 import { NotificationService } from './notifications.js';
 import { startBot, type BotHandle } from './bot.js';
 import { decrypt, encrypt, encryptionReady, initEncryption, keyHint } from './crypto.js';
@@ -123,6 +124,13 @@ const marketHooks: MarketHooks = {};
 const market = createMarketSource(app.log, marketHooks);
 const repo = await createRepo(app.log);
 const state = new StateService(repo, market);
+// @CryptoBot: токен приложения из .env; CRYPTOPAY_TESTNET=1 — тестовая сеть.
+const CRYPTOPAY_TOKEN = process.env.CRYPTOPAY_TOKEN?.trim() ?? '';
+const CRYPTOPAY_WEBHOOK_SECRET = process.env.CRYPTOPAY_WEBHOOK_SECRET?.trim() ?? '';
+const cryptoPay = CRYPTOPAY_TOKEN
+  ? new CryptoPay(CRYPTOPAY_TOKEN, process.env.CRYPTOPAY_TESTNET === '1', app.log)
+  : null;
+
 const billing = new Billing({
   repo,
   log: app.log,
@@ -131,7 +139,25 @@ const billing = new Billing({
   starsPerUsd: STARS_PER_USD,
   wallets: USDT_WALLETS,
   trading: TRADING_ENABLED,
+  cryptoPay,
+  publicUrl: process.env.PUBLIC_URL,
 });
+if (cryptoPay) {
+  cryptoPay
+    .getMe()
+    .then((me) =>
+      app.log.info(`CryptoBot: приложение «${me.name}»${cryptoPay.isTestnet ? ' (testnet)' : ''}`),
+    )
+    .catch((err: unknown) => app.log.error({ err: String(err) }, 'CryptoBot: токен не принят'));
+  if (!CRYPTOPAY_WEBHOOK_SECRET)
+    app.log.warn('CRYPTOPAY_WEBHOOK_SECRET не задан — вебхук выключен, только опрос');
+  // Запасной опрос раз в 3 минуты — на случай пропущенного вебхука.
+  setInterval(() => {
+    void billing.pollCryptoBot().catch((err: unknown) => {
+      app.log.warn({ err: String(err) }, 'CryptoBot: опрос не удался');
+    });
+  }, 180_000);
+}
 let bot: BotHandle | null = null;
 
 // Сверка пар: таблица из базы → движок; новые рынки → пары-кандидаты;
@@ -266,11 +292,25 @@ await app.register(compress, { global: true, threshold: 2048 });
 /** Сессию отмечаем не чаще раза в минуту на пользователя — иначе запись на каждый опрос. */
 const sessionTouched = new Map<string, number>();
 
+// JSON разбираем сами, сохраняя сырое тело: вебхуку CryptoBot нужна подпись
+// именно по байтам, а не по пересобранному объекту.
+app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
+  (req as FastifyRequest & { rawBody?: string }).rawBody = body as string;
+  if (!body || (body as string).length === 0) return done(null, {});
+  try {
+    done(null, JSON.parse(body as string));
+  } catch (err) {
+    done(err as Error, undefined);
+  }
+});
+
 app.addHook('preHandler', async (req: FastifyRequest, reply: FastifyReply) => {
   if (!req.url.startsWith('/api/')) return;
   // Логотипы браузер тянет тегом <img>, а он не умеет слать заголовок с
   // подписью Telegram. Ничего чувствительного там нет, поэтому пускаем без неё.
   if (req.url.startsWith('/api/health') || req.url.startsWith('/api/icon/')) return;
+  // Вебхук CryptoBot приходит без Telegram-подписи: его защищает секретный путь и HMAC тела.
+  if (req.url.startsWith('/api/cryptopay/webhook/')) return;
 
   const initData = req.headers['x-telegram-init-data'];
   let user: TelegramUser | null = null;
@@ -739,6 +779,7 @@ app.get('/api/billing', async (req) => {
     starsPerUsd: STARS_PER_USD,
     wallets: billing.wallets.map((w) => w.network),
     starsAvailable: Boolean(BOT_TOKEN),
+    cryptoBotAvailable: billing.cryptoBotAvailable,
   };
 });
 
@@ -758,6 +799,25 @@ app.post('/api/billing/stars/:id/chat', async (req, reply) => {
   const ok = await billing.sendInvoiceToChat(req.state!.userId, id);
   if (!ok) return reply.code(404).send({ error: 'not found' });
   return { ok: true };
+});
+
+app.post('/api/billing/cryptobot', async (req, reply) => {
+  const body = req.body as { plan?: string; months?: number };
+  const r = await billing.createCryptoBotInvoice(
+    req.state!.userId,
+    String(body?.plan ?? ''),
+    Number(body?.months),
+  );
+  if ('error' in r) return reply.code(400).send({ error: r.error });
+  return { payUrl: r.payUrl, botUrl: r.botUrl, payment: toPaymentInfo(r.payment) };
+});
+
+/** Статус заявки — мини-приложение опрашивает после открытия счёта. */
+app.get('/api/billing/payment/:id', async (req, reply) => {
+  const { id } = req.params as { id: string };
+  const p = await repo.getPayment(id);
+  if (!p || p.userId !== req.state!.userId) return reply.code(404).send({ error: 'not found' });
+  return { payment: toPaymentInfo(p), subscription: await billing.info(p.userId) };
 });
 
 app.post('/api/billing/crypto', async (req, reply) => {
@@ -865,6 +925,37 @@ app.delete('/api/alerts/:id', async (req, reply) => {
   const ok = await repo.deleteAlertRule(req.state!.userId, id);
   if (!ok) return reply.code(404).send({ error: 'not found' });
   await alerts.reloadUser(req.state!.userId);
+  return { ok: true };
+});
+
+// ---------------------------------------------------------------- CryptoBot webhook
+
+/**
+ * invoice_paid от @CryptoBot. Секретный путь + подпись HMAC тела. Обработка
+ * идемпотентна: повторный вебхук об уже закрытом счёте — просто 200.
+ */
+app.post('/api/cryptopay/webhook/:secret', async (req, reply) => {
+  const { secret } = req.params as { secret: string };
+  if (!cryptoPay || !CRYPTOPAY_WEBHOOK_SECRET || secret !== CRYPTOPAY_WEBHOOK_SECRET) {
+    return reply.code(404).send({ error: 'not found' });
+  }
+  const raw =
+    (req as FastifyRequest & { rawBody?: string }).rawBody ?? JSON.stringify(req.body ?? {});
+  const signature = req.headers['crypto-pay-api-signature'];
+  if (!cryptoPay.verifySignature(raw, typeof signature === 'string' ? signature : undefined)) {
+    req.log.warn('CryptoBot: подпись вебхука не сошлась');
+    return reply.code(403).send({ error: 'bad signature' });
+  }
+  const inv = cryptoPay.parseWebhook(req.body);
+  if (inv) {
+    const sub = await billing.cryptoBotPaid(inv.invoiceId, inv.amount, inv.asset);
+    if (sub && bot) {
+      void bot.send(
+        sub.userId,
+        `✅ Оплата получена: ${planTitle(sub.plan)} до ${new Date(sub.expiresAt).toLocaleDateString('ru-RU')}. Спасибо!`,
+      );
+    }
+  }
   return { ok: true };
 });
 

@@ -10,6 +10,8 @@
  * Доступ к скринеру определяется здесь же: активная подписка, либо админ.
  */
 import { randomBytes } from 'node:crypto';
+
+import type { CryptoPay } from './cryptopay.js';
 import type { FastifyBaseLogger } from 'fastify';
 import {
   BILLING_MONTHS,
@@ -39,6 +41,10 @@ export interface BillingOptions {
   starsPerUsd: number;
   wallets: CryptoWallet[];
   trading: boolean;
+  /** Crypto Pay API (@CryptoBot); null — способ выключен. */
+  cryptoPay?: CryptoPay | null;
+  /** Куда вести после оплаты (кнопка в счёте). */
+  publicUrl?: string;
 }
 
 const DAY_MS = 86_400_000;
@@ -211,13 +217,132 @@ export class Billing {
   async starsPaid(payloadId: string, chargeId: string): Promise<SubscriptionRecord | null> {
     const p = await this.o.repo.getPayment(payloadId);
     if (!p || p.status !== 'pending') return null;
-    p.status = 'paid';
     p.telegramChargeId = chargeId;
+    return this.activate(p, 'stars');
+  }
+
+  get cryptoBotAvailable(): boolean {
+    return Boolean(this.o.cryptoPay);
+  }
+
+  /**
+   * Счёт в USDT через @CryptoBot. Заявка живёт до подтверждения вебхуком;
+   * id счёта хранится в txHash (внешний идентификатор платежа).
+   */
+  async createCryptoBotInvoice(
+    userId: number,
+    planRaw: string,
+    monthsRaw: number,
+  ): Promise<{ payment: PaymentRecord; payUrl: string; botUrl: string } | { error: string }> {
+    const v = this.validate(planRaw, monthsRaw);
+    if (!v) return { error: 'bad plan or term' };
+    const pay = this.o.cryptoPay;
+    if (!pay) return { error: 'cryptobot not configured' };
+
+    // Одна живая заявка CryptoBot: старые отменяем у себя (их счета просто истекут).
+    for (const old of await this.o.repo.listPendingPayments(userId)) {
+      if (old.method === 'cryptobot') {
+        old.status = 'cancelled';
+        old.resolvedAt = Date.now();
+        await this.o.repo.updatePayment(old);
+      }
+    }
+
+    const usd = PRICING[v.plan][v.months];
+    const payment: PaymentRecord = {
+      id: paymentId(),
+      userId,
+      plan: v.plan,
+      months: v.months,
+      method: 'cryptobot',
+      amount: usd,
+      currency: 'USDT',
+      status: 'pending',
+      network: pay.isTestnet ? 'cryptobot-testnet' : 'cryptobot',
+      txHash: null,
+      telegramChargeId: null,
+      note: null,
+      createdAt: Date.now(),
+      resolvedAt: null,
+    };
+    try {
+      const inv = await pay.createInvoice({
+        amountUsdt: usd,
+        description: `MIDNEX · ${planTitle(v.plan)} · ${v.months} мес. (${v.months * MONTH_DAYS} дней)`,
+        payload: JSON.stringify({ p: payment.id, u: userId, plan: v.plan, m: v.months }),
+        expiresInSec: 3600,
+        paidBtnUrl: this.o.publicUrl,
+      });
+      payment.txHash = String(inv.invoiceId);
+      await this.o.repo.createPayment(payment);
+      return { payment, payUrl: inv.payUrl, botUrl: inv.botUrl };
+    } catch (err) {
+      this.o.log.error({ err: String(err) }, 'оплата: CryptoBot не создал счёт');
+      return { error: 'invoice failed' };
+    }
+  }
+
+  /**
+   * Счёт CryptoBot оплачен (вебхук или опрос). Идемпотентно: повторное
+   * уведомление об уже закрытой заявке ничего не продлевает. Сумма и актив
+   * сверяются с заявкой — данным снаружи не доверяем.
+   */
+  async cryptoBotPaid(
+    invoiceId: number,
+    amount: string,
+    asset: string,
+  ): Promise<SubscriptionRecord | null> {
+    const p = (await this.o.repo.listPendingPayments()).find(
+      (x) => x.method === 'cryptobot' && x.txHash === String(invoiceId),
+    );
+    if (!p) return null; // уже обработан или чужой счёт
+    if (asset !== 'USDT' || Number(amount) + 1e-6 < p.amount) {
+      this.o.log.warn(
+        { invoiceId, amount, asset, expected: p.amount },
+        'оплата: CryptoBot — сумма не сошлась',
+      );
+      return null;
+    }
+    return this.activate(p, 'cryptobot');
+  }
+
+  /** Общая точка выдачи доступа для всех способов оплаты. */
+  private async activate(p: PaymentRecord, source: string): Promise<SubscriptionRecord> {
+    p.status = 'paid';
     p.resolvedAt = Date.now();
     await this.o.repo.updatePayment(p);
-    const sub = await this.o.repo.extendSubscription(p.userId, p.plan, daysFor(p.months), 'stars');
-    this.o.log.info({ user: p.userId, plan: p.plan, months: p.months }, 'оплата: звёзды приняты');
+    const sub = await this.o.repo.extendSubscription(p.userId, p.plan, daysFor(p.months), source);
+    this.o.log.info(
+      { user: p.userId, plan: p.plan, months: p.months, source },
+      'оплата: доступ выдан',
+    );
     return sub;
+  }
+
+  /** Запасной путь: опросить CryptoBot по незакрытым заявкам (пропущенный вебхук). */
+  async pollCryptoBot(): Promise<number> {
+    const pay = this.o.cryptoPay;
+    if (!pay) return 0;
+    const pending = (await this.o.repo.listPendingPayments()).filter(
+      (x) => x.method === 'cryptobot' && x.txHash,
+    );
+    if (pending.length === 0) return 0;
+    let paid = 0;
+    const invoices = await pay.getInvoices(pending.map((x) => Number(x.txHash)));
+    for (const inv of invoices) {
+      if (inv.status === 'paid') {
+        if (await this.cryptoBotPaid(inv.invoiceId, inv.amount, inv.asset)) paid++;
+      } else if (inv.status === 'expired') {
+        const p = pending.find((x) => x.txHash === String(inv.invoiceId));
+        if (p) {
+          p.status = 'cancelled';
+          p.note = 'счёт истёк';
+          p.resolvedAt = Date.now();
+          await this.o.repo.updatePayment(p);
+        }
+      }
+    }
+    return paid;
   }
 
   /** Заявка на оплату USDT: сумма, кошелёк и код для подтверждения. */
@@ -283,10 +408,7 @@ export class Billing {
   async approve(id: string): Promise<{ payment: PaymentRecord; sub: SubscriptionRecord } | null> {
     const p = await this.o.repo.getPayment(id);
     if (!p || p.status !== 'pending') return null;
-    p.status = 'paid';
-    p.resolvedAt = Date.now();
-    await this.o.repo.updatePayment(p);
-    const sub = await this.o.repo.extendSubscription(p.userId, p.plan, daysFor(p.months), 'crypto');
+    const sub = await this.activate(p, 'crypto');
     return { payment: p, sub };
   }
 

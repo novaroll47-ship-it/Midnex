@@ -2485,3 +2485,83 @@
     min-height: 96px;
   }
 }
+
+@layer legacy {
+  /* ---------- C9: скринер прокручивается целиком, поиск липнет к верху ---------- */
+
+  .screener {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    gap: 0;
+  }
+
+  .screener__top {
+    padding-bottom: var(--gap);
+  }
+
+  .screener__sticky {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap);
+    padding: 2px 0 8px;
+    background: var(--bg);
+  }
+
+  .screener__list {
+    flex: none;
+    min-height: auto;
+    overflow: visible;
+  }
+
+  /* ---------- C8: найдено поиском, но не проходит фильтры ---------- */
+
+  .coin-row--dimmed,
+  .coin-card--dimmed {
+    opacity: 0.55;
+  }
+
+  /* ---------- B3: индикатор подписки ---------- */
+
+  .panel__sub-status--ok {
+    color: var(--positive, var(--green));
+  }
+  .panel__sub-status--warn {
+    color: #facc15;
+  }
+  .panel__sub-status--orange {
+    color: #fb923c;
+  }
+  .panel__sub-status--danger,
+  .panel__sub-status--expired {
+    color: var(--negative, var(--red));
+  }
+
+  .panel__dot--ok {
+    background: var(--positive, var(--green));
+    box-shadow: 0 0 8px var(--positive, var(--green));
+  }
+  .panel__dot--warn {
+    background: #facc15;
+    box-shadow: 0 0 8px #facc15;
+  }
+  .panel__dot--orange {
+    background: #fb923c;
+    box-shadow: 0 0 8px #fb923c;
+  }
+  .panel__dot--danger {
+    background: var(--negative, var(--red));
+    box-shadow: 0 0 8px var(--negative, var(--red));
+  }
+
+  .panel__sub-cta--pill {
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: var(--brand, var(--green));
+    color: var(--brand-ink, #04160a);
+    font-weight: 700;
+  }
+}

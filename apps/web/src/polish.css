@@ -559,13 +559,13 @@
   .switch--on,
   .btn-ghost__badge,
   .venue-tile__order,
-  .panel__dot:not(.panel__dot--off) {
+  .panel__dot:not(.panel__dot--off):not([class*='panel__dot--']) {
     background: var(--brand);
     border-color: var(--brand);
     color: var(--brand-ink);
   }
 
-  .panel__dot:not(.panel__dot--off) {
+  .panel__dot:not(.panel__dot--off):not([class*='panel__dot--']) {
     box-shadow: 0 0 8px var(--brand);
   }
 

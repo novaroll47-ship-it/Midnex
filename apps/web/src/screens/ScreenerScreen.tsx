@@ -148,19 +148,30 @@ export function ScreenerScreen({
 
   const rows = data?.rows ?? [];
 
-  const visible = useMemo(() => {
-    const query = search.trim().toLowerCase();
-
-    const filtered = rows.filter((r) => {
-      // Поиск идёт по всем монетам подряд, независимо от величины спреда:
-      // конкретную монету надо находить и когда спред отрицательный.
-      if (query && !r.base.toLowerCase().includes(query) && !r.name.toLowerCase().includes(query))
-        return false;
+  // Проходит ли строка фильтры (порог, чистая прибыль, фандинг, потолок).
+  const passes = useCallback(
+    (r: SpreadRow) => {
+      if (r.spreadPct < minSpreadNum) return false;
       if (extra.onlyPositiveNet && r.netPct <= 0) return false;
       if (extra.onlyProfitableFunding && r.fundingPct < 0) return false;
       if (extra.maxSpreadPct > 0 && r.spreadPct > extra.maxSpreadPct) return false;
       return true;
-    });
+    },
+    [minSpreadNum, extra.onlyPositiveNet, extra.onlyProfitableFunding, extra.maxSpreadPct],
+  );
+
+  const visible = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    // Фильтры и поиск — независимые выборки. Без запроса список показывает
+    // только то, что проходит фильтры. С запросом ищем по всему набору: нужная
+    // монета должна находиться, даже если сейчас не проходит порог — такие
+    // строки помечаются.
+    const filtered = query
+      ? rows.filter(
+          (r) => r.base.toLowerCase().includes(query) || r.name.toLowerCase().includes(query),
+        )
+      : rows.filter(passes);
 
     const bySort = (a: SpreadRow, b: SpreadRow) => {
       switch (extra.sort) {
@@ -189,7 +200,7 @@ export function ScreenerScreen({
       if (byRank !== 0) return byRank;
       return bySort(a, b);
     });
-  }, [rows, search, extra, selected]);
+  }, [rows, search, extra.sort, selected, passes]);
 
   const watchlistLimit = trading ? (PLAN_WATCHLIST_LIMIT[plan] ?? null) : null;
   const limitReached = watchlistLimit !== null && selected.size >= watchlistLimit;
@@ -222,7 +233,7 @@ export function ScreenerScreen({
   return (
     <div className="screener">
       <div className="screener__top">
-        {/* Одна панель: состояние бота и две сводные цифры. */}
+        {/* Панель уезжает при прокрутке; поиск и заголовок списка ниже — липкие. */}
         <section className="card panel" data-tour="panel">
           {/* Подписка — первой строкой: это главный вопрос нового пользователя. */}
           <button
@@ -231,26 +242,46 @@ export function ScreenerScreen({
             data-tour="subscription"
             onClick={onOpenSubscription}
           >
-            <span
-              className={`panel__sub-status${subscription?.active ? ' panel__sub-status--on' : ''}`}
-            >
-              <i className={`panel__dot${subscription?.active ? '' : ' panel__dot--off'}`} />
-              {subscription?.active
-                ? subscription.expiresAt
-                  ? t(
-                      subscription.source === 'trial'
-                        ? 'screener.trialUntil'
-                        : 'screener.subActiveUntil',
-                      { date: fmtShort(subscription.expiresAt) },
-                    )
-                  : t('screener.subActive')
-                : t('screener.subInactive')}
-            </span>
-            <span className="panel__sub-cta">
-              {subscription?.active && subscription.source !== 'trial'
-                ? t('screener.subManage')
-                : t('screener.subBuy')}
-            </span>
+            {(() => {
+              const sub = subscription;
+              const days = sub?.daysLeft ?? 0;
+              const tone = !sub?.active
+                ? 'expired'
+                : days > 14
+                  ? 'ok'
+                  : days > 7
+                    ? 'warn'
+                    : days > 3
+                      ? 'orange'
+                      : 'danger';
+              const urgent = tone === 'danger' || tone === 'expired';
+              const planName = sub ? t(`sd.plan_${sub.plan}`) : '';
+              const label = !sub?.active
+                ? sub?.expiresAt
+                  ? t('screener.subExpired')
+                  : t('screener.subInactive')
+                : sub.source === 'trial'
+                  ? t('screener.subTrialDays', { count: days })
+                  : t(urgent ? 'screener.subDaysLeftUrgent' : 'screener.subDays', {
+                      plan: planName,
+                      count: days,
+                    });
+              return (
+                <>
+                  <span className={`panel__sub-status panel__sub-status--${tone}`}>
+                    <i
+                      className={`panel__dot panel__dot--${tone}${sub?.active ? '' : ' panel__dot--off'}`}
+                    />
+                    {label}
+                  </span>
+                  <span className={`panel__sub-cta${urgent ? ' panel__sub-cta--pill' : ''}`}>
+                    {sub?.active && sub.source !== 'trial' && !urgent
+                      ? t('screener.subManage')
+                      : t('screener.subBuy')}
+                  </span>
+                </>
+              );
+            })()}
           </button>
 
           {/* Плитки: боты и уведомления слева, сводные цифры справа. */}
@@ -292,7 +323,9 @@ export function ScreenerScreen({
             </div>
           </div>
         </section>
+      </div>
 
+      <div className="screener__sticky">
         {/* Поиск и фильтры */}
         <section className="filters filters--pill">
           <div className="search search--pill" data-tour="search">
@@ -402,6 +435,7 @@ export function ScreenerScreen({
               key={row.symbol}
               row={row}
               first={i === 0}
+              dimmed={search.trim() !== '' && !passes(row)}
               checked={selected.has(row.base)}
               disabled={!selected.has(row.base) && limitReached}
               onToggle={() => toggle(row.base)}
@@ -412,6 +446,7 @@ export function ScreenerScreen({
               key={row.symbol}
               row={row}
               first={i === 0}
+              dimmed={search.trim() !== '' && !passes(row)}
               checked={selected.has(row.base)}
               disabled={!selected.has(row.base) && limitReached}
               onToggle={() => toggle(row.base)}
@@ -639,6 +674,7 @@ function FiltersSheet({
 function CoinRow({
   row,
   first,
+  dimmed,
   checked,
   disabled,
   onToggle,
@@ -646,6 +682,8 @@ function CoinRow({
 }: {
   row: SpreadRow;
   first?: boolean;
+  /** Найдена поиском, но не проходит текущие фильтры. */
+  dimmed?: boolean;
   checked: boolean;
   disabled: boolean;
   onToggle: () => void;
@@ -658,7 +696,8 @@ function CoinRow({
 
   return (
     <div
-      className={`coin-row${row.stale ? ' coin-row--stale' : ''}${checked ? ' coin-row--pinned' : ''}`}
+      className={`coin-row${row.stale ? ' coin-row--stale' : ''}${checked ? ' coin-row--pinned' : ''}${dimmed ? ' coin-row--dimmed' : ''}`}
+      title={dimmed ? t('screener.notPassing') : undefined}
       data-tour={first ? 'row' : undefined}
       role="button"
       tabIndex={0}
@@ -687,6 +726,7 @@ function CoinRow({
           <div className={`coin-id__ticker${tickerSizeClass(row.base)}`}>
             {row.base}
             {row.isNew && <span className="badge badge--new">{t('screener.newPair')}</span>}
+            {dimmed && <span className="badge badge--soon">{t('screener.notPassingShort')}</span>}
           </div>
           {row.name !== row.base && <div className="coin-id__name">{row.name}</div>}
         </div>
@@ -737,6 +777,7 @@ function CoinRow({
 function CoinCard({
   row,
   first,
+  dimmed,
   checked,
   disabled,
   onToggle,
@@ -744,6 +785,7 @@ function CoinCard({
 }: {
   row: SpreadRow;
   first?: boolean;
+  dimmed?: boolean;
   checked: boolean;
   disabled: boolean;
   onToggle: () => void;
@@ -763,7 +805,7 @@ function CoinCard({
 
   return (
     <div
-      className={`coin-card${row.stale ? ' coin-card--stale' : ''}${checked ? ' coin-card--pinned' : ''}`}
+      className={`coin-card${row.stale ? ' coin-card--stale' : ''}${checked ? ' coin-card--pinned' : ''}${dimmed ? ' coin-card--dimmed' : ''}`}
       data-tour={first ? 'row' : undefined}
       role="button"
       tabIndex={0}
@@ -809,7 +851,9 @@ function CoinCard({
             <ClockIcon size={11} /> {t('screener.card.held', { min: heldMin })}
           </span>
         )}
-        <span className="coin-card__cycle">{row.stale ? t('screener.stale') : cycleText}</span>
+        <span className="coin-card__cycle">
+          {dimmed ? t('screener.notPassing') : row.stale ? t('screener.stale') : cycleText}
+        </span>
       </div>
 
       <div className="coin-card__legs num">

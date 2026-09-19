@@ -216,6 +216,8 @@ export interface BillingResponse {
   /** Сети, на которые принимается USDT. */
   wallets: string[];
   starsAvailable: boolean;
+  /** Оплата через @CryptoBot настроена на сервере. */
+  cryptoBotAvailable: boolean;
 }
 
 export type ExchangeKeyStatus = 'unverified' | 'ok' | 'invalid' | 'withdrawal_enabled';
@@ -359,6 +361,13 @@ export const api = {
   starsInvoice: (plan: PlanId, months: BillingMonths) =>
     request<{ link: string; payment: PaymentInfo }>('POST', '/api/billing/stars', { plan, months }),
   starsToChat: (id: string) => request<{ ok: true }>('POST', `/api/billing/stars/${id}/chat`),
+  cryptoBotInvoice: (plan: PlanId, months: BillingMonths) =>
+    request<{ payUrl: string; botUrl: string; payment: PaymentInfo }>('POST', '/api/billing/cryptobot', {
+      plan,
+      months,
+    }),
+  paymentStatus: (id: string) =>
+    get<{ payment: PaymentInfo; subscription: SubscriptionInfo }>(`/api/billing/payment/${id}`),
   cryptoRequest: (plan: PlanId, months: BillingMonths, network: string) =>
     request<{ payment: PaymentInfo; address: string }>('POST', '/api/billing/crypto', {
       plan,

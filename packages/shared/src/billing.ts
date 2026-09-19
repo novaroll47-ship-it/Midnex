@@ -35,7 +35,8 @@ export function discountPct(plan: PlanId, months: BillingMonths): number {
   return Math.round((1 - PRICING[plan][months] / monthly) * 100);
 }
 
-export type PaymentMethod = 'stars' | 'crypto';
+/** stars — Telegram Stars; crypto — перевод USDT с ручным подтверждением; cryptobot — счёт @CryptoBot. */
+export type PaymentMethod = 'stars' | 'crypto' | 'cryptobot';
 export type PaymentStatus = 'pending' | 'paid' | 'rejected' | 'cancelled';
 
 /** Подписка пользователя, как её видит интерфейс. */

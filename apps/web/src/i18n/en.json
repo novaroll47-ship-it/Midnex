@@ -109,7 +109,13 @@
     "venuesActive": "spread among selected",
     "tileBots": "Bots",
     "tileBotsSub": "{{count}} soon",
-    "tileAlerts": "Notifications"
+    "tileAlerts": "Notifications",
+    "notPassing": "does not pass filters",
+    "notPassingShort": "filtered out",
+    "subDays": "{{plan}} · {{count}} d",
+    "subDaysLeftUrgent": "{{plan}} · {{count}} d left",
+    "subTrialDays": "Trial · {{count}} d",
+    "subExpired": "Subscription expired"
   },
   "positions": {
     "title": "Positions",
@@ -510,7 +516,12 @@
     "starsFallbackChat": "The invoice was sent to the bot chat. Open the chat, tap Pay and confirm — access activates by itself and this sheet closes automatically.",
     "starsFallbackLink": "The payment window did not open. Tap “Open invoice” — Telegram will show the Stars payment. Access activates automatically after payment.",
     "openChat": "Open chat",
-    "trial": "Trial period"
+    "trial": "Trial period",
+    "payCryptoBot": "CryptoBot",
+    "cryptoBotHint": "A USDT invoice opens in @CryptoBot inside Telegram. Pay it and the subscription activates automatically, usually within seconds.",
+    "cryptoBotWaiting": "Waiting for CryptoBot to confirm the payment… You can keep this open.",
+    "cryptoBotReopen": "Open the invoice again",
+    "cryptoBotPending": "Payment not confirmed yet. If you paid, access appears within a couple of minutes."
   },
   "bots": {
     "spreadName": "Spread bot",
