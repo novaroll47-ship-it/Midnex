@@ -105,15 +105,15 @@ export function FundingHistory({ base }: { base: string }) {
                     }
                   />
                 </span>
-                <span className={`funding-cmp__value num${pos ? ' pos' : ' neg'}`}>
+                <span className={`funding-cmp__value num${pos ? ' tone-pos' : ' tone-neg'}`}>
                   {formatSignedPct(v.shortPct, 2)}
                 </span>
               </div>
             );
           })}
           <div className="funding-cmp__legend">
-            <span className="neg">{t('funding.legendNeg')}</span>
-            <span className="pos">{t('funding.legendPos')}</span>
+            <span className="tone-neg">{t('funding.legendNeg')}</span>
+            <span className="tone-pos">{t('funding.legendPos')}</span>
           </div>
         </section>
       )}
@@ -170,7 +170,7 @@ function PairCard({
             </span>
           </div>
         </div>
-        <div className={`funding-pair__net num${netPct >= 0 ? ' pos' : ' neg'}`}>
+        <div className={`funding-pair__net num${netPct >= 0 ? ' tone-pos' : ' tone-neg'}`}>
           {formatSignedPct(netPct, 2)}
           <small>{t('funding.perPeriod')}</small>
         </div>
@@ -206,7 +206,9 @@ function PairCard({
             {table.map((p) => (
               <div className="funding-break__row" key={p.ts}>
                 <span>{fmtBucket(p.ts, bucket)}</span>
-                <span className={p.net >= 0 ? 'pos' : 'neg'}>{formatSignedPct(p.net, 4)}</span>
+                <span className={p.net >= 0 ? 'tone-pos' : 'tone-neg'}>
+                  {formatSignedPct(p.net, 4)}
+                </span>
               </div>
             ))}
           </div>

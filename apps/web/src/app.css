@@ -1990,7 +1990,9 @@
 
   .funding-break__row {
     display: flex;
+    align-items: center;
     justify-content: space-between;
+    min-height: 28px;
     padding: 4px 0;
     border-top: 1px solid var(--border);
     color: var(--text-dim);
@@ -2592,10 +2594,10 @@
 @layer legacy {
   /* ---------- Фандинг: лучшая связка и сравнение бирж ---------- */
 
-  .pos {
+  .tone-pos {
     color: var(--positive, var(--green));
   }
-  .neg {
+  .tone-neg {
     color: var(--negative, var(--red));
   }
 

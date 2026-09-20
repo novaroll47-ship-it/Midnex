@@ -37,7 +37,7 @@ const REFRESH_MS = 5000;
 const AXIS_W = 52;
 const AXIS_H = 22;
 const MIN_PX = 1.5;
-const MAX_PX = 60;
+const MAX_PX = 80;
 
 interface View {
   /** Индекс свечи у правого края области (дробный). */
@@ -71,7 +71,7 @@ export function FullChartScreen({ base, pair }: { base: string; pair: ChartPair 
     setCandles([]);
     setError(false);
     followRef.current = true;
-    viewRef.current = { right: 0, px: tf === '1m' ? 4 : 6, y: null };
+    viewRef.current = { right: 0, px: 9, y: null };
     const srcTf = tf === '1d' ? '1h' : tf;
     const load = () => {
       if (document.hidden) return;
@@ -193,7 +193,7 @@ export function FullChartScreen({ base, pair }: { base: string; pair: ChartPair 
     }
 
     // Сетка и подписи X.
-    const stepIdx = Math.max(1, Math.round(90 / v.px));
+    const stepIdx = Math.max(1, Math.round((tf === '1h' ? 120 : 80) / v.px));
     ctx.textAlign = 'center';
     for (let i = visible.first; i <= visible.last; i++) {
       const c = candles[i];
@@ -208,34 +208,33 @@ export function FullChartScreen({ base, pair }: { base: string; pair: ChartPair 
       ctx.fillText(fmtAxis(c.ts, tf), x, plotH + AXIS_H / 2);
     }
 
-    // Свечи: черта low–high, линия по закрытиям.
-    const wick = Math.max(1, Math.min(2, v.px * 0.35));
-    ctx.lineWidth = wick;
-    let prev: { x: number; y: number; src: string } | null = null;
+    // Свечи: тело open–close, тени low–high; при мелком масштабе (тело
+    // уже 3px) — только тонкая черта, иначе получается частокол.
+    const bodyW = Math.max(1, Math.floor(v.px * 0.62));
+    const thin = bodyW < 3;
+    const wick = thin ? 1 : Math.max(1, Math.min(1.5, v.px * 0.12));
     for (let i = visible.first; i <= visible.last; i++) {
       const c = candles[i];
       if (!c) continue;
       const x = xOf(i);
-      ctx.strokeStyle = c.close >= c.open ? colPos : colNeg;
-      ctx.globalAlpha = c.source === 'reconstructed' ? 0.55 : 0.9;
+      const up = c.close >= c.open;
+      const col = up ? colPos : colNeg;
+      ctx.globalAlpha = c.source === 'reconstructed' ? 0.5 : 1;
+      ctx.strokeStyle = col;
+      ctx.fillStyle = col;
+      ctx.lineWidth = wick;
       ctx.beginPath();
       ctx.moveTo(x, yOf(c.high));
       ctx.lineTo(x, yOf(c.low));
       ctx.stroke();
-      ctx.globalAlpha = 1;
-      const pt = { x, y: yOf(c.close), src: c.source };
-      if (prev && candles[i - 1] && c.ts - candles[i - 1]!.ts <= TF_MS[tf] * 3) {
-        ctx.strokeStyle = colBrand;
-        ctx.lineWidth = 1.2;
-        ctx.setLineDash(pt.src === 'reconstructed' || prev.src === 'reconstructed' ? [3, 3] : []);
-        ctx.beginPath();
-        ctx.moveTo(prev.x, prev.y);
-        ctx.lineTo(pt.x, pt.y);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.lineWidth = wick;
+      if (!thin) {
+        const yo = yOf(c.open);
+        const yc = yOf(c.close);
+        const top = Math.min(yo, yc);
+        const h = Math.max(1.5, Math.abs(yo - yc));
+        ctx.fillRect(x - bodyW / 2, top, bodyW, h);
       }
-      prev = pt;
+      ctx.globalAlpha = 1;
     }
 
     // Текущее значение: пунктир и метка.
