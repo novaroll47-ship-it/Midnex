@@ -42,10 +42,20 @@ export class GapFiller {
     this.timer = null;
   }
 
-  async run(): Promise<void> {
+  /** Дозаполнение по одной монете по запросу графика — не чаще раза в 10 минут на монету. */
+  private readonly askedAt = new Map<string, number>();
+
+  fillBase(base: string): void {
+    const now = Date.now();
+    if (now - (this.askedAt.get(base) ?? 0) < 10 * 60_000) return;
+    this.askedAt.set(base, now);
+    void this.run([base]);
+  }
+
+  async run(only?: string[]): Promise<void> {
     const engine = this.o.engine;
-    if (!engine || this.running) return;
-    this.running = true;
+    if (!engine || (this.running && !only)) return;
+    if (!only) this.running = true;
     const t0 = Date.now();
     let coins = 0;
     let hours = 0;
@@ -54,7 +64,7 @@ export class GapFiller {
       const now = Date.now();
       const lastFull = Math.floor(now / HOUR) * HOUR - HOUR; // текущий час ещё не закрыт
       const from = lastFull - (WINDOW_HOURS - 1) * HOUR;
-      for (const base of engine.bases()) {
+      for (const base of only ?? engine.bases()) {
         const have = new Set(
           this.o.store.queryCandles(base, '1h', from, lastFull + HOUR).map((c) => c.ts),
         );
@@ -160,7 +170,7 @@ export class GapFiller {
     } catch (err) {
       this.o.log.warn({ err: String(err).slice(0, 200) }, 'дозаполнение: сбой');
     } finally {
-      this.running = false;
+      if (!only) this.running = false;
     }
   }
 }

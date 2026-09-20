@@ -570,7 +570,8 @@
     "last": "now",
     "noData": "History is still accumulating — check back later",
     "unavailable": "History unavailable",
-    "bestPair": "Best pair"
+    "bestPair": "Best pair",
+    "openFull": "Open chart"
   },
   "pairs": {
     "title": "Pair verification",
@@ -620,7 +621,14 @@
     "long": "Long",
     "short": "Short",
     "noData": "Funding history is still loading — check back in a few minutes",
-    "bestHint": "Best pair over the period: long on {{long}}, short on {{short}} — funding {{net}} of position."
+    "bestHint": "Best pair over the period: long on {{long}}, short on {{short}} — funding {{net}} of position.",
+    "byVenue": "By exchange",
+    "byVenueHint": "Accumulated rate over the period. Right — a short on this exchange receives funding, left — it pays.",
+    "legendNeg": "← short pays",
+    "legendPos": "short receives →",
+    "bestPair": "Best pair",
+    "perPeriod": "per period",
+    "netHint": "pair net funding: short receives − long pays"
   },
   "alerts": {
     "title": "Alerts",
@@ -695,5 +703,18 @@
         "text": "A rule fires once when the threshold is crossed and re-arms once the spread drops. Notifications arrive in the bot chat."
       }
     }
+  },
+  "fullchart": {
+    "title": "chart",
+    "tf_1m": "1m",
+    "tf_5m": "5m",
+    "tf_15m": "15m",
+    "tf_1h": "1h",
+    "tf_1d": "1d",
+    "toNow": "Jump to current spread",
+    "points": "points: {{count}}",
+    "avg": "avg",
+    "peaks": "peaks",
+    "hint": "Drag to pan; pinch or wheel to zoom; double-tap to return to now. Dashed — estimated from exchange candles."
   }
 }

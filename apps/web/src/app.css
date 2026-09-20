@@ -2588,3 +2588,218 @@
     border-radius: 50%;
   }
 }
+
+@layer legacy {
+  /* ---------- Фандинг: лучшая связка и сравнение бирж ---------- */
+
+  .pos {
+    color: var(--positive, var(--green));
+  }
+  .neg {
+    color: var(--negative, var(--red));
+  }
+
+  .funding-pair,
+  .funding-cmp {
+    padding: 12px 14px;
+  }
+
+  .funding-pair__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .funding-pair__title,
+  .funding-cmp__title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+    margin-bottom: 6px;
+  }
+
+  .funding-pair__legs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .funding-pair__leg {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .funding-pair__net {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+
+  .funding-pair__net small {
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-mute);
+  }
+
+  .funding-cmp__hint {
+    font-size: 11px;
+    color: var(--text-mute);
+    margin-bottom: 8px;
+  }
+
+  .funding-cmp__row {
+    display: grid;
+    grid-template-columns: 86px 1fr 64px;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 0;
+  }
+
+  .funding-cmp__name {
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .funding-cmp__track {
+    position: relative;
+    height: 10px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    overflow: hidden;
+  }
+
+  .funding-cmp__track::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--border-strong);
+  }
+
+  .funding-cmp__bar {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-radius: 999px;
+  }
+
+  .funding-cmp__bar--pos {
+    background: var(--positive, var(--green));
+  }
+
+  .funding-cmp__bar--neg {
+    background: var(--negative, var(--red));
+  }
+
+  .funding-cmp__value {
+    text-align: right;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .funding-cmp__legend {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+    font-size: 10px;
+  }
+}
+
+@layer legacy {
+  /* ---------- Полноэкранный график ---------- */
+
+  .fullchart {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .fullchart__bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .fullchart__pair {
+    flex: 1;
+    min-width: 0;
+    font-size: 11px;
+    color: var(--text-mute);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: right;
+  }
+
+  .fullchart__jump {
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+  }
+
+  .fullchart__plot {
+    position: relative;
+    flex: 1;
+    min-height: 240px;
+    border-radius: 16px;
+    overflow: hidden;
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+
+  .fullchart__plot canvas {
+    display: block;
+  }
+
+  .fullchart__now {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: var(--brand-soft, var(--green-soft));
+    color: var(--brand, var(--green));
+    font-size: 12px;
+    font-weight: 700;
+    pointer-events: none;
+  }
+
+  .fullchart__empty {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-size: 12px;
+    color: var(--text-mute);
+  }
+
+  .fullchart__foot {
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--text-mute);
+  }
+
+  .chart__open {
+    margin-top: 10px;
+    width: 100%;
+    justify-content: center;
+  }
+}

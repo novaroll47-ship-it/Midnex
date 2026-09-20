@@ -85,6 +85,43 @@ interface Props {
   onSetView: (view: 'list' | 'cards') => void;
 }
 
+const FILTERS_KEY = 'midnex.screener.filters';
+
+/** Состояние фильтров вне компонента — экран монеты размонтирует скринер. */
+const FILTERS: { minSpread: string; search: string; extra: ExtraFilters; touched: boolean } = {
+  minSpread: '0.50',
+  search: '',
+  extra: DEFAULT_EXTRA,
+  touched: false,
+};
+try {
+  const raw = localStorage.getItem(FILTERS_KEY);
+  if (raw) {
+    const saved = JSON.parse(raw) as Partial<typeof FILTERS>;
+    if (typeof saved.minSpread === 'string') {
+      FILTERS.minSpread = saved.minSpread;
+      FILTERS.touched = true;
+    }
+    if (saved.extra) FILTERS.extra = { ...DEFAULT_EXTRA, ...saved.extra };
+  }
+} catch {
+  // Хранилище недоступно — значения по умолчанию.
+}
+
+function saveFilters(): void {
+  try {
+    localStorage.setItem(
+      FILTERS_KEY,
+      JSON.stringify({
+        minSpread: FILTERS.touched ? FILTERS.minSpread : undefined,
+        extra: FILTERS.extra,
+      }),
+    );
+  } catch {
+    // Не сохранилось — доживёт до перезапуска.
+  }
+}
+
 export function ScreenerScreen({
   onOpenSubscription,
   subscription,
@@ -100,15 +137,32 @@ export function ScreenerScreen({
 }: Props) {
   const { t } = useTranslation();
 
-  const [minSpread, setMinSpread] = useState('0.50');
-  const [search, setSearch] = useState('');
+  // Фильтры и поиск переживают уход на экран монеты и обратно: экран
+  // размонтируется, а состояние живёт в памяти модуля (и в localStorage).
+  const [minSpread, setMinSpreadState] = useState(() => FILTERS.minSpread);
+  const [search, setSearchState] = useState(() => FILTERS.search);
+  const setMinSpread = (v: string) => {
+    FILTERS.minSpread = v;
+    saveFilters();
+    setMinSpreadState(v);
+  };
+  const setSearch = (v: string) => {
+    FILTERS.search = v;
+    setSearchState(v);
+  };
   // Выбор бирж переживает перезапуск: это фильтр отображения, а не разовая настройка.
   const [venues, setVenuesState] = useState<ExchangeId[]>(() => loadVenues());
   const setVenues = (next: ExchangeId[]) => {
     setVenuesState(next);
     saveVenues(next);
   };
-  const [extra, setExtra] = useState<ExtraFilters>(DEFAULT_EXTRA);
+  const [extra, setExtraState] = useState<ExtraFilters>(() => FILTERS.extra);
+  const setExtra = (next: ExtraFilters | ((e: ExtraFilters) => ExtraFilters)) => {
+    const value = typeof next === 'function' ? next(FILTERS.extra) : next;
+    FILTERS.extra = value;
+    saveFilters();
+    setExtraState(value);
+  };
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sheet, setSheet] = useState<'filters' | null>(null);
 
@@ -127,9 +181,10 @@ export function ScreenerScreen({
 
   // Порог берём из настроек бота, но как только пользователь потрогал поле
   // на этом экране — фильтр становится его, и настройки его больше не трогают.
-  const touched = useRef(false);
+  const touched = useRef(FILTERS.touched);
   useEffect(() => {
-    if (!touched.current && minSpreadPct !== undefined) setMinSpread(minSpreadPct.toFixed(2));
+    if (!touched.current && minSpreadPct !== undefined) setMinSpreadState(minSpreadPct.toFixed(2));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [minSpreadPct]);
 
   const minSpreadNum = Number(minSpread.replace(',', '.')) || 0;
@@ -490,6 +545,7 @@ export function ScreenerScreen({
           minSpread={minSpread}
           onMinSpread={(v) => {
             touched.current = true;
+            FILTERS.touched = true;
             setMinSpread(v);
           }}
           venues={venues}

@@ -472,6 +472,21 @@ app.get('/api/history/:base', async (req, reply) => {
     const candles = history.queryPairCandles(canonical, exA, exB, tf, from, to);
     const partial = collector.currentPair(canonical, exA, exB, tf);
     if (partial && !candles.some((c) => c.ts === partial.ts)) candles.push(partial);
+    // Часы без 15-минутных свечей закрываем часовыми по той же паре.
+    if (tf === '15m') {
+      const HOUR = 3_600_000;
+      const hourFrom = Math.floor(from / HOUR) * HOUR;
+      const hourly = history.queryPairCandles(canonical, exA, exB, '1h', hourFrom, to);
+      const covered = new Set(candles.map((c) => Math.floor(c.ts / HOUR) * HOUR));
+      let missing = 0;
+      for (let h = hourFrom; h + HOUR <= to; h += HOUR) {
+        if (covered.has(h)) continue;
+        const hc = hourly.find((c) => c.ts === h);
+        if (hc) candles.push({ ...hc, source: 'reconstructed' });
+        else missing++;
+      }
+      if (missing > 0) gapFiller.fillBase(canonical);
+    }
     candles.sort((a, b) => a.ts - b.ts);
     return { base: canonical, tf, from, to, exA, exB, tfMs, candles };
   }
@@ -512,36 +527,37 @@ app.get('/api/history/:base', async (req, reply) => {
     }
   }
   let candles = [...best.values()].sort((a, b) => a.ts - b.ts);
-  // Дыры (процесс не работал) на 1m/5m закрываем часовыми свечами — они
-  // есть за полгода благодаря backfill. Помечаем реконструкцией: это
-  // грубее, и на графике такой участок идёт пунктиром.
-  if (tf !== '1h' && candles.length < Math.floor((to - from) / tfMs) * 0.9) {
-    const hourly = history.queryCandles(
-      canonical,
-      '1h',
-      Math.floor(from / 3_600_000) * 3_600_000,
-      to,
-    );
+  // Дыры (процесс не работал) на 1m/5m закрываем часовыми свечами: каждый
+  // час без единой мелкой свечи получает часовую (живую или восстановленную
+  // по свечам бирж). Помечаем реконструкцией — на графике пунктир.
+  const HOUR = 3_600_000;
+  if (tf !== '1h') {
+    const hourFrom = Math.floor(from / HOUR) * HOUR;
+    const hourly = history.queryCandles(canonical, '1h', hourFrom, to);
     const bestHour = new Map<number, (typeof hourly)[number]>();
     for (const c of hourly) {
       const cur = bestHour.get(c.ts);
       if (!cur || c.high > cur.high) bestHour.set(c.ts, c);
     }
-    const gapMs = tfMs * 3;
-    const filled: typeof candles = [];
-    let prevTs = from - gapMs;
-    const edges = [...candles, { ts: to } as (typeof candles)[number]];
-    for (const c of edges) {
-      if (c.ts - prevTs > gapMs) {
-        for (const h of bestHour.values()) {
-          if (h.ts > prevTs && h.ts + 3_600_000 <= c.ts)
-            filled.push({ ...h, source: 'reconstructed' });
-        }
-      }
-      if (c.ts !== to) filled.push(c);
-      prevTs = c.ts;
+    const covered = new Set<number>();
+    for (const c of candles) covered.add(Math.floor(c.ts / HOUR) * HOUR);
+    let missingHours = 0;
+    const filled = [...candles];
+    for (let h = hourFrom; h + HOUR <= to; h += HOUR) {
+      if (covered.has(h)) continue;
+      const hc = bestHour.get(h);
+      if (hc) filled.push({ ...hc, source: 'reconstructed' });
+      else missingHours++;
     }
     candles = filled.sort((a, b) => a.ts - b.ts);
+    // Часов без данных вообще — попросим дозаполнение по этой монете, не дожидаясь получаса.
+    if (missingHours > 0) gapFiller.fillBase(canonical);
+  } else {
+    const have = new Set(candles.map((c) => c.ts));
+    let missing = 0;
+    for (let h = Math.floor(from / HOUR) * HOUR; h + HOUR <= to; h += HOUR)
+      if (!have.has(h)) missing++;
+    if (missing > 0) gapFiller.fillBase(canonical);
   }
   return { base: canonical, tf, from, to, candles };
 });

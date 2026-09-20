@@ -12,6 +12,7 @@ import { EXCHANGES, formatPct, type ExchangeId } from '@cs/shared';
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { ChartIcon } from '../icons';
 import { api, type HistoryResponse } from '../lib/api';
 
 type Range = '1h' | '24h' | '7d' | '30d';
@@ -47,12 +48,15 @@ export function SpreadChart({
   base,
   pairs = [],
   currentPair = null,
+  onOpenFull,
 }: {
   base: string;
   /** Сверенные пары монеты — для сравнения бирж. */
   pairs?: ChartPair[];
   /** Пара из таблицы (лучшая сейчас) — открывается первой. */
   currentPair?: ChartPair | null;
+  /** Открыть полноэкранный график с той же парой. */
+  onOpenFull?: (pair: ChartPair | null) => void;
 }) {
   const { t } = useTranslation();
   const [range, setRange] = useState<Range>('24h');
@@ -76,7 +80,9 @@ export function SpreadChart({
     setData(null);
     setError(false);
     setHover(null);
-    const { tf, spanMs } = pair ? PAIR_RANGE[effectiveRange as Exclude<Range, '1h'>] : RANGE[effectiveRange];
+    const { tf, spanMs } = pair
+      ? PAIR_RANGE[effectiveRange as Exclude<Range, '1h'>]
+      : RANGE[effectiveRange];
     const load = () => {
       if (document.hidden) return;
       const to = Date.now();
@@ -125,7 +131,8 @@ export function SpreadChart({
       HEIGHT - PAD_Y - ((Math.min(v, hi) - lo) / span) * (HEIGHT - PAD_Y * 2);
 
     const pts = candles.map((c) => ({ x: x(c.ts), y: y(c.close), c }));
-    const tfMs = TF_MS[(pair ? PAIR_RANGE[effectiveRange as Exclude<Range, '1h'>] : RANGE[effectiveRange]).tf];
+    const tfMs =
+      TF_MS[(pair ? PAIR_RANGE[effectiveRange as Exclude<Range, '1h'>] : RANGE[effectiveRange]).tf];
     // Дыра в данных (процесс не работал) — разрыв, а не прямая через полночь.
     // Участки, восстановленные по часовым свечам, идут с часовым шагом —
     // для них допустимый промежуток шире.
@@ -282,16 +289,18 @@ export function SpreadChart({
       <div className="chart__head">
         <span className="chart__title">{t('chart.title')}</span>
         <div className="segmented segmented--mini">
-          {(pair ? (['24h', '7d', '30d'] as Range[]) : (['1h', '24h', '7d', '30d'] as Range[])).map((r) => (
-            <button
-              key={r}
-              type="button"
-              className={`segmented__item${effectiveRange === r ? ' segmented__item--active' : ''}`}
-              onClick={() => setRange(r)}
-            >
-              {t(`chart.range_${r}`)}
-            </button>
-          ))}
+          {(pair ? (['24h', '7d', '30d'] as Range[]) : (['1h', '24h', '7d', '30d'] as Range[])).map(
+            (r) => (
+              <button
+                key={r}
+                type="button"
+                className={`segmented__item${effectiveRange === r ? ' segmented__item--active' : ''}`}
+                onClick={() => setRange(r)}
+              >
+                {t(`chart.range_${r}`)}
+              </button>
+            ),
+          )}
         </div>
       </div>
       {pairs.length > 0 && (
@@ -322,6 +331,12 @@ export function SpreadChart({
         </div>
       )}
       {body}
+      {onOpenFull && (
+        <button type="button" className="btn-ghost chart__open" onClick={() => onOpenFull(pair)}>
+          <ChartIcon size={15} />
+          {t('chart.openFull')}
+        </button>
+      )}
     </section>
   );
 }
