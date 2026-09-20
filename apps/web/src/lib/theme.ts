@@ -12,7 +12,7 @@
  */
 import { webApp } from './telegram';
 
-export type ThemeMode = 'system' | 'dark' | 'light' | 'telegram';
+export type ThemeMode = 'dark' | 'light' | 'telegram';
 export type ResolvedTheme = 'dark' | 'light';
 
 const STORAGE_KEY = 'midnex.theme';
@@ -23,11 +23,12 @@ const listeners = new Set<(theme: ResolvedTheme) => void>();
 export function currentThemeMode(): ThemeMode {
   try {
     const v = localStorage.getItem(STORAGE_KEY);
-    if (v === 'dark' || v === 'light' || v === 'system' || v === 'telegram') return v;
+    if (v === 'dark' || v === 'light' || v === 'telegram') return v;
   } catch {
     // Хранилище недоступно — считаем, что выбора не было.
   }
-  return 'system';
+  // По умолчанию — тёмная; старое значение «как в Telegram» тоже сводится к ней.
+  return 'dark';
 }
 
 function systemTheme(): ResolvedTheme {
@@ -36,7 +37,7 @@ function systemTheme(): ResolvedTheme {
 }
 
 export function resolveTheme(mode = currentThemeMode()): ResolvedTheme {
-  return mode === 'system' || mode === 'telegram' ? systemTheme() : mode;
+  return mode === 'telegram' ? systemTheme() : mode;
 }
 
 /** Токены, которые берутся из клиента в режиме «под цвет Telegram». */
@@ -65,6 +66,12 @@ const TG_VARS: [cssVar: string, param: TgParam][] = [
   ['--primary-foreground', 'button_text_color'],
   ['--background', 'bg_color'],
   ['--card', 'secondary_bg_color'],
+  // Нижняя панель и шторки красятся своими токенами — иначе остаются чёрными.
+  ['--nav-bg', 'bg_color'],
+  ['--popover', 'secondary_bg_color'],
+  ['--secondary', 'section_bg_color'],
+  ['--muted', 'section_bg_color'],
+  ['--surface-3', 'section_bg_color'],
 ];
 
 function applyTelegramPalette(on: boolean): void {
@@ -124,10 +131,6 @@ export function onThemeChange(fn: (theme: ResolvedTheme) => void): () => void {
 export function initTheme(): void {
   applyTheme();
   webApp?.onEvent?.('themeChanged', () => {
-    const mode = currentThemeMode();
-    if (mode === 'system' || mode === 'telegram') applyTheme();
-  });
-  window.matchMedia?.('(prefers-color-scheme: light)').addEventListener?.('change', () => {
-    if (currentThemeMode() === 'system') applyTheme();
+    if (currentThemeMode() === 'telegram') applyTheme();
   });
 }

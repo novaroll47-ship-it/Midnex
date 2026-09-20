@@ -521,7 +521,7 @@ function platformName(p: string, t: (k: string) => string): string {
 function ThemeView() {
   const { t } = useTranslation();
   const [mode, setMode] = useState<ThemeMode>(currentThemeMode);
-  const modes: ThemeMode[] = ['system', 'dark', 'light', 'telegram'];
+  const modes: ThemeMode[] = ['dark', 'light', 'telegram'];
   return (
     <div className="stack">
       <Section title={t('sd.theme')} hint={t('sd.themeHint')}>
@@ -529,7 +529,7 @@ function ThemeView() {
           <RadioRow
             key={m}
             title={t(`sd.theme_${m}`)}
-            sub={m === 'system' || m === 'telegram' ? t(`sd.theme_${m}_sub`) : undefined}
+            sub={m === 'telegram' ? t('sd.theme_telegram_sub') : undefined}
             selected={mode === m}
             onSelect={() => {
               setMode(m);
