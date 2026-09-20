@@ -346,7 +346,9 @@ export function SpreadChart({
     ctx.clip();
 
     if (tf === '1s') {
-      // Линия с заливкой до нуля; разрыв там, где секунд не было.
+      // Линия с заливкой до нуля; разрыв там, где данных не было дольше
+      // нескольких секунд (одиночные пропуски тика — не дыра).
+      const GAP_MS = 5000;
       const y0 = yOf(Math.max(min, Math.min(max, 0)));
       ctx.lineWidth = 1.6;
       ctx.lineJoin = 'round';
@@ -371,7 +373,7 @@ export function SpreadChart({
       let prevTs = -1;
       for (let i = Math.max(0, visible.first - 1); i <= Math.min(points.length - 1, visible.last + 1); i++) {
         const c = points[i]!;
-        if (prevTs >= 0 && c.ts - prevTs > 2 * tfMs) flush();
+        if (prevTs >= 0 && c.ts - prevTs > GAP_MS) flush();
         run.push({ x: xOf(c.ts), y: yOf(c.close) });
         prevTs = c.ts;
       }
