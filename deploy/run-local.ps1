@@ -20,6 +20,11 @@ $Tools = Join-Path $Root '.tools'
 $Cloudflared = Join-Path $Tools 'cloudflared.exe'
 $TunnelLog = Join-Path $Tools 'tunnel.log'
 $ApiLog = Join-Path $Tools 'api.log'
+$Victoria = Join-Path $Tools 'victoria-metrics.exe'
+$VictoriaLog = Join-Path $Tools 'victoria.log'
+$VictoriaData = Join-Path $Root '.data\victoria'
+# VictoriaMetrics — посекундный спред для графика «1с»; retention 7 дней.
+$VictoriaVersion = 'v1.152.0'
 
 Set-Location $Root
 
@@ -38,6 +43,18 @@ if (-not (Test-Path $Cloudflared)) {
     Invoke-WebRequest -Uri 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe' -OutFile $Cloudflared
 }
 
+if (-not (Test-Path $Victoria)) {
+    New-Item -ItemType Directory -Force -Path $Tools | Out-Null
+    Write-Host "==> Качаю VictoriaMetrics $VictoriaVersion"
+    $zip = Join-Path $Tools 'victoria-metrics.zip'
+    Invoke-WebRequest -Uri "https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/$VictoriaVersion/victoria-metrics-windows-amd64-$VictoriaVersion.zip" -OutFile $zip
+    $tmp = Join-Path $Tools 'victoria-unzip'
+    Expand-Archive -Path $zip -DestinationPath $tmp -Force
+    Move-Item -Path (Get-ChildItem $tmp -Filter '*.exe' | Select-Object -First 1).FullName -Destination $Victoria -Force
+    Remove-Item $tmp -Recurse -Force
+    Remove-Item $zip -Force
+}
+
 Write-Host '==> Останавливаю прошлый запуск'
 Get-Process cloudflared -ErrorAction SilentlyContinue | Stop-Process -Force
 if (-not $TunnelOnly) {
@@ -47,6 +64,16 @@ if (-not $TunnelOnly) {
 
     Write-Host '==> Собираю'
     npm run build | Out-Null
+
+    # Посекундный спред живёт в VictoriaMetrics: своя папка данных, старше
+    # семи дней удаляется само. Слушает только localhost.
+    Write-Host '==> Запускаю VictoriaMetrics'
+    Get-Process victoria-metrics -ErrorAction SilentlyContinue | Stop-Process -Force
+    New-Item -ItemType Directory -Force -Path $VictoriaData | Out-Null
+    Start-Process -FilePath $Victoria `
+        -ArgumentList "-storageDataPath=`"$VictoriaData`"", '-retentionPeriod=7d', '-httpListenAddr=127.0.0.1:8428', '-loggerLevel=WARN' `
+        -WorkingDirectory $Root -WindowStyle Hidden `
+        -RedirectStandardOutput $VictoriaLog -RedirectStandardError "$VictoriaLog.err"
 }
 
 # http2 (TCP) вместо quic (UDP): домашние провайдеры и VPN часто режут UDP,

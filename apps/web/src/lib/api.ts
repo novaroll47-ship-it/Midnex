@@ -120,15 +120,29 @@ export interface HistoryCandle {
   source: 'live' | 'reconstructed';
 }
 
+export type HistoryTf = '1s' | '1m' | '5m' | '15m' | '1h' | '1d';
+
+/** Посекундная серия (таймфрейм «1с»): значения по секундам, null — пропуск. */
+export interface HistorySeries {
+  ts0: number;
+  stepMs: number;
+  values: (number | null)[];
+  pairIdx?: (number | null)[];
+  pairs?: { exA: ExchangeId; exB: ExchangeId }[];
+}
+
 export interface HistoryResponse {
   base: string;
-  tf: '1m' | '5m' | '15m' | '1h';
+  tf: HistoryTf;
+  tfMs: number;
   from: number;
   to: number;
   /** Заданы, если история по конкретной паре бирж. */
   exA?: ExchangeId;
   exB?: ExchangeId;
   candles: HistoryCandle[];
+  /** Только для tf=1s. */
+  series?: HistorySeries | null;
 }
 
 export type PairStatus = 'candidate' | 'verified' | 'rejected' | 'delisted';
@@ -321,7 +335,7 @@ export const api = {
 
   history: (
     base: string,
-    tf: '1m' | '5m' | '15m' | '1h',
+    tf: HistoryTf,
     from: number,
     to: number,
     pair?: { exA: ExchangeId; exB: ExchangeId },
@@ -332,6 +346,8 @@ export const api = {
       to,
       exA: pair?.exA,
       exB: pair?.exB,
+      // Дневные свечи режутся по местной полуночи.
+      tz: tf === '1d' ? new Date().getTimezoneOffset() : undefined,
     }),
 
   adminPairLeg: (exchange: ExchangeId, symbol: string, factor: number) =>

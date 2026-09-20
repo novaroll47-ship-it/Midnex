@@ -17,12 +17,15 @@ import type { FastifyBaseLogger } from 'fastify';
 import type { ExchangeId, SpreadRow } from '@cs/shared';
 
 import type { MarketSource } from '../market.js';
+import type { VictoriaMetrics } from './victoria.js';
 import type { GapReason, HistoryStore, PairTimeframe, SpreadCandle, SpreadTick } from './store.js';
 
 export interface CollectorOptions {
   store: HistoryStore;
   market: MarketSource;
   log: FastifyBaseLogger;
+  /** Посекундный спред — в VictoriaMetrics (таймфрейм «1с»). */
+  victoria: VictoriaMetrics;
   /** Порог спреда для записи сырых точек, %. */
   tickMinSpreadPct: number;
   /** Сколько дней хранить сырые точки. */
@@ -135,7 +138,9 @@ export class HistoryCollector {
         }
       }
       this.o.store.writeTicks(ticks);
-      this.accumulatePairs(now);
+      const pairSpreads = this.o.market.engine?.pairSpreads() ?? [];
+      this.accumulatePairs(now, pairSpreads);
+      this.o.victoria.write(now, rows, pairSpreads);
       this.followExchangeGaps();
 
       const hour = Math.floor(now / 3_600_000);
@@ -201,10 +206,10 @@ export class HistoryCollector {
   private pairBucketStart: Record<PairTimeframe, number> = { '15m': 0, '1h': 0 };
   private static readonly PAIR_TF_MS: Record<PairTimeframe, number> = { '15m': 900_000, '1h': 3_600_000 };
 
-  private accumulatePairs(now: number): void {
-    const engine = this.o.market.engine;
-    if (!engine) return;
-    const spreads = engine.pairSpreads();
+  private accumulatePairs(
+    now: number,
+    spreads: { base: string; exA: ExchangeId; exB: ExchangeId; spreadPct: number }[],
+  ): void {
     for (const tf of ['15m', '1h'] as PairTimeframe[]) {
       const ms = HistoryCollector.PAIR_TF_MS[tf];
       const start = Math.floor(now / ms) * ms;

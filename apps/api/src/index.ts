@@ -47,10 +47,11 @@ import { ListingsMonitor } from './listings.js';
 import { PairsService } from './pairs.js';
 import { ExternalTickers } from './pairs-external.js';
 import { HistoryCollector } from './history/collector.js';
+import { VictoriaMetrics } from './history/victoria.js';
 import { FUNDING_PERIODS, FundingHistory, type FundingPeriod } from './history/funding.js';
 import { GapFiller } from './history/gapfill.js';
 import { SqliteHistoryStore } from './history/sqlite.js';
-import type { PairTimeframe, Timeframe } from './history/store.js';
+import type { PairTimeframe, SpreadCandle, Timeframe } from './history/store.js';
 import { createRepo, type ExchangeKeyRecord } from './repo/index.js';
 import { StateService, type UserState } from './state.js';
 
@@ -99,6 +100,10 @@ const HISTORY_DB_PATH =
 const HISTORY_RAW_DAYS = Number(process.env.HISTORY_RAW_DAYS) || 7;
 const HISTORY_MINUTE_DAYS = Number(process.env.HISTORY_MINUTE_DAYS) || 30;
 const HISTORY_TICK_MIN_SPREAD = Number(process.env.HISTORY_TICK_MIN_SPREAD) || 0.5;
+/** VictoriaMetrics для посекундного спреда (таймфрейм «1с»); retention — на её стороне. */
+const VICTORIA_URL = (process.env.VICTORIA_URL?.trim() || 'http://127.0.0.1:8428').replace(/\/+$/, '');
+/** Писать ли посекундно каждую сверенную пару бирж (≈14 тыс. серий), а не только лучшую по монете. */
+const VICTORIA_WRITE_PAIRS = process.env.VICTORIA_WRITE_PAIRS !== '0';
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 const DEV_FAKE_USER = process.env.DEV_FAKE_USER === '1';
 const IS_PROD = process.env.NODE_ENV === 'production';
@@ -248,7 +253,9 @@ state.onNewUser = async (user) => {
 
 // История пишется только с живого рынка: мок-данные истории не заслуживают.
 const history = new SqliteHistoryStore(HISTORY_DB_PATH);
+const victoria = new VictoriaMetrics(VICTORIA_URL, VICTORIA_WRITE_PAIRS, app.log);
 const collector = new HistoryCollector({
+  victoria,
   store: history,
   market,
   log: app.log,
@@ -256,7 +263,13 @@ const collector = new HistoryCollector({
   rawDays: HISTORY_RAW_DAYS,
   minuteDays: HISTORY_MINUTE_DAYS,
 });
+victoria.start();
 if (market.mode === 'live') collector.start();
+else {
+  // В моке посекундный спред тоже пишется — чтобы график «1с» можно было
+  // разрабатывать без бирж (в SQLite при этом ничего не пишется).
+  setInterval(() => victoria.write(Date.now(), market.snapshot(0).rows, []), 1000).unref();
+}
 // Обрывы и лимиты из потоков — в журнал дыр с причиной.
 marketHooks.onGap = (exchange, reason) => {
   if (reason) collector.gapOpen(exchange, reason);
@@ -444,60 +457,17 @@ app.get('/api/coin/:base', async (req, reply) => {
 
 // ---------------------------------------------------------------- история спредов
 
-const TIMEFRAMES: Timeframe[] = ['1m', '5m', '1h'];
+const HOUR = 3_600_000;
 
 /**
  * Свечи спреда по монете. Пара бирж внутри минуты могла меняться, поэтому
  * на каждый момент отдаём лучшую (по максимуму) свечу — так график монеты
  * показывает «какой спред был доступен», а не историю одной пары.
  */
-app.get('/api/history/:base', async (req, reply) => {
-  if (!(await billing.hasAccess(req.state!.userId))) {
-    return reply.code(402).send({ error: 'subscription required' });
-  }
-  const { base } = req.params as { base: string };
-  const q = req.query as { tf?: string; from?: string; to?: string; exA?: string; exB?: string };
-  // История по конкретной паре бирж: свои таблицы (15m/1h) и незакрытая свеча.
-  if (q.exA && q.exB) {
-    const valid = new Set(EXCHANGES.map((e) => e.id as string));
-    if (!valid.has(q.exA) || !valid.has(q.exB) || q.exA === q.exB) {
-      return reply.code(400).send({ error: 'bad pair' });
-    }
-    const [exA, exB] = ([q.exA, q.exB] as ExchangeId[]).sort() as [ExchangeId, ExchangeId];
-    const tf: PairTimeframe = q.tf === '1h' ? '1h' : '15m';
-    const tfMs = tf === '1h' ? 3_600_000 : 900_000;
-    const to = Number(q.to) || Date.now();
-    const from = Number(q.from) || to - (tf === '1h' ? 7 : 1) * 86_400_000;
-    const canonical = base.toUpperCase();
-    const candles = history.queryPairCandles(canonical, exA, exB, tf, from, to);
-    const partial = collector.currentPair(canonical, exA, exB, tf);
-    if (partial && !candles.some((c) => c.ts === partial.ts)) candles.push(partial);
-    // Часы без 15-минутных свечей закрываем часовыми по той же паре.
-    if (tf === '15m') {
-      const HOUR = 3_600_000;
-      const hourFrom = Math.floor(from / HOUR) * HOUR;
-      const hourly = history.queryPairCandles(canonical, exA, exB, '1h', hourFrom, to);
-      const covered = new Set(candles.map((c) => Math.floor(c.ts / HOUR) * HOUR));
-      let missing = 0;
-      for (let h = hourFrom; h + HOUR <= to; h += HOUR) {
-        if (covered.has(h)) continue;
-        const hc = hourly.find((c) => c.ts === h);
-        if (hc) candles.push({ ...hc, source: 'reconstructed' });
-        else missing++;
-      }
-      if (missing > 0) gapFiller.fillBase(canonical);
-    }
-    candles.sort((a, b) => a.ts - b.ts);
-    return { base: canonical, tf, from, to, exA, exB, tfMs, candles };
-  }
-  const tf = (TIMEFRAMES.includes(q.tf as Timeframe) ? q.tf : '1m') as Timeframe;
-  const to = Number(q.to) || Date.now();
-  const spanDefault = tf === '1m' ? 6 * 3_600_000 : tf === '5m' ? 2 * 86_400_000 : 30 * 86_400_000;
-  const from = Number(q.from) || to - spanDefault;
-  const canonical = base.toUpperCase();
-  const tfMs = tf === '1m' ? 60_000 : tf === '5m' ? 300_000 : 3_600_000;
+function coinCandles(canonical: string, tf: Timeframe, from: number, to: number): SpreadCandle[] {
+  const tfMs = tf === '1m' ? 60_000 : tf === '5m' ? 300_000 : HOUR;
   const all = history.queryCandles(canonical, tf, from, to);
-  const best = new Map<number, (typeof all)[number]>();
+  const best = new Map<number, SpreadCandle>();
   for (const c of all) {
     const cur = best.get(c.ts);
     if (!cur || c.high > cur.high) best.set(c.ts, c);
@@ -530,11 +500,10 @@ app.get('/api/history/:base', async (req, reply) => {
   // Дыры (процесс не работал) на 1m/5m закрываем часовыми свечами: каждый
   // час без единой мелкой свечи получает часовую (живую или восстановленную
   // по свечам бирж). Помечаем реконструкцией — на графике пунктир.
-  const HOUR = 3_600_000;
   if (tf !== '1h') {
     const hourFrom = Math.floor(from / HOUR) * HOUR;
     const hourly = history.queryCandles(canonical, '1h', hourFrom, to);
-    const bestHour = new Map<number, (typeof hourly)[number]>();
+    const bestHour = new Map<number, SpreadCandle>();
     for (const c of hourly) {
       const cur = bestHour.get(c.ts);
       if (!cur || c.high > cur.high) bestHour.set(c.ts, c);
@@ -559,7 +528,144 @@ app.get('/api/history/:base', async (req, reply) => {
       if (!have.has(h)) missing++;
     if (missing > 0) gapFiller.fillBase(canonical);
   }
-  return { base: canonical, tf, from, to, candles };
+  return candles;
+}
+
+/** Свечи по конкретной паре бирж: свои таблицы (15m/1h) и незакрытая свеча. */
+function pairCandles(
+  canonical: string,
+  exA: ExchangeId,
+  exB: ExchangeId,
+  tf: PairTimeframe,
+  from: number,
+  to: number,
+): SpreadCandle[] {
+  const candles = history.queryPairCandles(canonical, exA, exB, tf, from, to);
+  const partial = collector.currentPair(canonical, exA, exB, tf);
+  if (partial && !candles.some((c) => c.ts === partial.ts)) candles.push(partial);
+  // Часы без 15-минутных свечей закрываем часовыми по той же паре.
+  if (tf === '15m') {
+    const hourFrom = Math.floor(from / HOUR) * HOUR;
+    const hourly = history.queryPairCandles(canonical, exA, exB, '1h', hourFrom, to);
+    const covered = new Set(candles.map((c) => Math.floor(c.ts / HOUR) * HOUR));
+    let missing = 0;
+    for (let h = hourFrom; h + HOUR <= to; h += HOUR) {
+      if (covered.has(h)) continue;
+      const hc = hourly.find((c) => c.ts === h);
+      if (hc) candles.push({ ...hc, source: 'reconstructed' });
+      else missing++;
+    }
+    if (missing > 0) gapFiller.fillBase(canonical);
+  }
+  return candles.sort((a, b) => a.ts - b.ts);
+}
+
+/**
+ * Укрупнение свечей: 5m → 15m, 1h → 1d. Сутки — по местному времени
+ * клиента (`tzOffsetMin` как `getTimezoneOffset()`), чтобы дневная свеча
+ * начиналась в полночь пользователя, а не UTC.
+ */
+function aggregateCandles(rows: SpreadCandle[], bucketMs: number, tzOffsetMin = 0): SpreadCandle[] {
+  const shift = tzOffsetMin * 60_000;
+  const out = new Map<number, SpreadCandle>();
+  for (const c of rows) {
+    const key = Math.floor((c.ts - shift) / bucketMs) * bucketMs + shift;
+    const cur = out.get(key);
+    if (!cur) out.set(key, { ...c, ts: key });
+    else {
+      if (c.high > cur.high) {
+        cur.high = c.high;
+        cur.exA = c.exA;
+        cur.exB = c.exB;
+      }
+      cur.low = Math.min(cur.low, c.low);
+      cur.close = c.close;
+      cur.samples += c.samples;
+      if (c.source === 'live') cur.source = 'live';
+    }
+  }
+  return [...out.values()].sort((a, b) => a.ts - b.ts);
+}
+
+const CHART_TFS = ['1s', '1m', '5m', '15m', '1h', '1d'] as const;
+type ChartTf = (typeof CHART_TFS)[number];
+const CHART_TF_MS: Record<ChartTf, number> = {
+  '1s': 1000,
+  '1m': 60_000,
+  '5m': 300_000,
+  '15m': 900_000,
+  '1h': HOUR,
+  '1d': 86_400_000,
+};
+
+/**
+ * История спреда для графика: по монете (лучшая пара) или по конкретной
+ * паре бирж. Таймфреймы: 1s — из посекундного буфера (поле `series`),
+ * 1m/5m/1h — свечи из базы, 15m — из 5m (по паре — свои 15m), 1d — из 1h.
+ */
+app.get('/api/history/:base', async (req, reply) => {
+  if (!(await billing.hasAccess(req.state!.userId))) {
+    return reply.code(402).send({ error: 'subscription required' });
+  }
+  const { base } = req.params as { base: string };
+  const q = req.query as {
+    tf?: string;
+    from?: string;
+    to?: string;
+    exA?: string;
+    exB?: string;
+    tz?: string;
+  };
+  const canonical = base.toUpperCase();
+  let tf = (CHART_TFS.includes(q.tf as ChartTf) ? q.tf : '1m') as ChartTf;
+  // По паре бирж минутных свечей нет — самый мелкий таймфрейм 15m (кроме 1s).
+  if (q.exA && q.exB && (tf === '1m' || tf === '5m')) tf = '15m';
+  const tfMs = CHART_TF_MS[tf];
+  const tz = Number(q.tz) || 0;
+  const to = Number(q.to) || Date.now();
+  const spanDefault =
+    tf === '1s'
+      ? 30 * 60_000
+      : tf === '1m'
+        ? 6 * HOUR
+        : tf === '5m' || tf === '15m'
+          ? 2 * 86_400_000
+          : 30 * 86_400_000;
+  const from = Number(q.from) || to - spanDefault;
+
+  let pair: { exA: ExchangeId; exB: ExchangeId } | undefined;
+  if (q.exA && q.exB) {
+    const valid = new Set(EXCHANGES.map((e) => e.id as string));
+    if (!valid.has(q.exA) || !valid.has(q.exB) || q.exA === q.exB) {
+      return reply.code(400).send({ error: 'bad pair' });
+    }
+    const [exA, exB] = ([q.exA, q.exB] as ExchangeId[]).sort() as [ExchangeId, ExchangeId];
+    pair = { exA, exB };
+  }
+
+  if (tf === '1s') {
+    const series = await victoria.querySeconds(canonical, from, to, pair);
+    return { base: canonical, tf, tfMs, from, to, ...pair, candles: [], series };
+  }
+
+  let candles: SpreadCandle[];
+  if (pair) {
+    const { exA, exB } = pair;
+    if (tf === '1d') {
+      candles = aggregateCandles(pairCandles(canonical, exA, exB, '1h', from, to), tfMs, tz);
+    } else if (tf === '1h') {
+      candles = pairCandles(canonical, exA, exB, '1h', from, to);
+    } else {
+      candles = pairCandles(canonical, exA, exB, '15m', from, to);
+    }
+  } else if (tf === '1d') {
+    candles = aggregateCandles(coinCandles(canonical, '1h', from, to), tfMs, tz);
+  } else if (tf === '15m') {
+    candles = aggregateCandles(coinCandles(canonical, '5m', from, to), tfMs);
+  } else {
+    candles = coinCandles(canonical, tf, from, to);
+  }
+  return { base: canonical, tf, tfMs, from, to, ...pair, candles };
 });
 
 /**
@@ -1288,6 +1394,7 @@ app.addHook('onClose', async () => {
   listings.stop();
   alerts.stop();
   collector.stop();
+  victoria.stop();
   fundingHistory.stop();
   history.close();
   await market.stop();

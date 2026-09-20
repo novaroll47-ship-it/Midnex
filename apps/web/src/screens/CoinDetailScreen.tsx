@@ -34,11 +34,9 @@ import { usePolling } from '../lib/usePolling';
 export function CoinDetailScreen({
   base,
   onAlert,
-  onOpenChart,
 }: {
   base: string;
   onAlert?: (base: string) => void;
-  onOpenChart?: (base: string, pair: { exA: ExchangeId; exB: ExchangeId } | null) => void;
 }) {
   const { t } = useTranslation();
   // Биржи для лучшей пары: по умолчанию — как в фильтре скринера; здесь
@@ -78,7 +76,6 @@ export function CoinDetailScreen({
         base={data.base}
         pairs={data.pairs ?? []}
         currentPair={{ exA: data.best.longExchange, exB: data.best.shortExchange }}
-        onOpenFull={onOpenChart ? (pair) => onOpenChart(data.base, pair) : undefined}
       />
 
       <div className="section-label">{t('coin.venuesTitle')}</div>

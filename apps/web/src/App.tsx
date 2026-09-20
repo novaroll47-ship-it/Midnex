@@ -10,7 +10,6 @@ import { initTheme } from './lib/theme';
 import { primeCache } from './lib/usePolling';
 import { useSettings } from './lib/useSettings';
 import { CoinDetailScreen } from './screens/CoinDetailScreen';
-import { FullChartScreen } from './screens/FullChartScreen';
 import { CoachMarks } from './components/CoachMarks';
 import { Splash } from './components/Splash';
 import { pendingModules } from './onboarding/modules';
@@ -37,7 +36,7 @@ type Route =
   | { kind: 'coin'; base: string }
   | { kind: 'alerts' }
   | { kind: 'bots' }
-  | { kind: 'chart'; base: string; pair: { exA: ExchangeId; exB: ExchangeId } | null };
+;
 
 interface NavState {
   tab: Tab;
@@ -149,14 +148,13 @@ export function App() {
     }
     if (route.kind === 'coin') return route.base;
     if (route.kind === 'alerts') return t('screener.tileAlerts');
-    if (route.kind === 'chart') return `${route.base} · ${t('fullchart.title')}`;
     if (route.kind === 'bots') return t('screener.tileBots');
     return undefined;
   }, [route, t]);
 
   // Скринер сам управляет прокруткой: шапка таблицы стоит на месте, едет
   // только список монет. Остальные экраны скроллятся целиком.
-  const fixedLayout = (route.kind === 'tab' && tab === 'screener') || route.kind === 'chart';
+  const fixedLayout = route.kind === 'tab' && tab === 'screener';
 
   // Пока не включена торговля — наружу только скринер; остальное «Скоро».
   const trading = settings.data?.features?.trading ?? false;
@@ -221,12 +219,9 @@ export function App() {
 
         {route.kind === 'position' && <PositionDetailScreen id={route.id} view={route.view} />}
 
-        {route.kind === 'chart' && <FullChartScreen base={route.base} pair={route.pair} />}
-
         {route.kind === 'coin' && (
           <CoinDetailScreen
             base={route.base}
-            onOpenChart={(base, pair) => go({ route: { kind: 'chart', base, pair } })}
             onAlert={(base) => {
               setAlertPreset(base);
               go({ route: { kind: 'alerts' } });

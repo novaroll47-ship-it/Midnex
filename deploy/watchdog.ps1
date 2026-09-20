@@ -38,6 +38,27 @@ function Test-Tunnel {
     } catch { return $false }
 }
 
+# VictoriaMetrics живёт отдельным процессом: упала — поднимаем только её.
+function Test-Victoria {
+    try {
+        $r = Invoke-WebRequest -Uri 'http://127.0.0.1:8428/health' -TimeoutSec 5 -UseBasicParsing
+        return ($r.StatusCode -eq 200)
+    } catch { return $false }
+}
+
+function Restart-Victoria {
+    $exe = Join-Path $Root '.tools\victoria-metrics.exe'
+    if (-not (Test-Path $exe)) { return }
+    Write-Log 'перезапуск VictoriaMetrics: не отвечает'
+    Get-Process victoria-metrics -ErrorAction SilentlyContinue | Stop-Process -Force
+    $data = Join-Path $Root '.data\victoria'
+    $log = Join-Path $Root '.tools\victoria.log'
+    Start-Process -FilePath $exe `
+        -ArgumentList "-storageDataPath=`"$data`"", '-retentionPeriod=7d', '-httpListenAddr=127.0.0.1:8428', '-loggerLevel=WARN' `
+        -WorkingDirectory $Root -WindowStyle Hidden `
+        -RedirectStandardOutput $log -RedirectStandardError "$log.err"
+}
+
 function Restart-All([string]$why) {
     Write-Log "перезапуск: $why"
     try {
@@ -74,6 +95,8 @@ while ($true) {
         $localFails = 0; $tunnelFails = 0
         continue
     }
+
+    if (-not (Test-Victoria)) { Restart-Victoria }
 
     if (Test-Tunnel) { $tunnelFails = 0 } else { $tunnelFails++ }
     # Туннелю даём больше времени: Cloudflare бывает недоступен минуту-две сам.
