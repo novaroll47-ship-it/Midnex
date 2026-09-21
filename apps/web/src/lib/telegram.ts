@@ -103,8 +103,8 @@ export function initTelegram(): void {
 function syncViewportHeight(): void {
   const h = webApp?.viewportStableHeight ?? webApp?.viewportHeight;
   const root = document.documentElement.style;
-  if (typeof h === 'number' && Number.isFinite(h) && h >= 300 && h <= window.innerHeight + 1) {
-    root.setProperty('--app-height', `${Math.round(h)}px`);
+  if (typeof h === 'number' && Number.isFinite(h) && h >= 300) {
+    root.setProperty('--app-height', `${Math.round(Math.min(h, window.innerHeight || h))}px`);
   } else {
     root.removeProperty('--app-height');
   }
@@ -119,11 +119,13 @@ function syncViewportHeight(): void {
  * шторок и потере фокуса полем.
  */
 export function resetDocumentScroll(): void {
-  if (window.scrollY !== 0 || document.documentElement.scrollTop !== 0) {
-    window.scrollTo(0, 0);
-    document.documentElement.scrollTop = 0;
-    document.body.scrollTop = 0;
-  }
+  // На iOS сдвигается не документ, а visual viewport: scrollY при этом 0,
+  // поэтому не проверяем, а всегда возвращаем всё на место.
+  window.scrollTo(0, 0);
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+  const se = document.scrollingElement;
+  if (se) se.scrollTop = 0;
 }
 
 if (typeof document !== 'undefined') {
@@ -133,10 +135,23 @@ if (typeof document !== 'undefined') {
     () => {
       setTimeout(resetDocumentScroll, 50);
       setTimeout(resetDocumentScroll, 350);
+      setTimeout(resetDocumentScroll, 900);
     },
     true,
   );
   window.addEventListener('resize', () => setTimeout(resetDocumentScroll, 50));
+  // iOS: клавиатура меняет visual viewport, а не окно; после её ухода
+  // документ остаётся сдвинутым ещё несколько сотен миллисекунд анимации.
+  const vv = window.visualViewport;
+  if (vv) {
+    const onVv = () => {
+      setTimeout(resetDocumentScroll, 50);
+      setTimeout(resetDocumentScroll, 400);
+      setTimeout(resetDocumentScroll, 900);
+    };
+    vv.addEventListener('resize', onVv);
+    vv.addEventListener('scroll', onVv);
+  }
 }
 
 export function haptic(kind: 'tap' | 'success' | 'warning' | 'error' = 'tap'): void {

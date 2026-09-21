@@ -5,6 +5,7 @@
  * пользователя (настройки, позиции, ключи, вотчлист, сессии) — в хранилище:
  * Postgres при заданном DATABASE_URL, иначе память процесса.
  */
+import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { existsSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
@@ -390,7 +391,19 @@ app.get('/api/health', async () => ({
   time: Date.now(),
   uptimeSec: Math.round(process.uptime()),
   memoryMb: memoryMb(),
+  eventLoopMs: eventLoopLag(),
 }));
+
+// Задержка event loop за последнюю минуту: сколько миллисекунд таймеры
+// ждали своей очереди. Если p99 уходит за секунду — сборщик пропускает
+// секунды, и это видно на графике «1с».
+const loopDelay = monitorEventLoopDelay({ resolution: 20 });
+loopDelay.enable();
+setInterval(() => loopDelay.reset(), 60_000).unref();
+function eventLoopLag() {
+  const ms = (n: number) => Math.round(n / 1e6);
+  return { p50: ms(loopDelay.percentile(50)), p99: ms(loopDelay.percentile(99)), max: ms(loopDelay.max) };
+}
 
 function memoryMb() {
   const mem = process.memoryUsage();

@@ -2682,8 +2682,36 @@
     -webkit-user-select: none;
   }
 
-  .chart__canvas canvas {
-    display: block;
+  .chart__lw {
+    position: absolute;
+    inset: 0;
+  }
+
+  /* Подсказка под курсором/пальцем — поверх графика, слева сверху. */
+  .chart__tip {
+    position: absolute;
+    top: 6px;
+    left: 8px;
+    z-index: 3;
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    padding: 4px 8px;
+    border-radius: 8px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  .chart__tip b {
+    color: var(--text);
+  }
+
+  .chart__tip-time {
+    color: var(--text-mute);
   }
 
   .chart__overlay {
@@ -2700,8 +2728,9 @@
 
   .chart__tools {
     position: absolute;
-    right: 62px;
-    bottom: 28px;
+    right: 64px;
+    bottom: 32px;
+    z-index: 3;
     display: flex;
     gap: 6px;
   }
