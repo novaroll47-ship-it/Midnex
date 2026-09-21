@@ -9,10 +9,9 @@
  * живыми данными, пока его не увели в прошлое — тогда появляется «→».
  * Прокрутка влево до начала загруженного — догружает историю.
  *
- * По умолчанию график показывает «лучшую пару» — ту же величину, что и
- * спред в шапке монеты; конкретную пару бирж пользователь выбирает сам,
- * за таблицей график не бегает (иначе он сбрасывался при каждой смене
- * лучшей пары).
+ * График всегда по конкретной паре бирж: открывается на той, что сейчас
+ * лучшая в таблице, дальше пару выбирает пользователь — за таблицей график
+ * не бегает (иначе он сбрасывался при каждой смене лучшей пары).
  */
 import { EXCHANGES, formatPct, type ExchangeId } from '@cs/shared';
 import {
@@ -159,20 +158,25 @@ function seriesData(
 export function SpreadChart({
   base,
   pairs = [],
+  currentPair = null,
 }: {
   base: string;
   /** Сверенные пары монеты — для сравнения бирж. */
   pairs?: ChartPair[];
+  /** Лучшая пара сейчас — с неё график открывается. */
+  currentPair?: ChartPair | null;
 }) {
   const { t } = useTranslation();
-  const [tfState, setTf] = useState<Tf>('1m');
-  // null — «лучшая пара монеты» (то же, что спред в шапке), иначе — конкретная пара.
-  const [pair, setPair] = useState<ChartPair | null>(null);
-  const effPair = pairs.length > 0 ? pair : null;
+  const [tf, setTf] = useState<Tf>('1m');
+  const [picked, setPicked] = useState<ChartPair | null>(null);
+  // Выбранная пользователем пара, иначе — лучшая на момент открытия (фиксируем,
+  // чтобы график не сбрасывался при каждой смене лучшей пары в таблице).
+  const [initial] = useState<ChartPair | null>(currentPair);
+  const known = (p: ChartPair | null) => (p && pairs.some((q) => samePair(q, p)) ? p : null);
+  // Без сверенных пар — история по монете (лучшая пара).
+  const effPair = pairs.length > 0 ? (known(picked) ?? known(initial) ?? pairs[0]!) : null;
   const pairKeyStr = effPair ? `${effPair.exA}|${effPair.exB}` : '';
-  // По паре бирж минутных свечей нет — только 1с, 15м, 1ч, 1д.
-  const tfs = effPair ? TFS.filter((k) => k !== '1m') : TFS;
-  const tf: Tf = effPair && tfState === '1m' ? '15m' : tfState;
+  const tfs = TFS;
   const tfMs = TF_MS[tf];
   const exName = (id: string) => EXCHANGES.find((e) => e.id === id)?.name ?? id;
 
@@ -562,19 +566,15 @@ export function SpreadChart({
       </div>
       {pairs.length > 0 && (
         <div className="chart__pairs">
-          <button
-            type="button"
-            className={`chip-mini chip-mini--tap${effPair === null ? ' chip-mini--on' : ''}`}
-            onClick={() => setPair(null)}
-          >
-            {t('chart.bestPair')}
-          </button>
           {pairs.map((p) => (
             <button
               key={`${p.exA}|${p.exB}`}
               type="button"
               className={`chip-mini chip-mini--tap${samePair(effPair, p) ? ' chip-mini--on' : ''}`}
-              onClick={() => setPair(p)}
+              onClick={() => {
+                haptic('tap');
+                setPicked(p);
+              }}
             >
               {exName(p.exA)} ↔ {exName(p.exB)}
             </button>

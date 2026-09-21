@@ -18,6 +18,8 @@
 import type { FastifyBaseLogger } from 'fastify';
 import type { ExchangeId, SpreadRow } from '@cs/shared';
 
+import type { SpreadCandle } from './store.js';
+
 /** Больше стольких секунд очереди не держим, если VM не отвечает. */
 const MAX_QUEUE_BATCHES = 30;
 /** Как часто ругаться в лог о недоступной VM. */
@@ -50,6 +52,8 @@ export class VictoriaMetrics {
     private readonly url: string,
     private readonly writePairs: boolean,
     private readonly log: FastifyBaseLogger,
+    /** Только чтение — для dev-копии, читающей боевую VM. */
+    private readonly writeEnabled = true,
   ) {}
 
   start(): void {
@@ -81,6 +85,7 @@ export class VictoriaMetrics {
     rows: SpreadRow[],
     pairs: { base: string; exA: ExchangeId; exB: ExchangeId; spreadPct: number }[],
   ): void {
+    if (!this.writeEnabled) return;
     const ts = ` ${Math.floor(now / 1000) * 1000}`;
     const lines: string[] = [];
     for (const r of rows) {
@@ -204,6 +209,49 @@ export class VictoriaMetrics {
     return pair
       ? { ts0: minSec * 1000, stepMs: 1000, values }
       : { ts0: minSec * 1000, stepMs: 1000, values, pairIdx, pairs };
+  }
+
+  /**
+   * Свечи по паре бирж из посекундных точек: пока VM хранит секунды (7 дней),
+   * это полные OHLC без потерь при перезапусках — точнее, чем 15m/1h в SQLite.
+   */
+  async queryCandles(
+    base: string,
+    pair: { exA: ExchangeId; exB: ExchangeId },
+    tfMs: number,
+    from: number,
+    to: number,
+  ): Promise<SpreadCandle[]> {
+    const s = await this.querySeconds(base, from, to, pair);
+    if (!s) return [];
+    const out = new Map<number, SpreadCandle>();
+    for (let i = 0; i < s.values.length; i++) {
+      const v = s.values[i];
+      if (v === null || v === undefined) continue;
+      const ts = Math.floor((s.ts0 + i * s.stepMs) / tfMs) * tfMs;
+      if (ts < from) continue;
+      const c = out.get(ts);
+      if (!c) {
+        out.set(ts, {
+          ts,
+          base,
+          exA: pair.exA,
+          exB: pair.exB,
+          open: v,
+          high: v,
+          low: v,
+          close: v,
+          samples: 1,
+          source: 'live',
+        });
+      } else {
+        if (v > c.high) c.high = v;
+        if (v < c.low) c.low = v;
+        c.close = v;
+        c.samples++;
+      }
+    }
+    return [...out.values()].sort((a, b) => a.ts - b.ts);
   }
 
   private warn(msg: string): void {

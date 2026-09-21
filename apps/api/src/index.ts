@@ -255,7 +255,12 @@ state.onNewUser = async (user) => {
 
 // История пишется только с живого рынка: мок-данные истории не заслуживают.
 const history = new SqliteHistoryStore(HISTORY_DB_PATH);
-const victoria = new VictoriaMetrics(VICTORIA_URL, VICTORIA_WRITE_PAIRS, app.log);
+const victoria = new VictoriaMetrics(
+  VICTORIA_URL,
+  VICTORIA_WRITE_PAIRS,
+  app.log,
+  process.env.VICTORIA_WRITE !== '0',
+);
 // CPU_PROFILE="60,30" — снять профиль в .tools (см. diag.ts).
 scheduleCpuProfile(process.env.CPU_PROFILE, join(here, '../../../.tools'), app.log);
 const collector = new HistoryCollector({
@@ -634,8 +639,7 @@ app.get('/api/history/:base', async (req, reply) => {
   };
   const canonical = base.toUpperCase();
   let tf = (CHART_TFS.includes(q.tf as ChartTf) ? q.tf : '1m') as ChartTf;
-  // По паре бирж минутных свечей нет — самый мелкий таймфрейм 15m (кроме 1s).
-  if (q.exA && q.exB && (tf === '1m' || tf === '5m')) tf = '15m';
+  if (q.exA && q.exB && tf === '5m') tf = '15m';
   const tfMs = CHART_TF_MS[tf];
   const tz = Number(q.tz) || 0;
   const to = Number(q.to) || Date.now();
@@ -666,14 +670,18 @@ app.get('/api/history/:base', async (req, reply) => {
 
   let candles: SpreadCandle[];
   if (pair) {
+    // Последние семь дней — из посекундных точек VictoriaMetrics (полные
+    // свечи, ничего не теряется при перезапусках), старше — из SQLite.
     const { exA, exB } = pair;
-    if (tf === '1d') {
-      candles = aggregateCandles(pairCandles(canonical, exA, exB, '1h', from, to), tfMs, tz);
-    } else if (tf === '1h') {
-      candles = pairCandles(canonical, exA, exB, '1h', from, to);
-    } else {
-      candles = pairCandles(canonical, exA, exB, '15m', from, to);
-    }
+    const srcTf: '1m' | '15m' | '1h' = tf === '1d' || tf === '1h' ? '1h' : tf === '15m' ? '15m' : '1m';
+    const srcMs = CHART_TF_MS[srcTf];
+    const vmFrom = Math.max(from, Date.now() - 7 * 86_400_000);
+    const vm = vmFrom < to ? await victoria.queryCandles(canonical, pair, srcMs, vmFrom, to) : [];
+    const older = srcTf === '1m' ? [] : pairCandles(canonical, exA, exB, srcTf, from, to);
+    // VM недоступна — показываем то, что есть в SQLite, за весь интервал.
+    const cutoff = vm.length > 0 ? vmFrom : Infinity;
+    candles = [...older.filter((c) => c.ts < cutoff), ...vm];
+    if (tf === '1d') candles = aggregateCandles(candles, tfMs, tz);
   } else if (tf === '1d') {
     candles = aggregateCandles(coinCandles(canonical, '1h', from, to), tfMs, tz);
   } else if (tf === '15m') {

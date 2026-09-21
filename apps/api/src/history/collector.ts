@@ -143,6 +143,14 @@ export class HistoryCollector {
       this.o.victoria.write(now, rows, pairSpreads);
       this.followExchangeGaps();
 
+      // Незакрытые 15m/1h по парам — в базу раз в минуту (insert or replace):
+      // иначе жёсткий перезапуск терял бы до часа накопленного.
+      const minuteNo = Math.floor(now / MINUTE);
+      if (minuteNo !== this.lastPairSnapshotMinute) {
+        this.lastPairSnapshotMinute = minuteNo;
+        this.snapshotPairs();
+      }
+
       const hour = Math.floor(now / 3_600_000);
       if (hour !== this.lastRollupHour) {
         this.lastRollupHour = hour;
@@ -238,6 +246,20 @@ export class HistoryCollector {
         if (p.spreadPct < c.low) c.low = p.spreadPct;
         c.close = p.spreadPct;
         c.samples++;
+      }
+    }
+  }
+
+  private lastPairSnapshotMinute = 0;
+
+  private snapshotPairs(): void {
+    for (const tf of ['15m', '1h'] as PairTimeframe[]) {
+      const rows = [...this.pairBuckets[tf].values()];
+      if (rows.length === 0) continue;
+      try {
+        this.o.store.writePairCandles(tf, rows);
+      } catch (err) {
+        this.o.log.warn({ err: String(err) }, `история: промежуточные свечи пар ${tf} не записаны`);
       }
     }
   }

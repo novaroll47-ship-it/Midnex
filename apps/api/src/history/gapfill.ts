@@ -74,7 +74,7 @@ export class GapFiller {
 
         const since = missing[0]!;
         const legs = engine.legsWithMultiplier(base);
-        const series: { exchange: ExchangeId; data: Map<number, number> }[] = [];
+        const series: { exchange: ExchangeId; data: Map<number, [number, number]> }[] = [];
         await Promise.all(
           legs.map(async (leg) => {
             const client = engine.clientFor(leg.exchange);
@@ -87,10 +87,14 @@ export class GapFiller {
                 since,
                 WINDOW_HOURS + 2,
               )) as number[][];
-              const data = new Map<number, number>();
+              // [открытие, закрытие] часа — чтобы у восстановленной свечи было тело.
+              const data = new Map<number, [number, number]>();
               for (const r of rows) {
                 const ts = Math.floor(r[0]! / HOUR) * HOUR;
-                if (typeof r[4] === 'number' && r[4] > 0) data.set(ts, r[4] / leg.multiplier);
+                const o = typeof r[1] === 'number' && r[1] > 0 ? r[1] : r[4];
+                if (typeof r[4] === 'number' && r[4] > 0) {
+                  data.set(ts, [(o as number) / leg.multiplier, r[4] / leg.multiplier]);
+                }
               }
               if (data.size) series.push({ exchange: leg.exchange, data });
             } catch (err) {
@@ -108,16 +112,18 @@ export class GapFiller {
         const coinRows: SpreadCandle[] = [];
         const pairRows: SpreadCandle[] = [];
         for (const ts of missing) {
-          let best: { exA: ExchangeId; exB: ExchangeId; spread: number } | null = null;
+          let best: { exA: ExchangeId; exB: ExchangeId; spread: number; open: number } | null = null;
           for (let i = 0; i < series.length; i++) {
             for (let j = i + 1; j < series.length; j++) {
               const a = series[i]!;
               const b = series[j]!;
-              const pa = a.data.get(ts);
-              const pb = b.data.get(ts);
-              if (pa === undefined || pb === undefined) continue;
+              const ca = a.data.get(ts);
+              const cb = b.data.get(ts);
+              if (ca === undefined || cb === undefined) continue;
               const key = pairKey(a.exchange, b.exchange);
               if (allowedSet.size && !allowedSet.has(key)) continue;
+              const [pa, pb] = [ca[1], cb[1]];
+              const openSpread = (Math.abs(ca[0] - cb[0]) / Math.min(ca[0], cb[0])) * 100;
               const spread = (Math.abs(pa - pb) / Math.min(pa, pb)) * 100;
               const [exA, exB] = key.split('|') as [ExchangeId, ExchangeId];
               pairRows.push({
@@ -125,9 +131,9 @@ export class GapFiller {
                 base,
                 exA,
                 exB,
-                open: spread,
-                high: spread,
-                low: spread,
+                open: openSpread,
+                high: Math.max(openSpread, spread),
+                low: Math.min(openSpread, spread),
                 close: spread,
                 samples: 1,
                 source: 'reconstructed',
@@ -135,8 +141,8 @@ export class GapFiller {
               if (!best || spread > best.spread) {
                 best =
                   pa < pb
-                    ? { exA: a.exchange, exB: b.exchange, spread }
-                    : { exA: b.exchange, exB: a.exchange, spread };
+                    ? { exA: a.exchange, exB: b.exchange, spread, open: openSpread }
+                    : { exA: b.exchange, exB: a.exchange, spread, open: openSpread };
               }
             }
           }
@@ -146,9 +152,9 @@ export class GapFiller {
               base,
               exA: best.exA,
               exB: best.exB,
-              open: best.spread,
-              high: best.spread,
-              low: best.spread,
+              open: best.open,
+              high: Math.max(best.open, best.spread),
+              low: Math.min(best.open, best.spread),
               close: best.spread,
               samples: 1,
               source: 'reconstructed',
