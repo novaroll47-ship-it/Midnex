@@ -13,11 +13,14 @@
 import ccxt, { type Exchange } from 'ccxt';
 import type { CoinDetail, ExchangeId, ScreenerSnapshot, SpreadRow, VenueQuote } from '@cs/shared';
 
+import { BOOK_STALE_MS, BookTracker } from './books.js';
 import { Feed, type FeedLogger, type FeedState, type GapReason, type Quote } from './feed.js';
+import { DEFAULT_MIN_NET_PCT, recommendVolume } from './liquidity.js';
 import { FundingTracker } from './funding.js';
 import { coinName } from './names.js';
 import {
   buildUniverse,
+  legKey,
   pairKey,
   venueMarkets,
   type Universe,
@@ -84,6 +87,10 @@ export interface EngineOptions {
   onMarketsChanged?: (exchange: ExchangeId, markets: VenueMarket[]) => void;
   /** Биржа замолчала (reason) или снова заговорила (null). */
   onGap?: (exchange: ExchangeId, reason: GapReason | null) => void;
+  /** Защитный порог чистого спреда для рекомендуемого объёма, % (по умолчанию 0,3). */
+  liquidityMinNetPct?: number;
+  /** Сколько верхних строк ленты держать со стаканами (по умолчанию 60). */
+  hotRows?: number;
 }
 
 export interface EngineStatus {
@@ -111,8 +118,15 @@ export class MarketEngine {
   private quotes = new Map<string, Map<string, Quote>>();
   private startedAt: number | null = null;
   private ready = false;
+  /** Стаканы по REST: горячий набор ног ленты и глубокие — по открытой монете. */
+  private readonly books: BookTracker;
 
-  constructor(private readonly opts: EngineOptions) {}
+  constructor(private readonly opts: EngineOptions) {
+    this.books = new BookTracker(this.clients, {
+      debug: (m) => opts.log.debug?.(m),
+      warn: (m) => opts.log.warn(m),
+    });
+  }
 
   // ---------------------------------------------------------------- жизненный цикл
 
@@ -130,6 +144,7 @@ export class MarketEngine {
   async start(): Promise<void> {
     this.startedAt = Date.now();
     this.running = true;
+    this.books.start();
 
     await Promise.all(this.opts.exchanges.map((id) => this.connect(id)));
 
@@ -347,7 +362,27 @@ export class MarketEngine {
     this.universe = buildUniverse([...this.marketsByExchange.values()].flat(), verify);
   }
 
+  /** Держать глубокие стаканы по ногам монеты — пока её смотрят в деталях. */
+  watchDeep(base: string): void {
+    const legs = this.universe.byBase.get(base);
+    if (legs) this.books.watchDeep(legs);
+  }
+
+  /** Стакан ноги (в монетах и ценах за монету) — для расчёта на объём. */
+  bookOf(exchange: ExchangeId, symbol: string) {
+    return this.books.get(exchange, symbol);
+  }
+
+  /** Сколько стаканов опрашивается — для статуса. */
+  booksStats() {
+    return { ...this.books.stats(), rows: { ...this.liqReasons } };
+  }
+
+  /** Почему у строки нет рекомендации — счётчики за последний снимок (диагностика). */
+  private liqReasons = { ok: 0, noBook: 0, stale: 0, empty: 0, zero: 0 };
+
   async stop(): Promise<void> {
+    this.books.stop();
     this.running = false;
     this.ready = false;
     if (this.retryTimer) clearInterval(this.retryTimer);
@@ -510,10 +545,12 @@ export class MarketEngine {
     }
 
     const symbol = `${base}/USDT:USDT`;
+    const liquidity = suspect ? undefined : this.rowLiquidity(long, short, fundingPct);
     return {
       symbol,
       base,
       name: coinName(base),
+      ...(liquidity ? { liquidity } : {}),
       longExchange: long.market.exchange,
       longPrice: r6(longPrice),
       shortExchange: short.market.exchange,
@@ -529,6 +566,102 @@ export class MarketEngine {
       suspect,
       isNew: pair.verifiedAt !== undefined && Date.now() - pair.verifiedAt < NEW_LISTING_MS,
     };
+  }
+
+  /**
+   * Рекомендуемый объём по стаканам обеих ног. Нет свежих стаканов — нет
+   * рекомендации (в ленте строка просто без неё), никаких оценок «на глаз».
+   */
+  private rowLiquidity(long: VenueSnapshot, short: VenueSnapshot, fundingPct: number) {
+    const a = this.books.get(long.market.exchange, long.market.symbol);
+    const b = this.books.get(short.market.exchange, short.market.symbol);
+    const R = this.liqReasons;
+    if (!a || !b) {
+      R.noBook++;
+      return undefined;
+    }
+    const now = Date.now();
+    const age = Math.max(now - a.updatedAt, now - b.updatedAt);
+    if (age > BOOK_STALE_MS) {
+      R.stale++;
+      return undefined;
+    }
+    if (a.asks.length === 0 || b.bids.length === 0) {
+      R.empty++;
+      return undefined;
+    }
+    const rec = recommendVolume(
+      { asks: a.asks, bids: a.bids, taker: long.market.taker },
+      { asks: b.asks, bids: b.bids, taker: short.market.taker },
+      { fundingPct, minNetPct: this.opts.liquidityMinNetPct ?? DEFAULT_MIN_NET_PCT },
+    );
+    const r2 = (v: number) => Math.round(v * 100) / 100;
+    const r4 = (v: number) => Math.round(v * 10_000) / 10_000;
+    if (!(rec.volumeUsdt > 0)) {
+      // По стакану спреда нет даже на первой точке сетки: показываем, что
+      // стакан говорит на 100 USDT, — это честнее, чем молчать.
+      R.zero++;
+      const probe = rec.curve[0];
+      return {
+        recommendedUsdt: 0,
+        profitUsdt: 0,
+        netPct: r4(probe?.netPct ?? 0),
+        grossPct: r4((probe?.netPct ?? 0) + rec.feesPct),
+        liquidityCapped: false,
+        thresholdCapped: true,
+        limitingLeg: rec.limitingLeg,
+        shallow: a.limit < 100 || b.limit < 100,
+        bookAgeMs: age,
+      };
+    }
+    R.ok++;
+    return {
+      recommendedUsdt: Math.round(rec.volumeUsdt),
+      profitUsdt: r2(rec.profitUsdt),
+      netPct: r4(rec.netPct),
+      grossPct: r4(rec.grossPct),
+      liquidityCapped: rec.liquidityCapped,
+      thresholdCapped: rec.thresholdCapped,
+      limitingLeg: rec.limitingLeg,
+      shallow: a.limit < 100 || b.limit < 100,
+      bookAgeMs: age,
+    };
+  }
+
+  /**
+   * Горячий набор — ноги верхних строк ленты; обновляем не чаще раза в
+   * секунду. Вход — топ-N строк, выход — за пределами 2N: у границы топа
+   * строки меняются местами каждую секунду, и без гистерезиса стаканы
+   * пришлось бы качать заново.
+   */
+  private hotUpdatedAt = 0;
+  private readonly hotLegs = new Set<string>();
+  private updateHot(rows: SpreadRow[], now: number): void {
+    if (now - this.hotUpdatedAt < 1000) return;
+    this.hotUpdatedAt = now;
+    const enter = this.opts.hotRows ?? 40;
+    const stay = enter * 2;
+    const legs: VenueMarket[] = [];
+    const next = new Set<string>();
+    let rank = 0;
+    for (const r of rows) {
+      if (r.stale || r.suspect) continue;
+      rank++;
+      if (rank > stay) break;
+      const list = this.universe.byBase.get(r.base) ?? [];
+      for (const ex of [r.longExchange, r.shortExchange]) {
+        const m = list.find((x) => x.exchange === ex);
+        if (!m) continue;
+        const key = legKey(m.exchange, m.symbol);
+        if (rank <= enter || this.hotLegs.has(key)) {
+          next.add(key);
+          legs.push(m);
+        }
+      }
+    }
+    this.hotLegs.clear();
+    for (const k of next) this.hotLegs.add(k);
+    this.books.setHot(legs);
   }
 
   private cache: { key: string; at: number; value: ScreenerSnapshot } | null = null;
@@ -576,6 +709,7 @@ export class MarketEngine {
     if (this.cache && this.cache.key === key && now - this.cache.at < 250) return this.cache.value;
 
     const rows: SpreadRow[] = [];
+    if (!filter) this.liqReasons = { ok: 0, noBook: 0, stale: 0, empty: 0, zero: 0 };
     for (const base of this.universe.byBase.keys()) {
       const row = this.buildRow(base, filter);
       if (row) rows.push(row);
@@ -587,7 +721,10 @@ export class MarketEngine {
     const rank = (r: SpreadRow) => (r.suspect ? 2 : r.stale ? 1 : 0);
     rows.sort((a, b) => rank(a) - rank(b) || b.spreadPct - a.spreadPct);
     // Длительность считаем по полной картине; с фильтром бирж — просто подставляем.
-    if (!filter) this.trackHeld(rows, now);
+    if (!filter) {
+      this.trackHeld(rows, now);
+      this.updateHot(rows, now);
+    }
     else {
       for (const r of rows) {
         const h = this.held.get(r.base);

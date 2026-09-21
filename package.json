@@ -17,7 +17,8 @@
     "build": "npm run build -w @cs/shared && npm run build -w @cs/web && npm run build -w @cs/api",
     "typecheck": "tsc -p packages/shared/tsconfig.json && tsc -p apps/api/tsconfig.json --noEmit && tsc -p apps/web/tsconfig.json --noEmit",
     "format": "prettier --write \"**/*.{ts,tsx,json,css,md}\"",
-    "start": "node apps/api/dist/index.js"
+    "start": "node apps/api/dist/index.js",
+    "test": "tsx --test packages/market/src/*.test.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

@@ -72,6 +72,7 @@ export function createMarketSource(log: FastifyBaseLogger, hooks: MarketHooks = 
     log: {
       info: (m) => log.info(`рынок: ${m}`),
       warn: (m) => log.warn(`рынок: ${m}`),
+      debug: (m) => log.debug(`рынок: ${m}`),
     },
   });
 

@@ -46,6 +46,7 @@ export interface FeedState {
 export interface FeedLogger {
   info(msg: string): void;
   warn(msg: string): void;
+  debug?(msg: string): void;
 }
 
 export interface FeedOptions {
@@ -98,7 +99,7 @@ export class Feed {
     this.bySymbol = new Map(opts.markets.map((m) => [m.symbol, m]));
     this.state = {
       exchange: opts.exchange,
-      mode: opts.client.has['watchTickers'] ? 'ws' : 'rest',
+      mode: opts.client.has['watchTickers'] && !Feed.REST_ONLY.has(opts.exchange) ? 'ws' : 'rest',
       status: 'starting',
       symbols: opts.markets.length,
       quoted: 0,
@@ -146,6 +147,19 @@ export class Feed {
     }
     return out;
   }
+
+  /**
+   * У Gate поток тикеров не несёт bid/ask вовсе — берём поток лучших цен
+   * (book_ticker). У MEXC общий поток тикеров тоже без bid/ask (там только
+   * границы цен maxBidPrice/minAskPrice — это не стакан), а REST-тикеры
+   * отдают bid1/ask1 по всем контрактам одним запросом — поэтому MEXC на
+   * REST. Без этого движок подставлял last в обе стороны, и на неликвидах
+   * рисовались фантомные спреды.
+   */
+  private static readonly BIDS_ASKS_STREAM = new Set<ExchangeId>(['gate']);
+  private static readonly REST_ONLY = new Set<ExchangeId>(['mexc']);
+  /** На REST у KuCoin fetchTickers — это список контрактов без bid/ask; bid/ask отдаёт fetchBidsAsks. */
+  private static readonly REST_BIDS_ASKS = new Set<ExchangeId>(['kucoin']);
 
   private ingest(tickers: Record<string, Ticker>, receivedAt: number): void {
     let touched = 0;
@@ -237,9 +251,12 @@ export class Feed {
           // резолвится на каждое сообщение биржи. Поэтому вызываем его не
           // чаще POLL_MS, а котировки между вызовами ccxt всё равно кладёт
           // в client.tickers — забираем оттуда всё, что обновилось.
-          await client.watchTickers(symbols);
+          const useBidsAsks = Feed.BIDS_ASKS_STREAM.has(exchange) && Boolean(client.has['watchBidsAsks']);
+          if (useBidsAsks) await client.watchBidsAsks(symbols ?? this.opts.markets.map((m) => m.symbol));
+          else await client.watchTickers(symbols);
           const now = Date.now();
-          this.ingest(this.changedTickers(client.tickers as Record<string, Ticker>), now);
+          const dict = (useBidsAsks ? client.bidsasks : client.tickers) as Record<string, Ticker>;
+          this.ingest(this.changedTickers(dict), now);
           await new Promise((r) => setTimeout(r, Feed.POLL_MS));
           this.state.latencyMs = now - t0;
           this.state.status = 'live';
@@ -302,9 +319,12 @@ export class Feed {
       inFlight = true;
       const t0 = Date.now();
       try {
-        const tickers = await client.fetchTickers();
+        const tickers =
+          Feed.REST_BIDS_ASKS.has(exchange) && client.has['fetchBidsAsks']
+            ? await client.fetchBidsAsks()
+            : await client.fetchTickers();
         const now = Date.now();
-        this.ingest(tickers, now);
+        this.ingest(tickers as Record<string, Ticker>, now);
         this.state.latencyMs = now - t0;
         this.state.status = 'live';
         this.state.lastError = null;

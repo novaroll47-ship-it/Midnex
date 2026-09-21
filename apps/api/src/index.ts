@@ -114,7 +114,7 @@ if (DEV_FAKE_USER && IS_PROD) {
   throw new Error('DEV_FAKE_USER=1 недопустим при NODE_ENV=production — это обход авторизации');
 }
 
-const app = Fastify({ logger: { level: 'info' } });
+const app = Fastify({ logger: { level: process.env.LOG_LEVEL?.trim() || 'info' } });
 
 // Шифрование ключей бирж. Без него приём ключей отключён: хранить их
 // открытым текстом нельзя.
@@ -400,6 +400,7 @@ app.get('/api/health', async () => ({
   uptimeSec: Math.round(process.uptime()),
   memoryMb: memoryMb(),
   eventLoopMs: eventLoopLag(),
+  books: market.engine?.booksStats() ?? null,
 }));
 
 // Задержка event loop за последнюю минуту: сколько миллисекунд таймеры
@@ -473,6 +474,8 @@ app.get('/api/coin/:base', async (req, reply) => {
     .filter((v): v is ExchangeId => valid.has(v));
   const detail = market.coinDetail(base, venues.length >= 2 ? venues : undefined);
   if (!detail) return reply.code(404).send({ error: 'not found' });
+  // Пока монету смотрят — держим глубокие стаканы по её ногам.
+  market.engine?.watchDeep(detail.base);
   return { ...detail, pairs: market.engine?.pairsOf(detail.base) ?? [] };
 });
 
