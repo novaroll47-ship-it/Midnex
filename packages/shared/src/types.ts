@@ -292,6 +292,51 @@ export interface FundingBotSettings {
 /** Личные настройки вида: список или карточки в скринере. */
 export interface UiSettings {
   view: 'list' | 'cards';
+  /** «Мой объём по умолчанию», USDT — для расчёта прибыли на объёме. */
+  volumeUsdt?: number;
+}
+
+/** Спред и прибыль на конкретном объёме (по стакану). */
+export interface VolumeQuote {
+  requestedUsdt: number;
+  volumeUsdt: number;
+  qty: number;
+  buyAvg: number;
+  sellAvg: number;
+  grossPct: number;
+  feesPct: number;
+  netPct: number;
+  profitUsdt: number;
+  fullyFilled: boolean;
+  limitingLeg: 'long' | 'short' | null;
+}
+
+/** Блок «Ликвидность» в деталях монеты. */
+export interface LiquidityDetail {
+  base: string;
+  longExchange: ExchangeId;
+  shortExchange: ExchangeId;
+  /** Стаканы глубокие (до 100 уровней) или ещё только топ-20. */
+  deep: boolean;
+  /** Возраст более старого стакана, мс. */
+  bookAgeMs: number;
+  /** Уровней в стакане каждой ноги. */
+  levels: { long: number; short: number };
+  /** Спред по лучшим ценам стакана, % (для сравнения). */
+  topGrossPct: number;
+  topNetPct: number;
+  /** На объёме пользователя. */
+  yours: VolumeQuote;
+  /** Рекомендация. */
+  recommended: VolumeQuote & { liquidityCapped: boolean; thresholdCapped: boolean };
+  /** Сколько видимый стакан вмещает всего, USDT, и какая нога ограничивает. */
+  availableUsdt: number;
+  availableLimitingLeg: 'long' | 'short' | null;
+  /** Кривая «объём → прибыль» по сетке. */
+  curve: { volumeUsdt: number; profitUsdt: number; netPct: number }[];
+  /** Защитный порог чистого спреда, %. */
+  minNetPct: number;
+  updatedAt: number;
 }
 
 /** Прогресс обучения: какие модули пройдены (или пропущены). */

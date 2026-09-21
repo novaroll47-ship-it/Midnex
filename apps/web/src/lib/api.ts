@@ -7,6 +7,7 @@ import type {
   ExchangeId,
   BotSettings,
   CoinDetail,
+  LiquidityDetail,
   NotificationSettings,
   PlanId,
   Position,
@@ -295,6 +296,8 @@ export const api = {
     get<ScreenerSnapshot>('/api/screener', { minSpread, venues }),
   coin: (base: string, venues?: string) =>
     get<CoinDetail>(`/api/coin/${encodeURIComponent(base)}`, { venues }),
+  coinLiquidity: (base: string, volume: number, venues?: string) =>
+    get<LiquidityDetail>(`/api/coin/${encodeURIComponent(base)}/liquidity`, { volume, venues }),
 
   settings: () => get<SettingsResponse>('/api/settings'),
   patchBot: (body: Partial<BotSettings>) =>

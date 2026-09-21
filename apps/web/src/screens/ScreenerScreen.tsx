@@ -807,6 +807,7 @@ function CoinRow({
                   value: formatSignedPct(row.netPct),
                 })}
         </div>
+        <LiquidityLine row={row} compact />
       </div>
 
       <button
@@ -932,6 +933,38 @@ function CoinCard({
               value: formatSignedPct(row.netPct),
             })}
       </div>
+      <LiquidityLine row={row} />
+    </div>
+  );
+}
+
+/**
+ * Что говорит стакан: рекомендуемый объём и прибыль на нём. Мелкий стакан —
+ * янтарным, «спреда по стакану нет» — красным. Без стаканов строки нет.
+ */
+function LiquidityLine({ row, compact = false }: { row: SpreadRow; compact?: boolean }) {
+  const { t } = useTranslation();
+  const l = row.liquidity;
+  if (!l || row.suspect) return null;
+  const usd = (v: number) =>
+    v >= 1000 ? `$${(v / 1000).toFixed(v >= 10_000 ? 0 : 1)}k` : `$${Math.round(v)}`;
+  if (l.recommendedUsdt <= 0) {
+    return (
+      <div className={`liq-line liq-line--bad num${compact ? ' liq-line--compact' : ''}`}>
+        {t(compact ? 'liq.line.noneShort' : 'liq.line.none', { value: formatSignedPct(l.netPct) })}
+      </div>
+    );
+  }
+  if (l.liquidityCapped) {
+    return (
+      <div className={`liq-line liq-line--thin num${compact ? ' liq-line--compact' : ''}`}>
+        {t(compact ? 'liq.line.thinShort' : 'liq.line.thin', { volume: usd(l.recommendedUsdt), profit: usd(l.profitUsdt) })}
+      </div>
+    );
+  }
+  return (
+    <div className={`liq-line num${compact ? ' liq-line--compact' : ''}`}>
+      {t(compact ? 'liq.line.okShort' : 'liq.line.ok', { volume: usd(l.recommendedUsdt), profit: usd(l.profitUsdt) })}
     </div>
   );
 }

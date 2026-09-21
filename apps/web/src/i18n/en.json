@@ -200,7 +200,9 @@
     "helpHint": "The tour highlights elements right on screen and explains what is where.",
     "tourDone": "Completed",
     "tourNew": "Not yet",
-    "tourReplay": "Start"
+    "tourReplay": "Start",
+    "volumeTitle": "My default volume",
+    "volumeSub": "Used for profit-on-volume in coin details"
   },
   "sd": {
     "botState": "Bot state",
@@ -706,6 +708,42 @@
         "title": "How it works",
         "text": "A rule fires once when the threshold is crossed and re-arms once the spread drops. Notifications arrive in the bot chat."
       }
+    }
+  },
+  "liq": {
+    "title": "Liquidity",
+    "yourVolume": "Your volume",
+    "yourVolumeSub": "For this view only; default comes from Settings",
+    "unavailable": "Order books unavailable",
+    "waiting": "Loading both order books…",
+    "onYourVolume": "On your volume ({{volume}})",
+    "profit": "profit",
+    "onlyFits": "the book only fits {{volume}}",
+    "atBest": "At best book prices",
+    "grossTop": "gross {{value}}",
+    "recommended": "Recommended volume",
+    "netAt": "net spread at it {{value}}",
+    "cappedLiquidity": "limited by the book",
+    "cappedThreshold": "{{pct}} % floor",
+    "noSpreadInBook": "no spread in the book ({{value}} at $100)",
+    "legendRec": "recommended volume",
+    "legendYou": "your volume",
+    "available": "Visible liquidity covers {{volume}}",
+    "limiting": "limited by {{exchange}} ({{side}})",
+    "sideLong": "buy",
+    "sideShort": "sell",
+    "pair": "Buy {{long}} → sell {{short}}",
+    "deepBook": "book up to {{n}} levels",
+    "shallowBook": "top of book only so far (20 levels)",
+    "age": "updated {{s}}s ago",
+    "note": "An estimate from the current book, not a fill guarantee: hidden orders are invisible and the book changes in fractions of a second.",
+    "line": {
+      "ok": "Rec. volume ~{{volume}} · profit ~{{profit}}",
+      "okShort": "~{{volume}} · +{{profit}}",
+      "thin": "Thin book · up to {{volume}} · profit ~{{profit}}",
+      "thinShort": "thin · up to {{volume}}",
+      "none": "No spread in the book ({{value}})",
+      "noneShort": "book: {{value}}"
     }
   }
 }

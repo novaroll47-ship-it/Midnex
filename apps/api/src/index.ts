@@ -479,6 +479,34 @@ app.get('/api/coin/:base', async (req, reply) => {
   return { ...detail, pairs: market.engine?.pairsOf(detail.base) ?? [] };
 });
 
+/**
+ * Ликвидность: спред и прибыль на объёме пользователя, рекомендуемый объём,
+ * кривая «объём → прибыль». Объём — из запроса, иначе из настроек.
+ */
+app.get('/api/coin/:base/liquidity', async (req, reply) => {
+  if (!(await billing.hasAccess(req.state!.userId))) {
+    return reply.code(402).send({ error: 'subscription required' });
+  }
+  const { base } = req.params as { base: string };
+  const q = req.query as { volume?: string; exA?: string; exB?: string; venues?: string };
+  const engine = market.engine;
+  if (!engine || market.mode !== 'live') return reply.code(503).send({ error: 'books unavailable' });
+  const valid = new Set(EXCHANGES.map((e) => e.id as string));
+  const venues = (q.venues ?? '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter((v): v is ExchangeId => valid.has(v));
+  const pair =
+    q.exA && q.exB && valid.has(q.exA) && valid.has(q.exB) && q.exA !== q.exB
+      ? { exA: q.exA as ExchangeId, exB: q.exB as ExchangeId }
+      : undefined;
+  const volume = Number(q.volume) || req.state!.settings.ui.volumeUsdt || 1000;
+  engine.watchDeep(base.toUpperCase());
+  const detail = engine.liquidityDetail(base, volume, pair, venues.length >= 2 ? venues : undefined);
+  if (!detail) return reply.code(404).send({ error: 'no books yet' });
+  return detail;
+});
+
 // ---------------------------------------------------------------- история спредов
 
 const HOUR = 3_600_000;
@@ -883,10 +911,18 @@ app.patch('/api/settings/onboarding', async (req, reply) => {
 /** Вид скринера: список или карточки — личная настройка, живёт на сервере. */
 app.patch('/api/settings/ui', async (req, reply) => {
   const s = req.state!;
-  const body = req.body as { view?: unknown };
-  if (body?.view !== 'list' && body?.view !== 'cards')
-    return reply.code(400).send({ error: 'bad view' });
-  s.settings.ui = { ...s.settings.ui, view: body.view };
+  const body = req.body as { view?: unknown; volumeUsdt?: unknown };
+  const next = { ...s.settings.ui };
+  if (body?.view !== undefined) {
+    if (body.view !== 'list' && body.view !== 'cards') return reply.code(400).send({ error: 'bad view' });
+    next.view = body.view;
+  }
+  if (body?.volumeUsdt !== undefined) {
+    const v = Number(body.volumeUsdt);
+    if (!Number.isFinite(v) || v < 10 || v > 10_000_000) return reply.code(400).send({ error: 'bad volume' });
+    next.volumeUsdt = Math.round(v);
+  }
+  s.settings.ui = next;
   await state.saveSettings(s);
   return settingsPayload(s);
 });

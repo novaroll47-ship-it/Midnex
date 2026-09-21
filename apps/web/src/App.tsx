@@ -222,6 +222,7 @@ export function App() {
         {route.kind === 'coin' && (
           <CoinDetailScreen
             base={route.base}
+            defaultVolume={settings.data?.ui?.volumeUsdt ?? 1000}
             onAlert={(base) => {
               setAlertPreset(base);
               go({ route: { kind: 'alerts' } });

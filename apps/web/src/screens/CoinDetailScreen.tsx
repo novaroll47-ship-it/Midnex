@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next';
 import { CoinIcon } from '../components/CoinIcon';
 import { ExchangeLogo } from '../components/ExchangeLogo';
 import { FundingHistory } from '../components/FundingHistory';
+import { LiquidityBlock } from '../components/LiquidityBlock';
 import { SpreadChart } from '../components/SpreadChart';
 import { InfoRow, Section } from '../components/Form';
 import { ArrowDownIcon, ArrowUpIcon, BellIcon, ClockIcon } from '../icons';
@@ -34,9 +35,12 @@ import { usePolling } from '../lib/usePolling';
 export function CoinDetailScreen({
   base,
   onAlert,
+  defaultVolume = 1000,
 }: {
   base: string;
   onAlert?: (base: string) => void;
+  /** «Мой объём по умолчанию» из настроек, USDT. */
+  defaultVolume?: number;
 }) {
   const { t } = useTranslation();
   // Биржи для лучшей пары: по умолчанию — как в фильтре скринера; здесь
@@ -77,6 +81,8 @@ export function CoinDetailScreen({
         pairs={data.pairs ?? []}
         currentPair={{ exA: data.best.longExchange, exB: data.best.shortExchange }}
       />
+
+      <LiquidityBlock base={data.base} defaultVolume={defaultVolume} venues={venueKey || undefined} />
 
       <div className="section-label">{t('coin.venuesTitle')}</div>
       <div className="venue-chips venue-chips--wrap">

@@ -1,5 +1,5 @@
 /** Экран «Настройки» — макет docs/mockup-settings.png. Список разделов. */
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { ChevronRightIcon, LogoutIcon } from '../icons';
@@ -90,6 +90,11 @@ export function SettingsScreen({
 
       <div className="section-label">{t('settings.appSection')}</div>
       <section className="card list">
+        <Row
+          title={t('settings.volumeTitle')}
+          sub={t('settings.volumeSub')}
+          control={<VolumeField value={data?.ui?.volumeUsdt ?? 1000} onChange={(v) => settings.setUi({ volumeUsdt: v })} />}
+        />
         <Row
           title={t('settings.themeTitle')}
           sub={t('settings.themeSub')}
@@ -193,6 +198,35 @@ export function SettingsScreen({
         />
       )}
     </div>
+  );
+}
+
+/** Объём по умолчанию, USDT: сохраняется по потере фокуса, если число разумное. */
+function VolumeField({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => setDraft(String(value)), [value]);
+  const commit = () => {
+    const v = Math.round(Number(draft.replace(',', '.')));
+    if (Number.isFinite(v) && v >= 10 && v <= 10_000_000 && v !== value) onChange(v);
+    else setDraft(String(value));
+  };
+  return (
+    <span className="num-field">
+      <input
+        className="num-field__input num"
+        inputMode="numeric"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            commit();
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+      />
+      <span className="num-field__unit">USDT</span>
+    </span>
   );
 }
 

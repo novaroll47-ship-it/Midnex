@@ -11,11 +11,18 @@
  * рисуют фантомный спред — самый опасный вид ложного сигнала.
  */
 import ccxt, { type Exchange } from 'ccxt';
-import type { CoinDetail, ExchangeId, ScreenerSnapshot, SpreadRow, VenueQuote } from '@cs/shared';
+import type {
+  CoinDetail,
+  ExchangeId,
+  LiquidityDetail,
+  ScreenerSnapshot,
+  SpreadRow,
+  VenueQuote,
+} from '@cs/shared';
 
 import { BOOK_STALE_MS, BookTracker } from './books.js';
 import { Feed, type FeedLogger, type FeedState, type GapReason, type Quote } from './feed.js';
-import { DEFAULT_MIN_NET_PCT, recommendVolume } from './liquidity.js';
+import { DEFAULT_MIN_NET_PCT, recommendVolume, spreadOnVolume } from './liquidity.js';
 import { FundingTracker } from './funding.js';
 import { coinName } from './names.js';
 import {
@@ -371,6 +378,97 @@ export class MarketEngine {
   /** Стакан ноги (в монетах и ценах за монету) — для расчёта на объём. */
   bookOf(exchange: ExchangeId, symbol: string) {
     return this.books.get(exchange, symbol);
+  }
+
+  /**
+   * Блок «Ликвидность» для деталей монеты: спред и прибыль на объёме
+   * пользователя, рекомендация, сколько вмещает стакан, кривая по сетке.
+   * Пара — заданная или лучшая среди выбранных бирж; направление —
+   * то, где спред по стакану больше.
+   */
+  liquidityDetail(
+    base: string,
+    volumeUsdt: number,
+    pair?: { exA: ExchangeId; exB: ExchangeId },
+    filter?: ExchangeId[],
+  ): LiquidityDetail | null {
+    const canonical = this.bases().find((b) => b.toLowerCase() === base.toLowerCase());
+    if (!canonical) return null;
+    const legs = this.universe.byBase.get(canonical) ?? [];
+    let a: VenueMarket | undefined;
+    let b: VenueMarket | undefined;
+    if (pair) {
+      a = legs.find((m) => m.exchange === pair.exA);
+      b = legs.find((m) => m.exchange === pair.exB);
+    } else {
+      const row = this.buildRow(canonical, filter);
+      if (!row) return null;
+      a = legs.find((m) => m.exchange === row.longExchange);
+      b = legs.find((m) => m.exchange === row.shortExchange);
+    }
+    if (!a || !b) return null;
+    const ba = this.books.get(a.exchange, a.symbol);
+    const bb = this.books.get(b.exchange, b.symbol);
+    if (!ba || !bb || ba.asks.length === 0 || bb.asks.length === 0) return null;
+
+    // Направление пары — по стакану: считаем оба и берём то, где спред по
+    // лучшим ценам больше (тикеры и стакан могут расходиться).
+    const gross = (buy: typeof ba, sell: typeof bb) =>
+      buy.asks[0] && sell.bids[0] ? ((sell.bids[0][0] - buy.asks[0][0]) / buy.asks[0][0]) * 100 : -Infinity;
+    let long = a;
+    let short = b;
+    let lb = ba;
+    let sb = bb;
+    if (gross(bb, ba) > gross(ba, bb)) {
+      long = b;
+      short = a;
+      lb = bb;
+      sb = ba;
+    }
+    const fLong = this.fundingPct(long.exchange, long.symbol);
+    const fShort = this.fundingPct(short.exchange, short.symbol);
+    const periods = this.opts.holdMinutes / (FUNDING_PERIOD_MS / 60_000);
+    const fundingPct = fLong !== null && fShort !== null ? (fShort - fLong) * periods : 0;
+    const L = { asks: lb.asks, bids: lb.bids, taker: long.taker };
+    const S = { asks: sb.asks, bids: sb.bids, taker: short.taker };
+    const minNetPct = this.opts.liquidityMinNetPct ?? DEFAULT_MIN_NET_PCT;
+    const rec = recommendVolume(L, S, { fundingPct, minNetPct });
+    const yours = spreadOnVolume(L, S, Math.max(1, volumeUsdt), fundingPct);
+    const all = spreadOnVolume(L, S, 1e12, fundingPct);
+    const topGross = gross(lb, sb);
+    const now = Date.now();
+    const r4 = (v: number) => Math.round(v * 10_000) / 10_000;
+    const r2 = (v: number) => Math.round(v * 100) / 100;
+    const q = (v: ReturnType<typeof spreadOnVolume>) => ({
+      requestedUsdt: r2(v.requestedUsdt),
+      volumeUsdt: r2(v.volumeUsdt),
+      qty: v.qty,
+      buyAvg: v.buyAvg,
+      sellAvg: v.sellAvg,
+      grossPct: r4(v.grossPct),
+      feesPct: r4(v.feesPct),
+      netPct: r4(v.netPct),
+      profitUsdt: r2(v.profitUsdt),
+      fullyFilled: v.fullyFilled,
+      limitingLeg: v.limitingLeg,
+    });
+    return {
+      base: canonical,
+      longExchange: long.exchange,
+      shortExchange: short.exchange,
+      deep: lb.limit >= 100 && sb.limit >= 100,
+      bookAgeMs: Math.max(now - lb.updatedAt, now - sb.updatedAt),
+      levels: { long: lb.asks.length, short: sb.bids.length },
+      topGrossPct: r4(topGross),
+      topNetPct: r4(topGross - yours.feesPct + fundingPct),
+      yours: q(yours),
+      recommended: { ...q(rec), liquidityCapped: rec.liquidityCapped, thresholdCapped: rec.thresholdCapped },
+      availableUsdt: r2(all.volumeUsdt),
+      availableLimitingLeg: all.limitingLeg,
+      curve: rec.curve.map((c) => ({ volumeUsdt: c.volumeUsdt, profitUsdt: r2(c.profitUsdt), netPct: r4(c.netPct) })),
+      minNetPct,
+      updatedAt: now,
+    };
   }
 
   /** Сколько стаканов опрашивается — для статуса. */
