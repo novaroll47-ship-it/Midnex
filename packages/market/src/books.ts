@@ -16,11 +16,11 @@
  * стаканов (books5/depth20) можно добавить по биржам позже, интерфейс
  * модуля от этого не изменится.
  */
-import type { Exchange } from 'ccxt';
 import type { ExchangeId } from '@cs/shared';
 
 import { normalizeBook, type BookLevel } from './liquidity.js';
 import { legKey, type VenueMarket } from './universe.js';
+import type { ExchangeClient } from './worker/host.js';
 
 export interface BookSnapshot {
   asks: BookLevel[];
@@ -74,7 +74,7 @@ export class BookTracker {
   private timer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
-    private readonly clients: Map<ExchangeId, Exchange>,
+    private readonly clients: Map<ExchangeId, ExchangeClient>,
     private readonly log: BooksLogger,
   ) {}
 
@@ -183,14 +183,11 @@ export class BookTracker {
     }
   }
 
-  private async fetch(client: Exchange, key: string, w: Want): Promise<void> {
+  private async fetch(client: ExchangeClient, key: string, w: Want): Promise<void> {
     const m = w.market;
     const t0 = Date.now();
     try {
-      const ob = (await client.fetchOrderBook(m.symbol, w.limit)) as {
-        asks: [number, number][];
-        bids: [number, number][];
-      };
+      const ob = await client.fetchOrderBook(m.symbol, w.limit);
       // Цена в стакане — за единицу тикера, количество — в контрактах.
       // m.multiplier — канонический множитель (из названия тикера или из
       // сверки): цена за монету = цена / multiplier, монет в контракте =

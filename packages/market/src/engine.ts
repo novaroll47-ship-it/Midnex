@@ -10,7 +10,6 @@
  * соединение оставляет замершую цену, и на её фоне живые цены других бирж
  * рисуют фантомный спред — самый опасный вид ложного сигнала.
  */
-import ccxt, { type Exchange } from 'ccxt';
 import type {
   CoinDetail,
   ExchangeId,
@@ -21,7 +20,7 @@ import type {
 } from '@cs/shared';
 
 import { BOOK_STALE_MS, BookTracker } from './books.js';
-import { Feed, type FeedLogger, type FeedState, type GapReason, type Quote } from './feed.js';
+import type { FeedLogger, FeedState, GapReason, Quote } from './feed.js';
 import { DEFAULT_MIN_NET_PCT, recommendVolume, spreadOnVolume } from './liquidity.js';
 import { FundingTracker } from './funding.js';
 import { coinName } from './names.js';
@@ -34,6 +33,22 @@ import {
   type VenueMarket,
   type VerifiedPairSet,
 } from './universe.js';
+import { ExchangeWorkerHost, type ExchangeClient, type ExchangeProxy } from './worker/host.js';
+
+/** Пока worker ещё не прислал состояние потока — «подключается». */
+function emptyFeedState(exchange: ExchangeId): FeedState {
+  return {
+    exchange,
+    mode: 'ws',
+    status: 'starting',
+    symbols: 0,
+    quoted: 0,
+    lastUpdateAt: null,
+    latencyMs: null,
+    reconnects: 0,
+    lastError: null,
+  };
+}
 
 /** Идентификаторы ccxt отличаются от наших только у KuCoin: фьючерсы у неё отдельный класс. */
 const CCXT_ID: Record<ExchangeId, string> = {
@@ -98,6 +113,10 @@ export interface EngineOptions {
   liquidityMinNetPct?: number;
   /** Сколько верхних строк ленты держать со стаканами (по умолчанию 60). */
   hotRows?: number;
+  /** Сколько worker-потоков под ccxt (по умолчанию 4; биржи раскладываются по кругу). */
+  workers?: number;
+  /** Файл worker'а; по умолчанию — рядом со сборкой (dist/exchange-worker.js) или исходник. */
+  workerFile?: URL | string;
 }
 
 export interface EngineStatus {
@@ -115,8 +134,11 @@ interface VenueSnapshot {
 }
 
 export class MarketEngine {
-  private clients = new Map<ExchangeId, Exchange>();
-  private feeds = new Map<ExchangeId, Feed>();
+  private clients = new Map<ExchangeId, ExchangeClient>();
+  /** Прокси бирж с запущенным потоком котировок — для статуса и остановки. */
+  private feeds = new Map<ExchangeId, ExchangeProxy>();
+  /** Пул worker'ов с ccxt. */
+  private readonly host: ExchangeWorkerHost;
   private funding: FundingTracker | null = null;
   private universe: Universe = { byBase: new Map(), bySymbol: new Map(), pairsByBase: new Map() };
   /** base → exchange → последняя котировка. */
@@ -133,6 +155,20 @@ export class MarketEngine {
       debug: (m) => opts.log.debug?.(m),
       warn: (m) => opts.log.warn(m),
     });
+    this.host = new ExchangeWorkerHost(
+      opts.workerFile ?? ExchangeWorkerHost.workerFile(),
+      Math.max(1, opts.workers ?? 4),
+      opts.log,
+      (exchange, why) => this.onExchangeLost(exchange, why),
+    );
+  }
+
+  /** Worker с биржей упал: забываем клиента, таймер повторов подключит заново. */
+  private onExchangeLost(exchange: ExchangeId, why: string): void {
+    this.clients.delete(exchange);
+    this.feeds.delete(exchange);
+    this.opts.onGap?.(exchange, 'ws_closed');
+    this.opts.log.warn(`${exchange}: потеряна (${why}), переподключу через минуту`);
   }
 
   // ---------------------------------------------------------------- жизненный цикл
@@ -185,7 +221,7 @@ export class MarketEngine {
         ),
       ),
     ]);
-    const fresh = venueMarkets(id, client);
+    const fresh = venueMarkets(id, client.markets);
     const before = this.marketsByExchange.get(id) ?? [];
     const beforeKeys = new Set(before.map((m) => m.symbol));
     const freshKeys = new Set(fresh.map((m) => m.symbol));
@@ -233,7 +269,7 @@ export class MarketEngine {
           ),
         ),
       ]);
-      markets = venueMarkets(id, client);
+      markets = venueMarkets(id, client.markets);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       log.warn(`${id}: не загрузил рынки (${message.slice(0, 100)}) — попробую через минуту`);
@@ -254,18 +290,10 @@ export class MarketEngine {
 
     // Поток следит за всеми рынками своей биржи, а не только за теми, что
     // сейчас во вселенной: когда позже подключится ещё одна биржа, часть монет
-    // станет «общей», и их котировки уже должны быть под рукой.
-    const feed = new Feed({
-      exchange: id,
-      client,
-      markets,
-      pollMs: this.opts.pollMs,
-      log,
-      onQuote: (market, quote) => this.onQuote(market, quote),
-      onGap: (ex, reason) => this.opts.onGap?.(ex, reason),
-    });
-    this.feeds.set(id, feed);
-    feed.start();
+    // станет «общей», и их котировки уже должны быть под рукой. Сам поток
+    // живёт в worker'е; сюда приходят пачки котировок (см. createClient).
+    client.startFeed(markets, this.opts.pollMs);
+    this.feeds.set(id, client);
 
     // Фандинг-трекер один на всех; при появлении новой биржи пересоздаём —
     // это дешёвый REST-опрос раз в минуту.
@@ -289,8 +317,8 @@ export class MarketEngine {
     this.rebuildUniverse();
   }
 
-  /** ccxt-клиент биржи — для фоновых REST-задач (история фандинга). */
-  clientFor(exchange: ExchangeId): Exchange | undefined {
+  /** Клиент биржи (прокси в worker) — для фоновых REST-задач: свечи, история фандинга. */
+  clientFor(exchange: ExchangeId): ExchangeClient | undefined {
     return this.clients.get(exchange);
   }
 
@@ -486,16 +514,15 @@ export class MarketEngine {
     if (this.retryTimer) clearInterval(this.retryTimer);
     this.retryTimer = null;
     this.funding?.stop();
-    await Promise.all([...this.feeds.values()].map((f) => f.stop()));
+    for (const f of this.feeds.values()) f.stopFeed();
     this.feeds.clear();
+    await Promise.all([...this.clients.values()].map((c) => c.close().catch(() => undefined)));
     this.clients.clear();
+    await this.host.terminate();
   }
 
-  private createClient(id: ExchangeId): Exchange {
-    const Ctor = (ccxt.pro as unknown as Record<string, new (cfg: object) => Exchange>)[
-      CCXT_ID[id]
-    ]!;
-    const client = new Ctor({
+  private createClient(id: ExchangeId): ExchangeProxy {
+    const config = {
       enableRateLimit: true,
       // Gate отдаёт список рынков по 15 секунд — штатных десяти не хватает.
       timeout: 30_000,
@@ -508,13 +535,30 @@ export class MarketEngine {
         ...MARKET_SCOPE[id],
       },
       ...(this.opts.httpsProxy ? { httpsProxy: this.opts.httpsProxy } : {}),
+    };
+    // Поток котировок в worker'е шлёт пачки [символ, bid, ask, last, время];
+    // рынок ищем по символу среди рынков этой биржи.
+    return this.host.createClient(id, CCXT_ID[id], config, REST_ONLY.has(id), {
+      onQuotes: (items) => {
+        const list = this.marketsByExchange.get(id);
+        if (!list) return;
+        let bySymbol = this.symbolIndex.get(id);
+        if (!bySymbol || bySymbol.size !== list.length) {
+          bySymbol = new Map(list.map((m) => [m.symbol, m]));
+          this.symbolIndex.set(id, bySymbol);
+        }
+        for (const [symbol, bid, ask, last, receivedAt] of items) {
+          const market = bySymbol.get(symbol);
+          if (market) this.onQuote(market, { bid, ask, last, receivedAt });
+        }
+      },
+      onFeedState: () => undefined,
+      onGap: (reason) => this.opts.onGap?.(id, reason),
     });
-    if (REST_ONLY.has(id)) {
-      // Feed выбирает режим по наличию watchTickers — прячем его.
-      client.has['watchTickers'] = false;
-    }
-    return client;
   }
+
+  /** Биржа → символ → рынок; пересобирается, когда меняется список рынков. */
+  private readonly symbolIndex = new Map<ExchangeId, Map<string, VenueMarket>>();
 
   private onQuote(market: VenueMarket, quote: Quote): void {
     let byVenue = this.quotes.get(market.base);
@@ -532,7 +576,7 @@ export class MarketEngine {
       ready: this.ready,
       startedAt: this.startedAt,
       universeSize: this.universe.byBase.size,
-      feeds: [...this.feeds.values()].map((f) => ({ ...f.state })),
+      feeds: [...this.feeds.values()].map((f) => ({ ...(f.feedState ?? emptyFeedState(f.exchange)) })),
       fundingUnsupported: [...(this.funding?.unsupported ?? [])],
     };
   }

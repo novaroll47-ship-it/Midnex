@@ -149,14 +149,15 @@ export class Feed {
   }
 
   /**
-   * У Gate поток тикеров не несёт bid/ask вовсе — берём поток лучших цен
-   * (book_ticker). У MEXC общий поток тикеров тоже без bid/ask (там только
+   * У Gate поток тикеров не несёт bid/ask вовсе, у Binance фьючерсный
+   * 24h-тикер — тоже только last: берём поток лучших цен (book_ticker /
+   * bookTicker). У MEXC общий поток тикеров тоже без bid/ask (там только
    * границы цен maxBidPrice/minAskPrice — это не стакан), а REST-тикеры
    * отдают bid1/ask1 по всем контрактам одним запросом — поэтому MEXC на
    * REST. Без этого движок подставлял last в обе стороны, и на неликвидах
    * рисовались фантомные спреды.
    */
-  private static readonly BIDS_ASKS_STREAM = new Set<ExchangeId>(['gate']);
+  private static readonly BIDS_ASKS_STREAM = new Set<ExchangeId>(['gate', 'binance']);
   private static readonly REST_ONLY = new Set<ExchangeId>(['mexc']);
   /** На REST у KuCoin fetchTickers — это список контрактов без bid/ask; bid/ask отдаёт fetchBidsAsks. */
   private static readonly REST_BIDS_ASKS = new Set<ExchangeId>(['kucoin']);
@@ -252,7 +253,9 @@ export class Feed {
           // чаще POLL_MS, а котировки между вызовами ccxt всё равно кладёт
           // в client.tickers — забираем оттуда всё, что обновилось.
           const useBidsAsks = Feed.BIDS_ASKS_STREAM.has(exchange) && Boolean(client.has['watchBidsAsks']);
-          if (useBidsAsks) await client.watchBidsAsks(symbols ?? this.opts.markets.map((m) => m.symbol));
+          // Общий поток без списка символов, если биржа умеет; иначе — по списку
+          // (переключение — по ошибке ниже, как и у тикеров).
+          if (useBidsAsks) await client.watchBidsAsks(symbols);
           else await client.watchTickers(symbols);
           const now = Date.now();
           const dict = (useBidsAsks ? client.bidsasks : client.tickers) as Record<string, Ticker>;

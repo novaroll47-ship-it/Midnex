@@ -67,6 +67,8 @@ export function createMarketSource(log: FastifyBaseLogger, hooks: MarketHooks = 
     // применится на M4, когда чистый профит будет считаться под конкретную сделку.
     holdMinutes: 240,
     httpsProxy: process.env.EXCHANGE_HTTPS_PROXY || undefined,
+    // ccxt живёт в worker-потоках: биржи раскладываются по кругу.
+    workers: Number(process.env.MARKET_WORKERS) || 4,
     onMarketsChanged: (exchange, markets) => hooks.onMarketsChanged?.(exchange, markets),
     onGap: (exchange, reason) => hooks.onGap?.(exchange, reason),
     log: {

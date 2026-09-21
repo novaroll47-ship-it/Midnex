@@ -7,11 +7,11 @@
  * чистого профита не входит. Это честнее, чем подставить ноль и выдать его
  * за знание.
  */
-import type { Exchange } from 'ccxt';
 import type { ExchangeId } from '@cs/shared';
 
 import type { FeedLogger } from './feed.js';
 import type { VenueMarket } from './universe.js';
+import type { ExchangeClient } from './worker/host.js';
 
 export interface FundingInfo {
   /** Ставка за период, доля (0.0001 = 0.01%). */
@@ -28,7 +28,7 @@ export class FundingTracker {
   readonly unsupported = new Set<ExchangeId>();
 
   constructor(
-    private readonly clients: Map<ExchangeId, Exchange>,
+    private readonly clients: Map<ExchangeId, ExchangeClient>,
     private readonly markets: Map<ExchangeId, VenueMarket[]>,
     private readonly log: FeedLogger,
     private readonly intervalMs = 60_000,
@@ -52,7 +52,7 @@ export class FundingTracker {
     await Promise.all([...this.clients].map(([id, ex]) => this.refresh(id, ex)));
   }
 
-  private async refresh(id: ExchangeId, ex: Exchange): Promise<void> {
+  private async refresh(id: ExchangeId, ex: ExchangeClient): Promise<void> {
     if (this.unsupported.has(id)) return;
     if (!ex.has['fetchFundingRates']) {
       this.unsupported.add(id);

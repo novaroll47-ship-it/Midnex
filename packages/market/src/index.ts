@@ -4,6 +4,7 @@ export { splitMultiplier } from './universe.js';
 export { coinName } from './names.js';
 export { legKey, pairKey, type VerifiedPairSet, type VenueMarket } from './universe.js';
 export { BOOK_STALE_MS, type BookSnapshot } from './books.js';
+export { ExchangeWorkerHost, type ExchangeClient } from './worker/host.js';
 export {
   simulateFill,
   normalizeBook,

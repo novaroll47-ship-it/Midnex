@@ -6,7 +6,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --external:fastify --external:@fastify/* --external:dotenv --external:ccxt --external:postgres --outfile=dist/index.js",
+    "build": "esbuild src/index.ts src/exchange-worker.ts --bundle --platform=node --format=esm --target=node20 --external:fastify --external:@fastify/* --external:dotenv --external:ccxt --external:postgres --external:tsx --outdir=dist",
     "start": "node dist/index.js",
     "backfill": "tsx src/scripts/backfill.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"

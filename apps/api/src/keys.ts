@@ -10,7 +10,7 @@
  * Секреты сюда приходят открытым текстом только на время вызова и никуда
  * не логируются.
  */
-import ccxt, { type Exchange } from 'ccxt';
+import type { Exchange } from 'ccxt';
 import { exchange as exchangeMeta, type ExchangeId } from '@cs/shared';
 
 const CCXT_ID: Record<ExchangeId, string> = {
@@ -41,7 +41,10 @@ export interface KeyCheck {
   error: string | null;
 }
 
-function makeClient(id: ExchangeId, creds: KeyCredentials): Exchange {
+// ccxt грузится лениво: в главном потоке он нужен только для проверки ключей,
+// а целиком стоит ~80 МБ памяти (котировки и стаканы живут в worker'ах).
+async function makeClient(id: ExchangeId, creds: KeyCredentials): Promise<Exchange> {
+  const ccxt = (await import('ccxt')).default;
   const Ctor = (ccxt as unknown as Record<string, new (cfg: object) => Exchange>)[CCXT_ID[id]]!;
   return new Ctor({
     apiKey: creds.apiKey,
@@ -113,7 +116,7 @@ export async function verifyExchangeKey(id: ExchangeId, creds: KeyCredentials): 
     };
   }
 
-  const client = makeClient(id, creds);
+  const client = await makeClient(id, creds);
   try {
     // Шаг 1: ключ вообще принимается и видит фьючерсный счёт.
     const balance = await client.fetchBalance();

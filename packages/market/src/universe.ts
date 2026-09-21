@@ -8,8 +8,9 @@
  * множитель спред между биржами выйдет в сто тысяч процентов. Поэтому
  * каждый рынок помнит свой множитель, а все цены приводятся к одной монете.
  */
-import type { Exchange, MarketInterface } from 'ccxt';
 import type { ExchangeId } from '@cs/shared';
+
+import type { MarketLite } from './worker/protocol.js';
 
 export interface VenueMarket {
   exchange: ExchangeId;
@@ -57,16 +58,16 @@ function canonicalBase(rawBase: string): { base: string; multiplier: number } {
   return { base: ALIASES[base] ?? base, multiplier };
 }
 
-function isLinearUsdtPerp(m: MarketInterface | undefined): m is MarketInterface {
+function isLinearUsdtPerp(m: MarketLite | undefined): m is MarketLite {
   return Boolean(
     m && m.swap && m.linear && m.quote === 'USDT' && m.active !== false && m.settle === 'USDT',
   );
 }
 
 /** Рынки одной биржи, приведённые к канонической монете. */
-export function venueMarkets(exchange: ExchangeId, ex: Exchange): VenueMarket[] {
+export function venueMarkets(exchange: ExchangeId, markets: Record<string, MarketLite | undefined>): VenueMarket[] {
   const out: VenueMarket[] = [];
-  for (const m of Object.values(ex.markets ?? {}) as (MarketInterface | undefined)[]) {
+  for (const m of Object.values(markets ?? {})) {
     if (!isLinearUsdtPerp(m)) continue;
     const { base, multiplier } = canonicalBase(m.base);
     out.push({
