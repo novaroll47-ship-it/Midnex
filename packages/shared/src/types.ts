@@ -290,6 +290,16 @@ export interface FundingBotSettings {
 }
 
 /** Личные настройки вида: список или карточки в скринере. */
+/** Боты, которым можно поручить монету из списка. */
+export type BotId = 'spread' | 'funding';
+export const BOT_IDS: readonly BotId[] = ['spread', 'funding'];
+
+/** Монета в списке для торговли и какие боты её ведут. */
+export interface WatchEntry {
+  base: string;
+  bots: BotId[];
+}
+
 export interface UiSettings {
   view: 'list' | 'cards';
   /** «Мой объём по умолчанию», USDT — для расчёта прибыли на объёме. */

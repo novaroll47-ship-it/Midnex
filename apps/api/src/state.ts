@@ -7,6 +7,7 @@
  * позиция следует за настоящим рынком, а не за синтетикой.
  */
 import { randomUUID } from 'node:crypto';
+import { BOT_IDS, type BotId } from '@cs/shared';
 import {
   DEFAULT_BOT,
   DEFAULT_UI,
@@ -32,7 +33,8 @@ export interface UserState {
   plan: PlanId;
   settings: UserSettings;
   positions: Map<string, PositionRecord>;
-  watchlist: Set<string>;
+  /** Монета → боты, которым она поручена. Ключи — «список наблюдения» скринера. */
+  watchlist: Map<string, BotId[]>;
 }
 
 export class StateService {
@@ -125,7 +127,7 @@ export class StateService {
       plan: user.plan,
       settings,
       positions: new Map(positions.map((p) => [p.id, p])),
-      watchlist: new Set(await this.repo.getWatchlist(userId)),
+      watchlist: new Map((await this.repo.getWatchlist(userId)).map((e) => [e.base, e.bots])),
     };
   }
 
@@ -140,9 +142,19 @@ export class StateService {
     await this.repo.setPlan(state.userId, plan);
   }
 
+  /** Заменить список монет; у тех, что уже были, набор ботов сохраняется. */
   async setWatchlist(state: UserState, bases: string[]): Promise<void> {
-    state.watchlist = new Set(bases);
-    await this.repo.setWatchlist(state.userId, bases);
+    const next = new Map<string, BotId[]>();
+    for (const base of bases) next.set(base, state.watchlist.get(base) ?? [...BOT_IDS]);
+    state.watchlist = next;
+    await this.repo.setWatchlist(state.userId, [...next].map(([base, bots]) => ({ base, bots })));
+  }
+
+  /** Боты для одной монеты; пустой набор — монета уходит из списка. */
+  async setWatchBots(state: UserState, base: string, bots: BotId[]): Promise<void> {
+    if (bots.length === 0) state.watchlist.delete(base);
+    else state.watchlist.set(base, bots);
+    await this.repo.setWatchlist(state.userId, [...state.watchlist].map(([b, list]) => ({ base: b, bots: list })));
   }
 
   // ---------------------------------------------------------------- позиции

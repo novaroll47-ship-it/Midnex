@@ -23,6 +23,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: join(here, '../.env') });
 dotenv.config({ path: join(here, '../../../.env') });
 
+import { BOT_IDS, type BotId } from '@cs/shared';
 import {
   APP_VERSION,
   purchasablePlans,
@@ -789,7 +790,29 @@ app.get('/api/icon/coin/:base', async (req, reply) => {
 
 // ---------------------------------------------------------------- вотчлист
 
-app.get('/api/watchlist', async (req) => ({ bases: [...req.state!.watchlist] }));
+const watchlistPayload = (w: Map<string, BotId[]>) => ({
+  bases: [...w.keys()],
+  bots: Object.fromEntries(w),
+});
+
+app.get('/api/watchlist', async (req) => watchlistPayload(req.state!.watchlist));
+
+/** Какие боты ведут монету; пустой список — убрать монету из списка. */
+app.patch('/api/watchlist/:base', async (req, reply) => {
+  const base = (req.params as { base: string }).base.toUpperCase();
+  const body = req.body as { bots?: unknown };
+  if (!Array.isArray(body?.bots) || !body.bots.every((b) => (BOT_IDS as readonly string[]).includes(String(b)))) {
+    return reply.code(400).send({ error: 'bots[] required' });
+  }
+  const bots = [...new Set(body.bots as BotId[])];
+  const s = req.state!;
+  const limit = TRADING_ENABLED ? (PLAN_WATCHLIST_LIMIT[s.plan] ?? null) : null;
+  if (bots.length > 0 && !s.watchlist.has(base) && limit !== null && s.watchlist.size >= limit) {
+    return reply.code(409).send({ error: 'watchlist limit', limit });
+  }
+  await state.setWatchBots(s, base, bots);
+  return watchlistPayload(s.watchlist);
+});
 
 app.put('/api/watchlist', async (req, reply) => {
   const body = req.body as { bases?: unknown };
@@ -805,7 +828,7 @@ app.put('/api/watchlist', async (req, reply) => {
     return reply.code(409).send({ error: 'watchlist limit', limit });
   }
   await state.setWatchlist(req.state!, bases);
-  return { bases: [...req.state!.watchlist] };
+  return watchlistPayload(req.state!.watchlist);
 });
 
 // ---------------------------------------------------------------- настройки

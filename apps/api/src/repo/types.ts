@@ -16,6 +16,7 @@ import type {
   PaymentStatus,
   PlanId,
   RiskSettings,
+  WatchEntry,
 } from '@cs/shared';
 
 export interface UserRecord {
@@ -207,8 +208,8 @@ export interface Repo {
   listPositions(userId: number): Promise<PositionRecord[]>;
   savePosition(record: PositionRecord): Promise<void>;
 
-  getWatchlist(userId: number): Promise<string[]>;
-  setWatchlist(userId: number, bases: string[]): Promise<void>;
+  getWatchlist(userId: number): Promise<WatchEntry[]>;
+  setWatchlist(userId: number, entries: WatchEntry[]): Promise<void>;
 
   listKeys(userId: number): Promise<ExchangeKeyRecord[]>;
   upsertKey(record: ExchangeKeyRecord): Promise<void>;

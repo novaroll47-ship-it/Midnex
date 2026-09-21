@@ -6,7 +6,7 @@
  * между соединениями.
  */
 import postgres, { type Sql } from 'postgres';
-import type { BillingMonths, ExchangeId, PaymentMethod, PaymentStatus, PlanId } from '@cs/shared';
+import type { BillingMonths, ExchangeId, PaymentMethod, PaymentStatus, PlanId, BotId, WatchEntry } from '@cs/shared';
 
 import type {
   AlertRuleRecord,
@@ -161,18 +161,39 @@ export class PostgresRepo implements Repo {
 
   // ---------------------------------------------------------------- watchlist
 
-  async getWatchlist(userId: number): Promise<string[]> {
-    const rows = await this
-      .sql`select base from watchlist where user_id = ${userId} order by added_at`;
-    return rows.map((r) => r['base'] as string);
+  /** Колонка bots появилась в 0012; пока миграция не применена — работаем без неё. */
+  private hasBotsColumn: boolean | null = null;
+  private async botsColumn(): Promise<boolean> {
+    if (this.hasBotsColumn === null) {
+      const rows = await this.sql`select 1 from information_schema.columns
+        where table_name = 'watchlist' and column_name = 'bots'`;
+      this.hasBotsColumn = rows.length > 0;
+    }
+    return this.hasBotsColumn;
   }
 
-  async setWatchlist(userId: number, bases: string[]): Promise<void> {
-    const unique = [...new Set(bases)];
+  async getWatchlist(userId: number): Promise<WatchEntry[]> {
+    const withBots = await this.botsColumn();
+    const rows = withBots
+      ? await this.sql`select base, bots from watchlist where user_id = ${userId} order by added_at`
+      : await this.sql`select base from watchlist where user_id = ${userId} order by added_at`;
+    return rows.map((r) => ({
+      base: r['base'] as string,
+      bots: (r['bots'] as BotId[] | undefined) ?? ['spread', 'funding'],
+    }));
+  }
+
+  async setWatchlist(userId: number, entries: WatchEntry[]): Promise<void> {
+    const seen = new Set<string>();
+    const unique = entries.filter((e) => !seen.has(e.base) && seen.add(e.base));
+    const withBots = await this.botsColumn();
     await this.sql.begin(async (tx) => {
       await tx`delete from watchlist where user_id = ${userId}`;
       if (unique.length) {
-        await tx`insert into watchlist ${tx(unique.map((base) => ({ user_id: userId, base })))}`;
+        const rows = withBots
+          ? unique.map((e) => ({ user_id: userId, base: e.base, bots: e.bots }))
+          : unique.map((e) => ({ user_id: userId, base: e.base }));
+        await tx`insert into watchlist ${tx(rows)}`;
       }
     });
   }

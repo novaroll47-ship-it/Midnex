@@ -35,6 +35,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { ChevronRightIcon } from '../icons';
+import { HelpTip } from './HelpTip';
 import { api, type HistoryCandle, type HistoryResponse, type HistoryTf } from '../lib/api';
 import { haptic } from '../lib/telegram';
 
@@ -74,6 +75,10 @@ const HEIGHT = 250;
 const RIGHT_OFFSET = 3;
 
 type Store = Map<number, HistoryCandle>;
+
+function pairKeyStrOf(p: ChartPair | null): string {
+  return p ? `${p.exA}|${p.exB}` : '';
+}
 
 function samePair(a: ChartPair | null, b: ChartPair | null): boolean {
   if (!a || !b) return a === b;
@@ -159,22 +164,37 @@ export function SpreadChart({
   base,
   pairs = [],
   currentPair = null,
+  pair: pickedProp,
+  onPairChange,
 }: {
   base: string;
   /** Сверенные пары монеты — для сравнения бирж. */
   pairs?: ChartPair[];
   /** Лучшая пара сейчас — с неё график открывается. */
   currentPair?: ChartPair | null;
+  /** Выбранная пара (если родитель ведёт её сам — например, чтобы считать по ней стакан). */
+  pair?: ChartPair | null;
+  onPairChange?: (pair: ChartPair) => void;
 }) {
   const { t } = useTranslation();
   const [tf, setTf] = useState<Tf>('1m');
-  const [picked, setPicked] = useState<ChartPair | null>(null);
+  const [pickedState, setPickedState] = useState<ChartPair | null>(null);
+  const picked = pickedProp !== undefined ? pickedProp : pickedState;
+  const setPicked = (p: ChartPair) => {
+    setPickedState(p);
+    onPairChange?.(p);
+  };
   // Выбранная пользователем пара, иначе — лучшая на момент открытия (фиксируем,
   // чтобы график не сбрасывался при каждой смене лучшей пары в таблице).
   const [initial] = useState<ChartPair | null>(currentPair);
   const known = (p: ChartPair | null) => (p && pairs.some((q) => samePair(q, p)) ? p : null);
   // Без сверенных пар — история по монете (лучшая пара).
   const effPair = pairs.length > 0 ? (known(picked) ?? known(initial) ?? pairs[0]!) : null;
+  // Родителю нужна фактическая пара (в том числе стартовая), а не только выбранная рукой.
+  useEffect(() => {
+    if (effPair) onPairChange?.(effPair);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pairKeyStrOf(effPair)]);
   const pairKeyStr = effPair ? `${effPair.exA}|${effPair.exB}` : '';
   const tfs = TFS;
   const tfMs = TF_MS[tf];
@@ -547,7 +567,10 @@ export function SpreadChart({
   return (
     <section className="card chart">
       <div className="chart__head">
-        <span className="chart__title">{t('chart.title')}</span>
+        <span className="chart__title">
+          {t('chart.title')}
+          <HelpTip title={t('chart.title')} text={t('chart.hint')} />
+        </span>
         <div className="segmented segmented--mini">
           {tfs.map((k) => (
             <button
@@ -638,7 +661,6 @@ export function SpreadChart({
         )}
       </div>
       {hasReconstructed && <div className="chart__note">{t('chart.reconstructed')}</div>}
-      <div className="chart__note">{t('chart.hint')}</div>
     </section>
   );
 }

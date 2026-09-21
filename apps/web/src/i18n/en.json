@@ -745,5 +745,14 @@
       "none": "No spread in the book ({{value}})",
       "noneShort": "book: {{value}}"
     }
+  },
+  "botpick": {
+    "title": "Bots for {{base}}",
+    "hint": "The coin joins the trading list — the same one as the checkmarks in the feed. Pick which bots may trade it.",
+    "all": "All bots",
+    "allSub": "Every bot may trade this coin",
+    "spreadSub": "Cross-exchange spread arbitrage",
+    "fundingSub": "Funding-rate difference",
+    "remove": "Remove from the list"
   }
 }

@@ -6,7 +6,7 @@
  * с перезапуском — это осознанно, в проде оно не используется.
  */
 import { randomUUID } from 'node:crypto';
-import type { ExchangeId, PlanId } from '@cs/shared';
+import type { ExchangeId, PlanId, WatchEntry } from '@cs/shared';
 
 import type {
   AlertRuleRecord,
@@ -29,7 +29,7 @@ export class MemoryRepo implements Repo {
   private users = new Map<number, UserRecord>();
   private settings = new Map<number, UserSettings>();
   private positions = new Map<number, Map<string, PositionRecord>>();
-  private watchlists = new Map<number, string[]>();
+  private watchlists = new Map<number, WatchEntry[]>();
   private keys = new Map<number, Map<ExchangeId, ExchangeKeyRecord>>();
   private sessions = new Map<number, Map<string, SessionRecord>>();
   private subscriptions = new Map<number, SubscriptionRecord>();
@@ -95,12 +95,16 @@ export class MemoryRepo implements Repo {
     map.set(record.id, { ...record, id: record.id || randomUUID() });
   }
 
-  async getWatchlist(userId: number): Promise<string[]> {
-    return [...(this.watchlists.get(userId) ?? [])];
+  async getWatchlist(userId: number): Promise<WatchEntry[]> {
+    return (this.watchlists.get(userId) ?? []).map((e) => ({ ...e, bots: [...e.bots] }));
   }
 
-  async setWatchlist(userId: number, bases: string[]): Promise<void> {
-    this.watchlists.set(userId, [...new Set(bases)]);
+  async setWatchlist(userId: number, entries: WatchEntry[]): Promise<void> {
+    const seen = new Set<string>();
+    this.watchlists.set(
+      userId,
+      entries.filter((e) => !seen.has(e.base) && seen.add(e.base)).map((e) => ({ ...e, bots: [...e.bots] })),
+    );
   }
 
   async listKeys(userId: number): Promise<ExchangeKeyRecord[]> {

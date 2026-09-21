@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next';
 import { CoinIcon } from '../components/CoinIcon';
 import { ExchangeLogo } from '../components/ExchangeLogo';
 import { FundingHistory } from '../components/FundingHistory';
+import { BotStar } from '../components/BotPicker';
 import { LiquidityBlock } from '../components/LiquidityBlock';
 import { SpreadChart } from '../components/SpreadChart';
 import { InfoRow, Section } from '../components/Form';
@@ -49,6 +50,8 @@ export function CoinDetailScreen({
   const venueKey = venues.join(',');
   const fetcher = useCallback(() => api.coin(base, venueKey || undefined), [base, venueKey]);
   const { data, error } = usePolling<CoinDetail>(fetcher, 1000);
+  // Пара бирж, выбранная на графике: по ней же считается стакан.
+  const [chartPair, setChartPair] = useState<{ exA: ExchangeId; exB: ExchangeId } | null>(null);
 
   if (error) return <div className="card empty">{t('app.loadError')}</div>;
   if (!data) return <div className="empty">{t('app.loading')}</div>;
@@ -71,18 +74,27 @@ export function CoinDetailScreen({
         </div>
       </section>
 
-      <button className="btn-ghost coin-alert" type="button" onClick={() => onAlert?.(data.base)}>
-        <BellIcon size={15} />
-        {t('alerts.tileFull', { base: data.base })}
-      </button>
+      <div className="coin-actions">
+        <button className="btn-ghost coin-alert" type="button" onClick={() => onAlert?.(data.base)}>
+          <BellIcon size={15} />
+          {t('alerts.tileFull', { base: data.base })}
+        </button>
+        <BotStar base={data.base} />
+      </div>
 
       <SpreadChart
         base={data.base}
         pairs={data.pairs ?? []}
         currentPair={{ exA: data.best.longExchange, exB: data.best.shortExchange }}
+        onPairChange={setChartPair}
       />
 
-      <LiquidityBlock base={data.base} defaultVolume={defaultVolume} venues={venueKey || undefined} />
+      <LiquidityBlock
+        base={data.base}
+        defaultVolume={defaultVolume}
+        venues={venueKey || undefined}
+        pair={chartPair}
+      />
 
       <div className="section-label">{t('coin.venuesTitle')}</div>
       <div className="venue-chips venue-chips--wrap">

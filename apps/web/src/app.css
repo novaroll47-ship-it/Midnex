@@ -2908,3 +2908,60 @@
     color: var(--text-mute);
   }
 }
+
+@layer legacy {
+  /* ---------- Подсказка «?» и действия на экране монеты ---------- */
+
+  .help-tip {
+    display: inline-grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    margin-left: 6px;
+    border-radius: 50%;
+    border: 1px solid var(--border-strong);
+    color: var(--text-mute);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    vertical-align: middle;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+
+  .help-tip:active {
+    filter: brightness(0.85);
+  }
+
+  .help-tip__text {
+    margin: 0 0 6px;
+    font-size: 14px;
+    line-height: 1.45;
+    color: var(--text-dim);
+  }
+
+  .coin-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .coin-actions .coin-alert {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .bot-star {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text-mute);
+  }
+
+  .bot-star--on {
+    color: var(--amber);
+    border-color: var(--amber);
+  }
+}

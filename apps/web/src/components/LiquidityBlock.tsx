@@ -10,17 +10,21 @@ import { useTranslation } from 'react-i18next';
 
 import { api } from '../lib/api';
 import { usePolling } from '../lib/usePolling';
+import { HelpTip } from './HelpTip';
 
 export function LiquidityBlock({
   base,
   defaultVolume,
   venues,
+  pair = null,
 }: {
   base: string;
   /** «Мой объём по умолчанию» из настроек, USDT. */
   defaultVolume: number;
   /** Биржи для расчёта — как в шапке монеты. */
   venues?: string;
+  /** Пара бирж, выбранная на графике; без неё — лучшая пара. */
+  pair?: { exA: ExchangeId; exB: ExchangeId } | null;
 }) {
   const { t } = useTranslation();
   // Объём в деталях — временный, на время просмотра; настройку не трогает.
@@ -31,12 +35,20 @@ export function LiquidityBlock({
     if (Number.isFinite(v) && v >= 10) setVolume(v);
   }, [draft]);
 
-  const fetcher = useCallback(() => api.coinLiquidity(base, volume, venues), [base, volume, venues]);
+  const pairKey = pair ? `${pair.exA}|${pair.exB}` : '';
+  const fetcher = useCallback(
+    () => api.coinLiquidity(base, volume, venues, pair ?? undefined),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [base, volume, venues, pairKey],
+  );
   const { data, error } = usePolling<LiquidityDetail>(fetcher, 2000);
   const name = (id: ExchangeId) => EXCHANGES.find((e) => e.id === id)?.name ?? id;
 
-  const usd = (v: number) =>
-    v >= 1000 ? `$${Math.round(v).toLocaleString('ru-RU')}` : `$${v.toFixed(v >= 100 ? 0 : 2)}`;
+  const usd = (v: number) => {
+    const a = Math.abs(v);
+    const s = a >= 1000 ? `$${Math.round(a).toLocaleString('ru-RU')}` : `$${a.toFixed(a >= 100 ? 0 : 2)}`;
+    return v < 0 ? `−${s}` : s;
+  };
 
   const chart = useMemo(() => {
     if (!data) return null;
@@ -64,7 +76,10 @@ export function LiquidityBlock({
 
   return (
     <>
-      <div className="section-label">{t('liq.title')}</div>
+      <div className="section-label">
+        {t('liq.title')}
+        <HelpTip title={t('liq.title')} text={t('liq.note')} />
+      </div>
       <section className="card liq">
         <label className="liq__volume">
           <span>
@@ -184,7 +199,6 @@ export function LiquidityBlock({
                 {data.deep ? t('liq.deepBook', { n: Math.min(data.levels.long, data.levels.short) }) : t('liq.shallowBook')} ·{' '}
                 {t('liq.age', { s: Math.round(data.bookAgeMs / 1000) })}
               </div>
-              <div className="liq__note">{t('liq.note')}</div>
             </div>
           </>
         )}

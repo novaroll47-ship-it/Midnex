@@ -6,6 +6,7 @@ import type {
   SubscriptionInfo,
   ExchangeId,
   BotSettings,
+  BotId,
   CoinDetail,
   LiquidityDetail,
   NotificationSettings,
@@ -106,6 +107,12 @@ export interface SettingsResponse {
   /** Что включено на этом этапе релиза. */
   features: { trading: boolean; admin: boolean };
   subscription: SubscriptionInfo;
+}
+
+export interface WatchlistResponse {
+  bases: string[];
+  /** Монета → боты, которым она поручена. */
+  bots: Record<string, BotId[]>;
 }
 
 export interface HistoryCandle {
@@ -296,8 +303,13 @@ export const api = {
     get<ScreenerSnapshot>('/api/screener', { minSpread, venues }),
   coin: (base: string, venues?: string) =>
     get<CoinDetail>(`/api/coin/${encodeURIComponent(base)}`, { venues }),
-  coinLiquidity: (base: string, volume: number, venues?: string) =>
-    get<LiquidityDetail>(`/api/coin/${encodeURIComponent(base)}/liquidity`, { volume, venues }),
+  coinLiquidity: (base: string, volume: number, venues?: string, pair?: { exA: ExchangeId; exB: ExchangeId }) =>
+    get<LiquidityDetail>(`/api/coin/${encodeURIComponent(base)}/liquidity`, {
+      volume,
+      venues,
+      exA: pair?.exA,
+      exB: pair?.exB,
+    }),
 
   settings: () => get<SettingsResponse>('/api/settings'),
   patchBot: (body: Partial<BotSettings>) =>
@@ -320,9 +332,11 @@ export const api = {
   closePosition: (id: string) =>
     request<{ position: Position }>('POST', `/api/positions/${id}/close`),
 
-  watchlist: () => get<{ bases: string[] }>('/api/watchlist'),
-  setWatchlist: (bases: string[]) =>
-    request<{ bases: string[] }>('PUT', '/api/watchlist', { bases }),
+  watchlist: () => get<WatchlistResponse>('/api/watchlist'),
+  setWatchlist: (bases: string[]) => request<WatchlistResponse>('PUT', '/api/watchlist', { bases }),
+  /** Какие боты ведут монету; пустой список убирает её из списка. */
+  setWatchBots: (base: string, bots: BotId[]) =>
+    request<WatchlistResponse>('PATCH', `/api/watchlist/${encodeURIComponent(base)}`, { bots }),
 
   keys: () => get<KeysResponse>('/api/keys'),
   connectKey: (
