@@ -2965,24 +2965,3 @@
     border-color: var(--amber);
   }
 }
-
-@layer legacy {
-  /* Уведомление с действиями: текст сверху, кнопки в ряд снизу. */
-  .notice--stack {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
-  }
-
-  .notice__row {
-    display: flex;
-    gap: 10px;
-    align-items: flex-start;
-  }
-
-  .notice__actions {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-}

@@ -10,7 +10,13 @@ import type { ExchangeId, PlanId, WatchEntry } from '@cs/shared';
 
 import type {
   AlertRuleRecord,
+  EarningRecord,
+  EarningStatus,
+  PartnerRecord,
+  PartnerStats,
   PaymentRecord,
+  PayoutRecord,
+  ReferralRecord,
   SubscriptionRecord,
   VerifiedSymbolRecord,
   VerifiedPairRecord,
@@ -37,6 +43,11 @@ export class MemoryRepo implements Repo {
   private verified = new Map<string, VerifiedSymbolRecord>();
   private pairs = new Map<string, VerifiedPairRecord>();
   private config = new Map<string, string>();
+  private partners = new Map<number, PartnerRecord>();
+  private referrals = new Map<number, ReferralRecord>();
+  private earnings = new Map<number, EarningRecord>();
+  private payouts = new Map<number, PayoutRecord>();
+  private seq = 1;
   private nominals = new Map<string, InstrumentNominalRecord>();
   private alerts = new Map<string, AlertRuleRecord>();
 
@@ -254,6 +265,135 @@ export class MemoryRepo implements Repo {
 
   async setConfig(key: string, value: string): Promise<void> {
     this.config.set(key, value);
+  }
+
+  async countPaidPayments(userId: number): Promise<number> {
+    return [...this.payments.values()].filter((p) => p.userId === userId && p.status === 'paid')
+      .length;
+  }
+
+  // ---------------------------------------------------------------- партнёры
+
+  async createPartner(p: Omit<PartnerRecord, 'id' | 'createdAt' | 'pausedAt'>): Promise<PartnerRecord> {
+    const rec: PartnerRecord = { ...p, id: this.seq++, pausedAt: null, createdAt: Date.now() };
+    this.partners.set(rec.id, rec);
+    return rec;
+  }
+
+  async updatePartner(p: PartnerRecord): Promise<void> {
+    this.partners.set(p.id, { ...p });
+  }
+
+  async getPartner(id: number): Promise<PartnerRecord | null> {
+    return this.partners.get(id) ?? null;
+  }
+
+  async getPartnerByCode(code: string): Promise<PartnerRecord | null> {
+    return [...this.partners.values()].find((p) => p.code === code) ?? null;
+  }
+
+  async getPartnerByTelegramId(telegramId: number): Promise<PartnerRecord | null> {
+    return [...this.partners.values()].find((p) => p.telegramId === telegramId) ?? null;
+  }
+
+  async listPartners(): Promise<PartnerRecord[]> {
+    return [...this.partners.values()].sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  async getReferral(userId: number): Promise<ReferralRecord | null> {
+    return this.referrals.get(userId) ?? null;
+  }
+
+  async createReferral(r: ReferralRecord): Promise<boolean> {
+    if (this.referrals.has(r.userId)) return false;
+    this.referrals.set(r.userId, { ...r });
+    return true;
+  }
+
+  async updateReferral(r: ReferralRecord): Promise<void> {
+    this.referrals.set(r.userId, { ...r });
+  }
+
+  async createEarning(e: Omit<EarningRecord, 'id'>): Promise<EarningRecord> {
+    const rec: EarningRecord = { ...e, id: this.seq++ };
+    this.earnings.set(rec.id, rec);
+    return rec;
+  }
+
+  async getEarningByPayment(paymentId: string): Promise<EarningRecord | null> {
+    return [...this.earnings.values()].find((e) => e.paymentId === paymentId) ?? null;
+  }
+
+  async listEarnings(partnerId: number, status?: EarningStatus): Promise<EarningRecord[]> {
+    return [...this.earnings.values()]
+      .filter((e) => e.partnerId === partnerId && (status === undefined || e.status === status))
+      .sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  async sumMonthsRewarded(partnerId: number, userId: number): Promise<number> {
+    let n = 0;
+    for (const e of this.earnings.values())
+      if (e.partnerId === partnerId && e.userId === userId) n += e.monthsRewarded;
+    return n;
+  }
+
+  async releaseEarnings(now: number): Promise<number> {
+    let n = 0;
+    for (const e of this.earnings.values()) {
+      if (e.status === 'on_hold' && e.availableAt <= now) {
+        e.status = 'available';
+        n++;
+      }
+    }
+    return n;
+  }
+
+  async createPayout(partnerId: number, reference: string | null): Promise<PayoutRecord | null> {
+    const list = [...this.earnings.values()].filter(
+      (e) => e.partnerId === partnerId && e.status === 'available',
+    );
+    if (list.length === 0) return null;
+    const payout: PayoutRecord = {
+      id: this.seq++,
+      partnerId,
+      amount: Math.round(list.reduce((s, e) => s + e.amount, 0) * 100) / 100,
+      paidAt: Date.now(),
+      reference,
+    };
+    for (const e of list) {
+      e.status = 'paid';
+      e.paidAt = payout.paidAt;
+      e.payoutId = payout.id;
+    }
+    this.payouts.set(payout.id, payout);
+    return payout;
+  }
+
+  async listPayouts(partnerId: number): Promise<PayoutRecord[]> {
+    return [...this.payouts.values()]
+      .filter((p) => p.partnerId === partnerId)
+      .sort((a, b) => a.paidAt - b.paidAt);
+  }
+
+  async partnerStats(partnerId: number): Promise<PartnerStats> {
+    const since = Date.now() - 30 * 86_400_000;
+    const refs = [...this.referrals.values()].filter((r) => r.partnerId === partnerId);
+    const sum = (status: EarningStatus) =>
+      Math.round(
+        [...this.earnings.values()]
+          .filter((e) => e.partnerId === partnerId && e.status === status)
+          .reduce((s, e) => s + e.amount, 0) * 100,
+      ) / 100;
+    return {
+      clicks: refs.length,
+      trials: refs.filter((r) => this.users.get(r.userId)?.trialUsedAt != null).length,
+      paidUsers: refs.filter((r) => r.convertedAt !== null).length,
+      onHold: sum('on_hold'),
+      available: sum('available'),
+      paid: sum('paid'),
+      clicks30d: refs.filter((r) => r.clickedAt >= since).length,
+      paidUsers30d: refs.filter((r) => r.convertedAt !== null && r.convertedAt >= since).length,
+    };
   }
 
   async listVerifiedPairs(): Promise<VerifiedPairRecord[]> {

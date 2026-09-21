@@ -2,9 +2,10 @@
  * Экран «Подписка»: статус, выбор тарифа и срока, оплата.
  *
  * Оплата звёздами открывает инвойс Telegram прямо в мини-приложении; оплата
- * USDT показывает кошелёк и сумму, пользователь присылает хэш перевода, и
- * заявка ждёт подтверждения администратора. Тарифы, которых ещё нет
- * (торговля), показаны с ценой и бейджем «Скоро», без взаимодействия.
+ * USDT — счёт в @CryptoBot, подтверждается автоматически. Возвратов нет, и
+ * это написано до кнопок оплаты. Пришедшим по партнёрской ссылке к первой
+ * оплате добавляется подарочная неделя — строка об этом видна на экране.
+ * Тарифы, которых ещё нет (торговля), показаны с ценой и бейджем «Скоро».
  */
 import {
   BILLING_MONTHS,
@@ -18,29 +19,19 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { InfoRow, RadioRow, Section } from '../components/Form';
-import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Sheet } from '../components/Sheet';
 import { AlertIcon, CheckIcon, ClockIcon } from '../icons';
 import { api, type BillingResponse } from '../lib/api';
 import { haptic, openInvoice, openTelegramLink } from '../lib/telegram';
 import type { SettingsController } from '../lib/useSettings';
 
-/** Подписи сетей: пользователь должен выбрать ту же сеть, что в своём кошельке. */
-const NETWORK_LABEL: Record<string, string> = {
-  TRC20: 'Tron — комиссия ~1 USDT',
-  BEP20: 'BNB Smart Chain — комиссия копейки',
-  ERC20: 'Ethereum — комиссия высокая, лучше другая сеть',
-  TON: 'TON',
-};
-
 export function SubscriptionView({ settings }: { settings: SettingsController }) {
   const { t } = useTranslation();
   const [billing, setBilling] = useState<BillingResponse | null>(null);
   const [plan, setPlan] = useState<PlanId>('screener');
   const [months, setMonths] = useState<BillingMonths>(1);
-  const [pay, setPay] = useState<'stars' | 'crypto' | 'cryptobot' | null>(null);
+  const [pay, setPay] = useState<'stars' | 'cryptobot' | null>(null);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'warn'; text: string } | null>(null);
 
   const reload = useCallback(() => {
@@ -82,12 +73,11 @@ export function SubscriptionView({ settings }: { settings: SettingsController })
         )}
       </Section>
 
-      {billing.pending && (
-        <PendingCard
-          payment={billing.pending}
-          onChanged={() => void refreshAll()}
-          onNotice={(kind, text) => setNotice({ kind, text })}
-        />
+      {billing.bonusDays > 0 && (
+        <section className="card notice">
+          <span className="notice__icon">🎁</span>
+          <span>{t('sub.bonusDays', { days: billing.bonusDays })}</span>
+        </section>
       )}
 
       {notice && (
@@ -138,32 +128,18 @@ export function SubscriptionView({ settings }: { settings: SettingsController })
         })}
       </Section>
 
-      {/* Два способа: CryptoBot и звёзды. Ручной перевод USDT показываем,
-          только пока CryptoBot не настроен — иначе он лишний. */}
+      {/* Два способа: CryptoBot и звёзды. */}
       <div className="grid grid-cols-2 gap-2">
-        {billing.cryptoBotAvailable ? (
-          <Button
-            variant="secondary"
-            disabled={!canBuy}
-            onClick={() => {
-              haptic('tap');
-              setPay('cryptobot');
-            }}
-          >
-            {t('sub.payCryptoBot')}
-          </Button>
-        ) : (
-          <Button
-            variant="secondary"
-            disabled={!canBuy || billing.wallets.length === 0}
-            onClick={() => {
-              haptic('tap');
-              setPay('crypto');
-            }}
-          >
-            {t('sub.payCrypto')}
-          </Button>
-        )}
+        <Button
+          variant="secondary"
+          disabled={!canBuy || !billing.cryptoBotAvailable}
+          onClick={() => {
+            haptic('tap');
+            setPay('cryptobot');
+          }}
+        >
+          {t('sub.payCryptoBot')}
+        </Button>
         <Button
           className="whitespace-nowrap"
           disabled={!canBuy || !billing.starsAvailable}
@@ -175,13 +151,18 @@ export function SubscriptionView({ settings }: { settings: SettingsController })
           ⭐ {t('sub.payStars')}
         </Button>
       </div>
-      <p className="hint">{t('sub.totalHint', { usd, plan: t(`sd.plan_${plan}`), months })}</p>
+      <p className="hint">
+        {t('sub.totalHint', { usd, plan: t(`sd.plan_${plan}`), months })}
+        {billing.bonusDays > 0 && ` ${t('sub.totalBonus', { days: billing.bonusDays })}`}
+      </p>
+      <p className="hint">{t('sub.noRefunds')}</p>
 
       {pay === 'stars' && (
         <StarsSheet
           plan={plan}
           months={months}
           usd={usd}
+          bonusDays={billing.bonusDays}
           starsPerUsd={billing.starsPerUsd}
           botUsername={billing.botUsername}
           onClose={() => setPay(null)}
@@ -202,6 +183,7 @@ export function SubscriptionView({ settings }: { settings: SettingsController })
           plan={plan}
           months={months}
           usd={usd}
+          bonusDays={billing.bonusDays}
           onClose={() => setPay(null)}
           onDone={(ok) => {
             setPay(null);
@@ -215,20 +197,6 @@ export function SubscriptionView({ settings }: { settings: SettingsController })
         />
       )}
 
-      {pay === 'crypto' && (
-        <CryptoSheet
-          plan={plan}
-          months={months}
-          usd={usd}
-          networks={billing.wallets}
-          onClose={() => setPay(null)}
-          onSubmitted={() => {
-            setPay(null);
-            setNotice({ kind: 'ok', text: t('sub.cryptoSubmitted') });
-            void refreshAll();
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -244,12 +212,14 @@ function CryptoBotSheet({
   plan,
   months,
   usd,
+  bonusDays,
   onClose,
   onDone,
 }: {
   plan: PlanId;
   months: BillingMonths;
   usd: number;
+  bonusDays: number;
   onClose: () => void;
   onDone: (paid: boolean) => void;
 }) {
@@ -321,7 +291,9 @@ function CryptoBotSheet({
           value={`${months} ${t('sub.months', { count: months })}`}
         />
         <InfoRow label={t('sub.price')} value={`${usd} USDT`} tone="green" />
+        {bonusDays > 0 && <InfoRow label={t('sub.bonusRow')} value={`+${bonusDays}`} tone="green" />}
       </section>
+      <p className="hint hint--sheet">{t('sub.noRefunds')}</p>
       {invoice && (
         <>
           <section className="card notice">
@@ -345,6 +317,7 @@ function StarsSheet({
   plan,
   months,
   usd,
+  bonusDays,
   starsPerUsd,
   botUsername,
   onClose,
@@ -353,6 +326,7 @@ function StarsSheet({
   plan: PlanId;
   months: BillingMonths;
   usd: number;
+  bonusDays: number;
   starsPerUsd: number;
   botUsername: string | null;
   onClose: () => void;
@@ -443,258 +417,9 @@ function StarsSheet({
           value={`${months} ${t('sub.months', { count: months })}`}
         />
         <InfoRow label={t('sub.price')} value={`$${usd} ≈ ${stars} ⭐`} />
+        {bonusDays > 0 && <InfoRow label={t('sub.bonusRow')} value={`+${bonusDays}`} tone="green" />}
       </section>
-      {error && (
-        <section className="card notice notice--warn">
-          <AlertIcon className="notice__icon" />
-          <span>{error}</span>
-        </section>
-      )}
-    </Sheet>
-  );
-}
-
-// ------------------------------------------------------------- USDT
-
-/**
- * Незакрытая заявка на ручной перевод USDT: что с ней делать — вставить хэш
- * перевода (если ещё не прислан) или отменить. Без этих кнопок заявка висела
- * бы до решения администратора.
- */
-function PendingCard({
-  payment,
-  onChanged,
-  onNotice,
-}: {
-  payment: BillingResponse['pending'] & object;
-  onChanged: () => void;
-  onNotice: (kind: 'ok' | 'warn', text: string) => void;
-}) {
-  const { t } = useTranslation();
-  const [hashOpen, setHashOpen] = useState(false);
-  const [hash, setHash] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [confirmCancel, setConfirmCancel] = useState(false);
-
-  async function cancel() {
-    setBusy(true);
-    try {
-      await api.cryptoCancel(payment.id);
-      haptic('success');
-      onNotice('ok', t('sub.pendingCancelled'));
-      onChanged();
-    } catch (err) {
-      haptic('error');
-      onNotice('warn', err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-      setConfirmCancel(false);
-    }
-  }
-
-  async function submitHash() {
-    setBusy(true);
-    setError(null);
-    try {
-      await api.cryptoSubmit(payment.id, hash.trim());
-      haptic('success');
-      setHashOpen(false);
-      onNotice('ok', t('sub.hashSaved'));
-      onChanged();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const isManual = payment.method === 'crypto';
-  return (
-    <section className="card notice notice--stack">
-      <div className="notice__row">
-        <ClockIcon className="notice__icon" />
-        <span>
-          {t('sub.pendingNote', {
-            id: payment.id,
-            amount: payment.amount,
-            network: payment.network ?? '',
-          })}
-          {isManual && !payment.txHash && ` ${t('sub.pendingNoHash')}`}
-        </span>
-      </div>
-      <div className="notice__actions">
-        {isManual && !payment.txHash && (
-          <Button variant="secondary" size="sm" disabled={busy} onClick={() => setHashOpen(true)}>
-            {t('sub.enterHash')}
-          </Button>
-        )}
-        <Button variant="secondary" size="sm" disabled={busy} onClick={() => setConfirmCancel(true)}>
-          {t('sub.cancelRequest')}
-        </Button>
-      </div>
-
-      {confirmCancel && (
-        <ConfirmDialog
-          title={t('sub.cancelRequest')}
-          message={t('sub.cancelRequestConfirm', { id: payment.id })}
-          confirmLabel={t('sub.cancelRequest')}
-          danger
-          busy={busy}
-          onConfirm={() => void cancel()}
-          onCancel={() => setConfirmCancel(false)}
-        />
-      )}
-
-      {hashOpen && (
-        <Sheet
-          title={t('sub.enterHash')}
-          description={t('sub.enterHashHint', { network: payment.network ?? '' })}
-          onClose={() => !busy && setHashOpen(false)}
-          footer={
-            <Button disabled={busy || hash.trim().length < 10} onClick={() => void submitHash()}>
-              {busy ? t('app.working') : t('sub.iPaid')}
-            </Button>
-          }
-        >
-          <Input
-            value={hash}
-            onChange={(e) => setHash(e.target.value)}
-            placeholder={t('sub.hashPlaceholder')}
-            autoFocus
-          />
-          {error && <section className="card notice notice--warn">{error}</section>}
-        </Sheet>
-      )}
-    </section>
-  );
-}
-
-function CryptoSheet({
-  plan,
-  months,
-  usd,
-  networks,
-  onClose,
-  onSubmitted,
-}: {
-  plan: PlanId;
-  months: BillingMonths;
-  usd: number;
-  networks: string[];
-  onClose: () => void;
-  onSubmitted: () => void;
-}) {
-  const { t } = useTranslation();
-  const [network, setNetwork] = useState(networks[0] ?? '');
-  const [request, setRequest] = useState<{ id: string; address: string } | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [hash, setHash] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function create() {
-    setBusy(true);
-    setError(null);
-    try {
-      const r = await api.cryptoRequest(plan, months, network);
-      setRequest({ id: r.payment.id, address: r.address });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function submit() {
-    if (!request) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await api.cryptoSubmit(request.id, hash.trim());
-      haptic('success');
-      onSubmitted();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Sheet
-      title={t('sub.payCrypto')}
-      description={request ? t('sub.cryptoStep2') : t('sub.cryptoStep1')}
-      onClose={() => !busy && onClose()}
-      footer={
-        request ? (
-          <Button disabled={busy || hash.trim().length < 10} onClick={submit}>
-            {busy ? t('app.working') : t('sub.iPaid')}
-          </Button>
-        ) : (
-          <Button disabled={busy || !network} onClick={create}>
-            {busy ? t('app.working') : t('sub.showWallet')}
-          </Button>
-        )
-      }
-    >
-      {!request && (
-        <section className="card list">
-          {networks.map((n) => (
-            <RadioRow
-              key={n}
-              title={`USDT · ${n}`}
-              sub={NETWORK_LABEL[n]}
-              selected={network === n}
-              onSelect={() => setNetwork(n)}
-            />
-          ))}
-          <InfoRow label={t('sub.price')} value={`${usd} USDT`} />
-        </section>
-      )}
-
-      {request && (
-        <>
-          <section className="card list">
-            <InfoRow label={t('sub.amount')} value={`${usd} USDT`} tone="green" />
-            <InfoRow label={t('sub.network')} value={network} />
-            <InfoRow label={t('sub.requestCode')} value={`#${request.id}`} tone="dim" />
-          </section>
-          <div className="card card--pad">
-            <div className="section-label" style={{ margin: '0 0 6px' }}>
-              {t('sub.address')}
-            </div>
-            <code className="num" style={{ wordBreak: 'break-all', fontSize: 13 }}>
-              {request.address}
-            </code>
-            <Button
-              variant="secondary"
-              className="mt-2 h-9 w-full"
-              onClick={() => {
-                void navigator.clipboard?.writeText(request.address);
-                haptic('success');
-                setCopied(true);
-              }}
-            >
-              {copied ? t('sub.copied') : t('sub.copy')}
-            </Button>
-          </div>
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              {t('sub.txHash')}
-            </span>
-            <Input
-              value={hash}
-              onChange={(e) => setHash(e.target.value)}
-              placeholder={t('sub.txHashPlaceholder')}
-              autoComplete="off"
-              spellCheck={false}
-              className="h-[38px] rounded-lg border-[var(--border-strong)] bg-[var(--surface-2)] px-3 text-[13px]"
-            />
-          </label>
-          <p className="hint hint--sheet">{t('sub.cryptoHint')}</p>
-        </>
-      )}
-
+      <p className="hint hint--sheet">{t('sub.noRefunds')}</p>
       {error && (
         <section className="card notice notice--warn">
           <AlertIcon className="notice__icon" />

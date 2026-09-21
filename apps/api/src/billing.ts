@@ -2,10 +2,12 @@
  * Подписки и оплата.
  *
  * Два способа: звёзды Telegram (инвойс создаёт сервер, платёж подтверждает
- * сам Telegram через successful_payment) и USDT на кошелёк (пользователь
- * присылает хэш перевода, админ подтверждает командой в боте). Ручное
- * подтверждение — осознанно: на десятки платежей в месяц посредник за
- * процент не нужен, а хэш в блокчейне проверяется за минуту.
+ * сам Telegram через successful_payment) и счёт в USDT через @CryptoBot
+ * (подтверждается вебхуком, страхуется опросом). Возвратов нет — об этом
+ * сказано на экране оплаты и в описании каждого счёта.
+ *
+ * Обе оплаты проходят через одну точку `activate()`: там же начисляется
+ * партнёрское вознаграждение и бонусные дни приведённому пользователю.
  *
  * Доступ к скринеру определяется здесь же: активная подписка, либо админ.
  */
@@ -24,12 +26,11 @@ import {
   type SubscriptionInfo,
 } from '@cs/shared';
 
+import type { Partners } from './partners.js';
 import type { PaymentRecord, Repo, SubscriptionRecord } from './repo/index.js';
 
-export interface CryptoWallet {
-  network: string;
-  address: string;
-}
+/** Приписка к каждому счёту: возвратов нет, и пользователь видит это до оплаты. */
+export const NO_REFUNDS = 'Средства возврату не подлежат.';
 
 export interface BillingOptions {
   repo: Repo;
@@ -39,8 +40,9 @@ export interface BillingOptions {
   adminId: number | null;
   /** Курс: сколько звёзд за один доллар. */
   starsPerUsd: number;
-  wallets: CryptoWallet[];
   trading: boolean;
+  /** Партнёрская программа: начисления и бонус при оплате. */
+  partners?: Partners;
   /** Crypto Pay API (@CryptoBot); null — способ выключен. */
   cryptoPay?: CryptoPay | null;
   /** Куда вести после оплаты (кнопка в счёте). */
@@ -55,6 +57,10 @@ export function daysFor(months: BillingMonths): number {
   return months * MONTH_DAYS;
 }
 
+function invoiceDescription(plan: PlanId, months: BillingMonths): string {
+  return `Доступ к скринеру спредов на ${months * MONTH_DAYS} дней. ${NO_REFUNDS}`;
+}
+
 /** Короткий код заявки — его удобно диктовать и вводить в команде бота. */
 function paymentId(): string {
   return randomBytes(3).toString('hex');
@@ -62,10 +68,6 @@ function paymentId(): string {
 
 export class Billing {
   constructor(private readonly o: BillingOptions) {}
-
-  get wallets(): CryptoWallet[] {
-    return this.o.wallets;
-  }
 
   get adminId(): number | null {
     return this.o.adminId;
@@ -158,7 +160,7 @@ export class Billing {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         title: `MIDNEX · ${planTitle(v.plan)} · ${v.months} мес.`,
-        description: `Доступ к скринеру спредов на ${v.months * MONTH_DAYS} дней`,
+        description: invoiceDescription(v.plan, v.months),
         payload: payment.id,
         currency: 'XTR',
         prices: [{ label: `${planTitle(v.plan)} ${v.months} мес.`, amount: stars }],
@@ -191,7 +193,7 @@ export class Billing {
         body: JSON.stringify({
           chat_id: userId,
           title: `MIDNEX · ${planTitle(p.plan)} · ${p.months} мес.`,
-          description: `Доступ к скринеру спредов на ${p.months * MONTH_DAYS} дней`,
+          description: invoiceDescription(p.plan, p.months),
           payload: p.id,
           currency: 'XTR',
           prices: [{ label: `${planTitle(p.plan)} ${p.months} мес.`, amount: p.amount }],
@@ -268,7 +270,7 @@ export class Billing {
     try {
       const inv = await pay.createInvoice({
         amountUsdt: usd,
-        description: `MIDNEX · ${planTitle(v.plan)} · ${v.months} мес. (${v.months * MONTH_DAYS} дней)`,
+        description: `MIDNEX · ${planTitle(v.plan)} · ${v.months} мес. (${v.months * MONTH_DAYS} дней). ${NO_REFUNDS}`,
         payload: JSON.stringify({ p: payment.id, u: userId, plan: v.plan, m: v.months }),
         expiresInSec: 3600,
         paidBtnUrl: this.o.publicUrl,
@@ -306,14 +308,32 @@ export class Billing {
     return this.activate(p, 'cryptobot');
   }
 
-  /** Общая точка выдачи доступа для всех способов оплаты. */
+  /**
+   * Общая точка выдачи доступа для всех способов оплаты. Здесь же — партнёрка:
+   * начисление владельцу канала и подарочные дни приведённому пользователю
+   * (в той же операции, что и сама подписка).
+   */
   private async activate(p: PaymentRecord, source: string): Promise<SubscriptionRecord> {
     p.status = 'paid';
     p.resolvedAt = Date.now();
     await this.o.repo.updatePayment(p);
-    const sub = await this.o.repo.extendSubscription(p.userId, p.plan, daysFor(p.months), source);
+    let bonusDays = 0;
+    if (this.o.partners) {
+      try {
+        bonusDays = (await this.o.partners.onPaid(p)).bonusDays;
+      } catch (err) {
+        // Партнёрка не должна помешать выдать доступ: платёж уже прошёл.
+        this.o.log.error({ err: String(err), payment: p.id }, 'партнёрка: начисление не удалось');
+      }
+    }
+    const sub = await this.o.repo.extendSubscription(
+      p.userId,
+      p.plan,
+      daysFor(p.months) + bonusDays,
+      source,
+    );
     this.o.log.info(
-      { user: p.userId, plan: p.plan, months: p.months, source },
+      { user: p.userId, plan: p.plan, months: p.months, source, bonusDays },
       'оплата: доступ выдан',
     );
     return sub;
@@ -345,83 +365,6 @@ export class Billing {
     return paid;
   }
 
-  /** Заявка на оплату USDT: сумма, кошелёк и код для подтверждения. */
-  async createCryptoRequest(
-    userId: number,
-    planRaw: string,
-    monthsRaw: number,
-    network: string,
-  ): Promise<{ payment: PaymentRecord; wallet: CryptoWallet } | { error: string }> {
-    const v = this.validate(planRaw, monthsRaw);
-    if (!v) return { error: 'bad plan or term' };
-    const wallet = this.o.wallets.find((w) => w.network === network);
-    if (!wallet) return { error: 'unknown network' };
-
-    // Одна открытая крипто-заявка на пользователя: иначе путаница у админа.
-    for (const old of await this.o.repo.listPendingPayments(userId)) {
-      if (old.method === 'crypto') {
-        old.status = 'cancelled';
-        old.resolvedAt = Date.now();
-        await this.o.repo.updatePayment(old);
-      }
-    }
-
-    const payment: PaymentRecord = {
-      id: paymentId(),
-      userId,
-      plan: v.plan,
-      months: v.months,
-      method: 'crypto',
-      amount: PRICING[v.plan][v.months],
-      currency: 'USDT',
-      status: 'pending',
-      network: wallet.network,
-      txHash: null,
-      telegramChargeId: null,
-      note: null,
-      createdAt: Date.now(),
-      resolvedAt: null,
-    };
-    await this.o.repo.createPayment(payment);
-    return { payment, wallet };
-  }
-
-  /** Пользователь прислал хэш перевода — заявка уходит админу. */
-  async submitTxHash(userId: number, id: string, txHash: string): Promise<PaymentRecord | null> {
-    const p = await this.o.repo.getPayment(id);
-    if (!p || p.userId !== userId || p.method !== 'crypto' || p.status !== 'pending') return null;
-    p.txHash = txHash.trim().slice(0, 128);
-    await this.o.repo.updatePayment(p);
-    return p;
-  }
-
-  async cancel(userId: number, id: string): Promise<boolean> {
-    const p = await this.o.repo.getPayment(id);
-    if (!p || p.userId !== userId || p.status !== 'pending') return false;
-    p.status = 'cancelled';
-    p.resolvedAt = Date.now();
-    await this.o.repo.updatePayment(p);
-    return true;
-  }
-
-  /** Админ подтвердил перевод. */
-  async approve(id: string): Promise<{ payment: PaymentRecord; sub: SubscriptionRecord } | null> {
-    const p = await this.o.repo.getPayment(id);
-    if (!p || p.status !== 'pending') return null;
-    const sub = await this.activate(p, 'crypto');
-    return { payment: p, sub };
-  }
-
-  async reject(id: string, note: string | null): Promise<PaymentRecord | null> {
-    const p = await this.o.repo.getPayment(id);
-    if (!p || p.status !== 'pending') return null;
-    p.status = 'rejected';
-    p.note = note;
-    p.resolvedAt = Date.now();
-    await this.o.repo.updatePayment(p);
-    return p;
-  }
-
   /**
    * Пробная неделя при первом появлении пользователя. Привязана к Telegram ID:
    * второй раз не выдаётся, даже если подписка давно истекла.
@@ -444,11 +387,6 @@ export class Billing {
     return this.o.repo.extendSubscription(userId, plan, days, 'manual');
   }
 
-  async pendingFor(userId: number): Promise<PaymentInfo | null> {
-    const list = await this.o.repo.listPendingPayments(userId);
-    const p = list.find((x) => x.method === 'crypto');
-    return p ? toPaymentInfo(p) : null;
-  }
 }
 
 export function toPaymentInfo(p: PaymentRecord): PaymentInfo {

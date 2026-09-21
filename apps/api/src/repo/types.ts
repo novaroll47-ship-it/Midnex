@@ -191,6 +191,75 @@ export interface AlertRuleRecord {
   createdAt: number;
 }
 
+// ---------------------------------------------------------------- партнёры
+
+export type PartnerStatus = 'active' | 'paused';
+
+/** Условия партнёра: процент от цены месяца, сколько месяцев, окно закрепления, удержание. */
+export interface PartnerTerms {
+  rewardPercent: number;
+  rewardMonths: number;
+  attributionDays: number;
+  holdDays: number;
+}
+
+export interface PartnerRecord extends PartnerTerms {
+  id: number;
+  telegramId: number;
+  code: string;
+  status: PartnerStatus;
+  pausedAt: number | null;
+  createdAt: number;
+}
+
+export interface ReferralRecord {
+  userId: number;
+  partnerId: number;
+  clickedAt: number;
+  attributedUntil: number;
+  /** Первая оплата — закрепление стало постоянным. */
+  convertedAt: number | null;
+}
+
+export type EarningStatus = 'on_hold' | 'available' | 'paid';
+
+export interface EarningRecord {
+  id: number;
+  partnerId: number;
+  userId: number;
+  paymentId: string;
+  monthsRewarded: number;
+  monthPrice: number;
+  rewardPercent: number;
+  amount: number;
+  status: EarningStatus;
+  createdAt: number;
+  availableAt: number;
+  paidAt: number | null;
+  payoutId: number | null;
+}
+
+export interface PayoutRecord {
+  id: number;
+  partnerId: number;
+  amount: number;
+  paidAt: number;
+  reference: string | null;
+}
+
+/** Счётчики партнёра: переходы, пробные, оплатившие; суммы по статусам начислений. */
+export interface PartnerStats {
+  clicks: number;
+  trials: number;
+  paidUsers: number;
+  onHold: number;
+  available: number;
+  paid: number;
+  /** То же за последние 30 дней — для поиска аномалий. */
+  clicks30d: number;
+  paidUsers30d: number;
+}
+
 export interface Repo {
   readonly kind: 'memory' | 'postgres';
 
@@ -261,6 +330,34 @@ export interface Repo {
   /** Служебные настройки приложения (app_config): ключ → значение. */
   getConfig(key: string): Promise<string | null>;
   setConfig(key: string, value: string): Promise<void>;
+
+  /** Сколько оплат пользователь уже провёл (paid) — для бонуса к первой. */
+  countPaidPayments(userId: number): Promise<number>;
+
+  // партнёры
+  createPartner(p: Omit<PartnerRecord, 'id' | 'createdAt' | 'pausedAt'>): Promise<PartnerRecord>;
+  updatePartner(p: PartnerRecord): Promise<void>;
+  getPartner(id: number): Promise<PartnerRecord | null>;
+  getPartnerByCode(code: string): Promise<PartnerRecord | null>;
+  getPartnerByTelegramId(telegramId: number): Promise<PartnerRecord | null>;
+  listPartners(): Promise<PartnerRecord[]>;
+
+  getReferral(userId: number): Promise<ReferralRecord | null>;
+  /** Записать закрепление; если уже есть — ничего не менять (первый переход главный). */
+  createReferral(r: ReferralRecord): Promise<boolean>;
+  updateReferral(r: ReferralRecord): Promise<void>;
+
+  createEarning(e: Omit<EarningRecord, 'id'>): Promise<EarningRecord>;
+  getEarningByPayment(paymentId: string): Promise<EarningRecord | null>;
+  listEarnings(partnerId: number, status?: EarningStatus): Promise<EarningRecord[]>;
+  /** Сколько месяцев этого пользователя партнёру уже засчитано. */
+  sumMonthsRewarded(partnerId: number, userId: number): Promise<number>;
+  /** on_hold → available у всех, чей срок удержания вышел; вернуть число. */
+  releaseEarnings(now: number): Promise<number>;
+  /** available → paid одной выплатой; вернуть сумму. */
+  createPayout(partnerId: number, reference: string | null): Promise<PayoutRecord | null>;
+  listPayouts(partnerId: number): Promise<PayoutRecord[]>;
+  partnerStats(partnerId: number): Promise<PartnerStats>;
 
   /** Старая таблица ног — только для переноса ручных решений. */
   listVerifiedSymbols(): Promise<VerifiedSymbolRecord[]>;

@@ -13,7 +13,8 @@ import type { FastifyBaseLogger } from 'fastify';
 import { PLAN_ORDER, type PlanId } from '@cs/shared';
 
 import { planTitle, type Billing } from './billing.js';
-import type { Repo } from './repo/index.js';
+import { Partners, anomaly, fmtUsd, termsText } from './partners.js';
+import type { PartnerRecord, PartnerStats, PartnerTerms, Repo } from './repo/index.js';
 
 const API = 'https://api.telegram.org';
 
@@ -65,6 +66,7 @@ export interface BotOptions {
   log: FastifyBaseLogger;
   billing: Billing;
   repo: Repo;
+  partners: Partners;
   /** Переключить «бумажную торговлю» для пользователя; возвращает новое состояние. */
   togglePaper?: (userId: number) => Promise<boolean>;
   isPaper?: (userId: number) => boolean;
@@ -73,8 +75,6 @@ export interface BotOptions {
 /** Что бот умеет наружу: слать сообщения из API и останавливаться. */
 export interface BotHandle {
   send(chatId: number, text: string, extra?: Record<string, unknown>): Promise<boolean>;
-  /** Сообщить администратору о заявке на оплату — с кнопками подтверждения. */
-  notifyPayment(text: string, paymentId: string): Promise<void>;
   stop(): void;
 }
 
@@ -112,7 +112,7 @@ async function resolveAppUrl(token: string, fallback?: string): Promise<string |
   return res.result?.web_app?.url;
 }
 
-function greeting(appUrl: string | undefined, name: string): string {
+function greeting(appUrl: string | undefined, name: string, referred: boolean): string {
   if (!appUrl) {
     return (
       `Привет, ${name}.\n\n` +
@@ -126,6 +126,7 @@ function greeting(appUrl: string | undefined, name: string): string {
     'на восьми биржах и показывает, где одну и ту же монету можно купить дешевле ' +
     'и продать дороже — уже за вычетом комиссий.\n\n' +
     'Первая неделя — бесплатно, без карты и без ограничений.\n\n' +
+    (referred ? 'Ты пришёл по ссылке партнёра: +7 дней в подарок к первой оплаченной подписке.\n\n' : '') +
     'Автоматическая торговля по этим спредам — в разработке.\n\n' +
     `Новости и разборы — в канале ${CHANNEL_URL}\n\n` +
     'Нажми кнопку ниже, чтобы открыть скринер.'
@@ -133,9 +134,10 @@ function greeting(appUrl: string | undefined, name: string): string {
 }
 
 export function startBot(opts: BotOptions): BotHandle {
-  const { token, publicUrl, log, billing, repo } = opts;
+  const { token, publicUrl, log, billing, repo, partners } = opts;
   let offset = 0;
   let stopped = false;
+  let botUsername = '';
 
   async function send(
     chatId: number,
@@ -156,23 +158,26 @@ export function startBot(opts: BotOptions): BotHandle {
   // ---------------------------------------------------------------- админка
 
   /**
-   * Панель администратора живёт на кнопках: меню, заявки с «Подтвердить /
-   * Отклонить», действия с вводом (выдать, отозвать, статус) — бот задаёт
-   * вопрос и ждёт следующее сообщение. Текстовые команды тоже работают.
+   * Панель администратора живёт на кнопках: меню, действия с вводом (выдать,
+   * отозвать, статус, отметить выплату) — бот задаёт вопрос и ждёт следующее
+   * сообщение. Текстовые команды тоже работают.
    */
-  type Awaiting = 'grant' | 'revoke' | 'sub' | null;
+  type Awaiting = 'grant' | 'revoke' | 'sub' | `paid:${string}` | null;
   let awaiting: Awaiting = null;
 
   const MENU: Keyboard = [
     [
-      { text: '📋 Заявки', callback_data: 'adm:pending' },
       { text: '👥 Пользователи', callback_data: 'adm:users' },
+      { text: '🔎 Статус подписки', callback_data: 'adm:sub' },
     ],
     [
       { text: '➕ Выдать доступ', callback_data: 'adm:grant' },
       { text: '🚫 Отозвать', callback_data: 'adm:revoke' },
     ],
-    [{ text: '🔎 Статус подписки', callback_data: 'adm:sub' }],
+    [
+      { text: '🤝 Партнёры', callback_data: 'adm:partners' },
+      { text: '💸 К выплате', callback_data: 'adm:payouts' },
+    ],
     [{ text: '🧪 Бумажная торговля: вкл/выкл для меня', callback_data: 'adm:paper' }],
   ];
   const BACK: Keyboard = [[{ text: '← Меню', callback_data: 'adm:menu' }]];
@@ -190,41 +195,194 @@ export function startBot(opts: BotOptions): BotHandle {
 
   async function showMenu(chatId: number): Promise<void> {
     awaiting = null;
-    const [users, active, pending] = await Promise.all([
+    const [users, active, payable] = await Promise.all([
       repo.countUsers(),
       repo.countActiveSubscriptions(),
-      repo.listPendingPayments(),
+      partners.payable(),
     ]);
-    const open = pending.filter((p) => p.method === 'crypto' && p.txHash).length;
     await send(
       chatId,
-      `Панель администратора\n\nПользователей: ${users}\nАктивных подписок: ${active}\nЗаявок на проверку: ${open}`,
+      `Панель администратора\n\nПользователей: ${users}\nАктивных подписок: ${active}\nПартнёров к выплате: ${payable.length}`,
       kb(MENU),
     );
   }
 
-  async function showPending(chatId: number): Promise<void> {
-    const list = (await repo.listPendingPayments()).filter((p) => p.method === 'crypto');
+  // ---------------------------------------------------------------- партнёры (админ)
+
+  const PARTNER_HELP =
+    'Команды:\n' +
+    '/partner_add @user код [процент месяцев дней_закрепления дней_удержания] — создать\n' +
+    '/partner_set код процент месяцев [дней_закрепления дней_удержания] — изменить условия (только будущие начисления)\n' +
+    '/partner_pause код · /partner_resume код — пауза / возобновить\n' +
+    '/partner_defaults [процент месяцев дней_закрепления дней_удержания] — условия по умолчанию\n' +
+    '/payouts — кому платить · /paid код [ссылка на перевод] — отметить выплату\n' +
+    '/min_payout сумма — минимальная выплата';
+
+  function partnerLine(p: PartnerRecord, s: PartnerStats): string {
+    const flag = anomaly(s);
+    return (
+      `${p.status === 'paused' ? '⏸ ' : ''}${p.code} · ${termsText(p)}\n` +
+      `  переходов ${s.clicks} · пробных ${s.trials} · оплатили ${s.paidUsers}` +
+      ` · за 30 дн: ${s.clicks30d}/${s.paidUsers30d}\n` +
+      `  удержание ${fmtUsd(s.onHold)} · к выплате ${fmtUsd(s.available)} · выплачено ${fmtUsd(s.paid)}` +
+      (flag ? `\n  ⚠ ${flag}` : '')
+    );
+  }
+
+  async function showPartners(chatId: number): Promise<void> {
+    const list = await partners.list();
+    const defaults = await partners.defaults();
+    const head =
+      `Партнёров: ${list.length}\nУсловия по умолчанию: ${termsText(defaults)}, ` +
+      `закрепление ${defaults.attributionDays} дн., удержание ${defaults.holdDays} дн.\n` +
+      `Минимальная выплата: ${fmtUsd(await partners.minPayout())}`;
+    const body = list.map((x) => partnerLine(x.partner, x.stats)).join('\n\n');
+    await send(chatId, `${head}\n\n${body || 'Партнёров пока нет.'}\n\n${PARTNER_HELP}`, kb(BACK));
+  }
+
+  async function showPayouts(chatId: number): Promise<void> {
+    const list = await partners.payable();
     if (list.length === 0) {
-      await send(chatId, 'Открытых заявок нет.', kb(BACK));
+      await send(chatId, `К выплате никого нет (минимум ${fmtUsd(await partners.minPayout())}).`, kb(BACK));
       return;
     }
-    for (const p of list) {
-      const u = await repo.getUser(p.userId);
-      const who = u?.username ? `@${u.username}` : `id ${p.userId}`;
+    for (const { partner, stats } of list) {
+      const u = await repo.getUser(partner.telegramId);
+      const who = u?.username ? `@${u.username}` : `id ${partner.telegramId}`;
       await send(
         chatId,
-        `Заявка #${p.id}\n${who} · ${planTitle(p.plan)} · ${p.months} мес.\n` +
-          `${p.amount} USDT (${p.network})\nHash: ${p.txHash ?? 'ещё не прислан'}`,
-        kb([
-          [
-            { text: '✅ Подтвердить', callback_data: `pay:ok:${p.id}` },
-            { text: '❌ Отклонить', callback_data: `pay:no:${p.id}` },
-          ],
-        ]),
+        `${partner.code} (${who}): к выплате ${fmtUsd(stats.available)} USDT`,
+        kb([[{ text: `✅ Отметить выплату ${fmtUsd(stats.available)}`, callback_data: `ptp:${partner.code}` }]]),
       );
     }
-    await send(chatId, `Всего заявок: ${list.length}`, kb(BACK));
+    await send(chatId, `Всего: ${list.length}`, kb(BACK));
+  }
+
+  async function markPaid(chatId: number, code: string, reference: string | null): Promise<void> {
+    const r = await partners.markPaid(code, reference);
+    if (!r) {
+      await send(chatId, `У партнёра ${code} нет доступных начислений (или он не найден).`, kb(BACK));
+      return;
+    }
+    await send(chatId, `✅ ${code}: выплата ${fmtUsd(r.payout.amount)} отмечена.`, kb(BACK));
+    await send(
+      r.partner.telegramId,
+      `Выплата по партнёрской программе MIDNEX: ${fmtUsd(r.payout.amount)} USDT` +
+        (reference ? `\n${reference}` : '') +
+        '\n\nСтатистика — /partner.',
+    );
+  }
+
+  function parseTerms(args: string[]): Partial<PartnerTerms> | { error: string } {
+    const keys: (keyof PartnerTerms)[] = ['rewardPercent', 'rewardMonths', 'attributionDays', 'holdDays'];
+    const out: Partial<PartnerTerms> = {};
+    for (let i = 0; i < Math.min(args.length, keys.length); i++) {
+      const v = Number(args[i]);
+      if (!Number.isFinite(v)) return { error: `не число: ${args[i]}` };
+      out[keys[i]!] = v;
+    }
+    return out;
+  }
+
+  async function partnerAdd(chatId: number, args: string[]): Promise<void> {
+    const [who, code, ...rest] = args;
+    if (!who || !code) {
+      await send(chatId, 'Формат: /partner_add @user код [процент месяцев дней_закрепления дней_удержания]', kb(BACK));
+      return;
+    }
+    const telegramId = await resolveUserId(who);
+    if (telegramId === null) {
+      await send(chatId, `Пользователь ${who} не найден — укажи числовой Telegram ID (он получит его командой /id).`, kb(BACK));
+      return;
+    }
+    const terms = parseTerms(rest);
+    if ('error' in terms) return void (await send(chatId, terms.error, kb(BACK)));
+    const r = await partners.create(telegramId, code, terms);
+    if ('error' in r) return void (await send(chatId, `Не создал: ${r.error}`, kb(BACK)));
+    await send(chatId, `🤝 Партнёр ${r.code} создан: ${termsText(r)}.\nСсылка: ${partnerLink(r)}`, kb(BACK));
+    // Партнёру — его ссылка и условия; команда /partner появится у него в меню.
+    await call(token, 'setMyCommands', {
+      scope: { type: 'chat', chat_id: r.telegramId },
+      commands: [
+        { command: 'partner', description: 'Партнёрская статистика' },
+        { command: 'start', description: 'Открыть скринер' },
+      ],
+    });
+    const ok = await send(r.telegramId, partnerSummary(r, await partners.stats(r)));
+    if (!ok) await send(chatId, 'Партнёр ещё не писал боту — ссылку и условия он увидит по /partner, когда откроет чат.', kb(BACK));
+  }
+
+  async function partnerSet(chatId: number, args: string[]): Promise<void> {
+    const [code, ...rest] = args;
+    if (!code || rest.length === 0) {
+      await send(chatId, 'Формат: /partner_set код процент месяцев [дней_закрепления дней_удержания]', kb(BACK));
+      return;
+    }
+    const terms = parseTerms(rest);
+    if ('error' in terms) return void (await send(chatId, terms.error, kb(BACK)));
+    const r = await partners.setTerms(code, terms);
+    if ('error' in r) return void (await send(chatId, r.error, kb(BACK)));
+    await send(chatId, `${r.code}: ${termsText(r)}, закрепление ${r.attributionDays} дн., удержание ${r.holdDays} дн. Действует на будущие оплаты.`, kb(BACK));
+    await send(r.telegramId, `Условия партнёрской программы обновлены: ${termsText(r)}. Уже созданные начисления не меняются.`);
+  }
+
+  async function partnerStatus(chatId: number, code: string | undefined, status: PartnerRecord['status']): Promise<void> {
+    if (!code) return void (await send(chatId, 'Укажи код партнёра.', kb(BACK)));
+    const p = await partners.setStatus(code, status);
+    if (!p) return void (await send(chatId, `Партнёр ${code} не найден.`, kb(BACK)));
+    await send(
+      chatId,
+      status === 'paused'
+        ? `⏸ ${p.code} на паузе: новые переходы не закрепляются, за уже приведённых — начисления ещё 30 дней.`
+        : `▶️ ${p.code} снова активен.`,
+      kb(BACK),
+    );
+  }
+
+  async function partnerDefaults(chatId: number, args: string[]): Promise<void> {
+    if (args.length > 0) {
+      const terms = parseTerms(args);
+      if ('error' in terms) return void (await send(chatId, terms.error, kb(BACK)));
+      await partners.setDefaults(terms);
+    }
+    const d = await partners.defaults();
+    await send(chatId, `Условия по умолчанию: ${termsText(d)}, закрепление ${d.attributionDays} дн., удержание ${d.holdDays} дн.`, kb(BACK));
+  }
+
+  // ---------------------------------------------------------------- партнёры (сам партнёр)
+
+  function partnerLink(p: PartnerRecord): string {
+    return `https://t.me/${botUsername || 'midnexbot'}?start=p_${p.code}`;
+  }
+
+  /** Только цифры: имена и ID приведённых пользователей партнёр не видит. */
+  function partnerSummary(p: PartnerRecord, s: PartnerStats): string {
+    return (
+      `Партнёрская ссылка: ${partnerLink(p)}\n\n` +
+      `Ваши условия: ${termsText(p)}` +
+      (p.status === 'paused' ? '\n⏸ Программа приостановлена: новые переходы не засчитываются.' : '') +
+      '\n\nЗа всё время:\n' +
+      `  Переходов по ссылке:  ${s.clicks}\n` +
+      `  Запустили пробный период:  ${s.trials}\n` +
+      `  Оплатили:  ${s.paidUsers}\n\n` +
+      'Начислено:\n' +
+      `  На удержании:  ${fmtUsd(s.onHold)}   (станет доступно в течение ${p.holdDays} дней)\n` +
+      `  Доступно к выплате:  ${fmtUsd(s.available)}\n` +
+      `  Выплачено всего:  ${fmtUsd(s.paid)}`
+    );
+  }
+
+  async function showPartner(chatId: number, p: PartnerRecord): Promise<void> {
+    await send(chatId, partnerSummary(p, await partners.stats(p)), kb([[{ text: '📅 По месяцам', callback_data: 'ptr:months' }]]));
+  }
+
+  async function showPartnerMonths(chatId: number, p: PartnerRecord): Promise<void> {
+    const rows = await partners.monthly(p);
+    if (rows.length === 0) return void (await send(chatId, 'Начислений пока не было.'));
+    await send(
+      chatId,
+      'Начисления по месяцам:\n' + rows.map((r) => `  ${r.month}: ${fmtUsd(r.amount)} · оплативших ${r.users}`).join('\n'),
+    );
   }
 
   async function showUsers(chatId: number): Promise<void> {
@@ -232,37 +390,14 @@ export function startBot(opts: BotOptions): BotHandle {
     await send(chatId, `Пользователей: ${users}\nАктивных подписок: ${active}`, kb(BACK));
   }
 
-  async function approvePayment(chatId: number, id: string): Promise<void> {
-    const r = await billing.approve(id);
-    if (!r) {
-      await send(chatId, `Заявка #${id} не найдена или уже закрыта.`, kb(BACK));
-      return;
-    }
-    await send(chatId, `✅ #${id} подтверждена. Доступ до ${fmtDate(r.sub.expiresAt)}.`, kb(BACK));
-    await send(
-      r.payment.userId,
-      `Оплата получена — спасибо! ${planTitle(r.payment.plan)} активен до ${fmtDate(r.sub.expiresAt)}.`,
-    );
-  }
-
-  async function rejectPayment(chatId: number, id: string): Promise<void> {
-    const p = await billing.reject(id, null);
-    if (!p) {
-      await send(chatId, `Заявка #${id} не найдена или уже закрыта.`, kb(BACK));
-      return;
-    }
-    await send(chatId, `❌ #${id} отклонена.`, kb(BACK));
-    await send(
-      p.userId,
-      `Заявка на оплату #${id} отклонена: перевод не найден. ` +
-        'Проверь сумму, сеть и хэш и создай заявку заново в приложении.',
-    );
-  }
-
   /** Ответ администратора на вопрос бота (выдать / отозвать / статус). */
   async function handleAwaiting(chatId: number, text: string): Promise<void> {
     const action = awaiting;
     awaiting = null;
+    if (action?.startsWith('paid:')) {
+      const ref = text.trim();
+      return markPaid(chatId, action.slice(5), ref === '-' ? null : ref);
+    }
     const [who, daysRaw, planRaw] = text.trim().split(/\s+/);
     if (!who) return showMenu(chatId);
     const userId = await resolveUserId(who);
@@ -306,12 +441,29 @@ export function startBot(opts: BotOptions): BotHandle {
   async function onCallback(q: NonNullable<TgUpdate['callback_query']>): Promise<void> {
     const chatId = q.message?.chat.id ?? q.from.id;
     await call(token, 'answerCallbackQuery', { callback_query_id: q.id });
-    if (!billing.isAdmin(q.from.id)) return;
     const data = q.data ?? '';
 
+    // Кнопки партнёра — доступны только самому партнёру.
+    if (data === 'ptr:months') {
+      const p = await partners.byTelegramId(q.from.id);
+      if (p) await showPartnerMonths(chatId, p);
+      return;
+    }
+
+    if (!billing.isAdmin(q.from.id)) return;
+
     if (data === 'adm:menu') return showMenu(chatId);
-    if (data === 'adm:pending') return showPending(chatId);
     if (data === 'adm:users') return showUsers(chatId);
+    if (data === 'adm:partners') return showPartners(chatId);
+    if (data === 'adm:payouts') return showPayouts(chatId);
+    if (data.startsWith('ptp:')) {
+      awaiting = `paid:${data.slice(4)}`;
+      return void (await send(
+        chatId,
+        `Отмечаю выплату ${data.slice(4)}. Пришли ссылку или комментарий к переводу (или «-», если без него).`,
+        kb(CANCEL),
+      ));
+    }
     if (data === 'adm:grant') {
       awaiting = 'grant';
       return void (await send(
@@ -347,8 +499,6 @@ export function startBot(opts: BotOptions): BotHandle {
         kb(CANCEL),
       ));
     }
-    if (data.startsWith('pay:ok:')) return approvePayment(chatId, data.slice(7));
-    if (data.startsWith('pay:no:')) return rejectPayment(chatId, data.slice(7));
   }
 
   /** Текстовые команды — дубль кнопок для тех, кому так быстрее. */
@@ -360,18 +510,43 @@ export function startBot(opts: BotOptions): BotHandle {
       case '/menu':
         await showMenu(chatId);
         return true;
-      case '/pending':
-        await showPending(chatId);
-        return true;
       case '/users':
         await showUsers(chatId);
         return true;
-      case '/approve':
-        if (args[0]) await approvePayment(chatId, args[0]);
+      case '/partners':
+        await showPartners(chatId);
         return true;
-      case '/reject':
-        if (args[0]) await rejectPayment(chatId, args[0]);
+      case '/partner_add':
+        await partnerAdd(chatId, args);
         return true;
+      case '/partner_set':
+        await partnerSet(chatId, args);
+        return true;
+      case '/partner_pause':
+        await partnerStatus(chatId, args[0], 'paused');
+        return true;
+      case '/partner_resume':
+        await partnerStatus(chatId, args[0], 'active');
+        return true;
+      case '/partner_defaults':
+        await partnerDefaults(chatId, args);
+        return true;
+      case '/payouts':
+        await showPayouts(chatId);
+        return true;
+      case '/paid':
+        if (!args[0]) await send(chatId, 'Формат: /paid код [ссылка на перевод]', kb(BACK));
+        else await markPaid(chatId, args[0], args.slice(1).join(' ') || null);
+        return true;
+      case '/min_payout': {
+        const v = Number(args[0]);
+        if (!(v > 0)) await send(chatId, 'Формат: /min_payout 20', kb(BACK));
+        else {
+          await partners.setMinPayout(v);
+          await send(chatId, `Минимальная выплата: ${fmtUsd(v)}.`, kb(BACK));
+        }
+        return true;
+      }
       case '/grant':
         awaiting = 'grant';
         await handleAwaiting(chatId, args.join(' '));
@@ -447,6 +622,25 @@ export function startBot(opts: BotOptions): BotHandle {
       return;
     }
 
+    if (/^\/partner(?:@\w+)?$/.test(msg.text.trim())) {
+      const p = await partners.byTelegramId(msg.chat.id);
+      if (p) await showPartner(msg.chat.id, p);
+      else if (!billing.isAdmin(msg.chat.id)) await send(msg.chat.id, 'Эта команда — для партнёров программы MIDNEX.');
+      if (p || !billing.isAdmin(msg.chat.id)) return;
+    }
+
+    // /start p_<код> — переход по партнёрской ссылке: закрепляем нового
+    // пользователя до того, как он откроет приложение.
+    let referred = false;
+    const startArg = msg.text.match(/^\/start(?:@\w+)?\s+(\S+)/)?.[1];
+    const code = Partners.codeFromStart(startArg);
+    if (code) {
+      const isNew = !(await repo.getUser(msg.chat.id));
+      const r = await partners.attribute(msg.chat.id, code, isNew);
+      referred = r === 'ok';
+      log.info({ chatId: msg.chat.id, code, result: r }, 'партнёрка: переход по ссылке');
+    }
+
     if (billing.isAdmin(msg.chat.id)) {
       if (awaiting && !msg.text.startsWith('/')) {
         await handleAwaiting(msg.chat.id, msg.text);
@@ -462,7 +656,7 @@ export function startBot(opts: BotOptions): BotHandle {
 
     const res = await call(token, 'sendMessage', {
       chat_id: msg.chat.id,
-      text: greeting(appUrl, name),
+      text: greeting(appUrl, name, referred),
       reply_markup: appUrl
         ? {
             inline_keyboard: [
@@ -554,14 +748,16 @@ export function startBot(opts: BotOptions): BotHandle {
         scope: { type: 'chat', chat_id: billing.adminId },
         commands: [
           { command: 'admin', description: 'Панель администратора' },
-          { command: 'pending', description: 'Заявки на оплату' },
+          { command: 'partners', description: 'Партнёры' },
+          { command: 'payouts', description: 'Партнёрам к выплате' },
           { command: 'start', description: 'Открыть скринер' },
         ],
       });
     }
 
     const me = await call<{ username: string }>(token, 'getMe');
-    log.info(`бот: слушаю @${me.result?.username ?? '?'}`);
+    botUsername = me.result?.username ?? '';
+    log.info(`бот: слушаю @${botUsername || '?'}`);
     void poll();
     void remind();
     setInterval(() => void remind(), 6 * 60 * 60 * 1000);
@@ -593,25 +789,38 @@ export function startBot(opts: BotOptions): BotHandle {
     } catch (err) {
       log.warn({ err: String(err) }, 'бот: напоминания не разосланы');
     }
+    await remindPayouts();
+  }
+
+  /**
+   * Раз в месяц — список партнёров к выплате администратору. Отметка месяца
+   * в app_config: если ПК был выключен 1-го числа, письмо уйдёт при первом
+   * запуске в новом месяце.
+   */
+  async function remindPayouts(): Promise<void> {
+    if (billing.adminId === null) return;
+    try {
+      const d = new Date();
+      const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if ((await repo.getConfig('partner_payout_reminded')) === month) return;
+      await repo.setConfig('partner_payout_reminded', month);
+      const list = await partners.payable();
+      if (list.length === 0) return;
+      await send(
+        billing.adminId,
+        `💸 Партнёрам к выплате за месяц:\n` +
+          list.map((x) => `  ${x.partner.code}: ${fmtUsd(x.stats.available)}`).join('\n') +
+          '\n\nПеревести в USDT через CryptoBot и отметить: /paid код [ссылка].',
+      );
+    } catch (err) {
+      log.warn({ err: String(err) }, 'бот: напоминание о выплатах не ушло');
+    }
   }
 
   void boot().catch((err: unknown) => log.error({ err: String(err) }, 'бот: не смог запуститься'));
 
   return {
     send,
-    async notifyPayment(text, paymentId) {
-      if (billing.adminId === null) return;
-      await send(
-        billing.adminId,
-        text,
-        kb([
-          [
-            { text: '✅ Подтвердить', callback_data: `pay:ok:${paymentId}` },
-            { text: '❌ Отклонить', callback_data: `pay:no:${paymentId}` },
-          ],
-        ]),
-      );
-    },
     stop() {
       stopped = true;
     },

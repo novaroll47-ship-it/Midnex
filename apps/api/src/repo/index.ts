@@ -28,6 +28,14 @@ export type {
   PairCategory,
   InstrumentNominalRecord,
   VerificationSource,
+  PartnerRecord,
+  PartnerStats,
+  PartnerTerms,
+  PartnerStatus,
+  ReferralRecord,
+  EarningRecord,
+  EarningStatus,
+  PayoutRecord,
 } from './types.js';
 
 export async function createRepo(log: FastifyBaseLogger): Promise<Repo> {

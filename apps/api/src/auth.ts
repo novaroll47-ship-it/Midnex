@@ -20,6 +20,8 @@ export interface TelegramUser {
   username?: string;
   languageCode?: string;
   isPremium?: boolean;
+  /** Параметр запуска из прямой ссылки на приложение (t.me/бот?startapp=…). */
+  startParam?: string;
 }
 
 export const DEV_USER: TelegramUser = {
@@ -96,5 +98,6 @@ export function verifyInitData(initData: string, botToken: string): TelegramUser
     username: parsed.username,
     languageCode: parsed.language_code,
     isPremium: parsed.is_premium,
+    startParam: params.get('start_param') ?? undefined,
   };
 }

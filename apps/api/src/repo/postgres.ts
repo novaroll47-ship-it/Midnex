@@ -10,9 +10,15 @@ import type { BillingMonths, ExchangeId, PaymentMethod, PaymentStatus, PlanId, B
 
 import type {
   AlertRuleRecord,
+  EarningRecord,
+  EarningStatus,
   ExchangeKeyRecord,
   KeyStatus,
+  PartnerRecord,
+  PartnerStats,
   PaymentRecord,
+  PayoutRecord,
+  ReferralRecord,
   PositionRecord,
   SubscriptionRecord,
   Repo,
@@ -455,6 +461,236 @@ export class PostgresRepo implements Repo {
       insert into app_config (key, value, updated_at) values (${key}, ${value}, now())
       on conflict (key) do update set value = excluded.value, updated_at = now()
     `;
+  }
+
+  async countPaidPayments(userId: number): Promise<number> {
+    const rows = await this
+      .sql`select count(*)::int as n from payments where user_id = ${userId} and status = 'paid'`;
+    return Number(rows[0]?.['n'] ?? 0);
+  }
+
+  // ---------------------------------------------------------------- партнёры
+
+  private partnerFromRow(r: Record<string, unknown>): PartnerRecord {
+    return {
+      id: Number(r['id']),
+      telegramId: Number(r['telegram_id']),
+      code: r['code'] as string,
+      rewardPercent: Number(r['reward_percent']),
+      rewardMonths: Number(r['reward_months']),
+      attributionDays: Number(r['attribution_days']),
+      holdDays: Number(r['hold_days']),
+      status: r['status'] as PartnerRecord['status'],
+      pausedAt: tsOrNull(r['paused_at']),
+      createdAt: ts(r['created_at']),
+    };
+  }
+
+  async createPartner(p: Omit<PartnerRecord, 'id' | 'createdAt' | 'pausedAt'>): Promise<PartnerRecord> {
+    const rows = await this.sql`
+      insert into partners (telegram_id, code, reward_percent, reward_months, attribution_days, hold_days, status)
+      values (${p.telegramId}, ${p.code}, ${p.rewardPercent}, ${p.rewardMonths}, ${p.attributionDays}, ${p.holdDays}, ${p.status})
+      returning *
+    `;
+    return this.partnerFromRow(rows[0]!);
+  }
+
+  async updatePartner(p: PartnerRecord): Promise<void> {
+    await this.sql`
+      update partners set code = ${p.code}, reward_percent = ${p.rewardPercent}, reward_months = ${p.rewardMonths},
+        attribution_days = ${p.attributionDays}, hold_days = ${p.holdDays}, status = ${p.status},
+        paused_at = ${p.pausedAt == null ? null : new Date(p.pausedAt)}, updated_at = now()
+      where id = ${p.id}
+    `;
+  }
+
+  async getPartner(id: number): Promise<PartnerRecord | null> {
+    const rows = await this.sql`select * from partners where id = ${id}`;
+    return rows[0] ? this.partnerFromRow(rows[0]) : null;
+  }
+
+  async getPartnerByCode(code: string): Promise<PartnerRecord | null> {
+    const rows = await this.sql`select * from partners where code = ${code}`;
+    return rows[0] ? this.partnerFromRow(rows[0]) : null;
+  }
+
+  async getPartnerByTelegramId(telegramId: number): Promise<PartnerRecord | null> {
+    const rows = await this.sql`select * from partners where telegram_id = ${telegramId}`;
+    return rows[0] ? this.partnerFromRow(rows[0]) : null;
+  }
+
+  async listPartners(): Promise<PartnerRecord[]> {
+    const rows = await this.sql`select * from partners order by created_at`;
+    return rows.map((r) => this.partnerFromRow(r));
+  }
+
+  private referralFromRow(r: Record<string, unknown>): ReferralRecord {
+    return {
+      userId: Number(r['user_id']),
+      partnerId: Number(r['partner_id']),
+      clickedAt: ts(r['clicked_at']),
+      attributedUntil: ts(r['attributed_until']),
+      convertedAt: tsOrNull(r['converted_at']),
+    };
+  }
+
+  async getReferral(userId: number): Promise<ReferralRecord | null> {
+    const rows = await this.sql`select * from user_referrals where user_id = ${userId}`;
+    return rows[0] ? this.referralFromRow(rows[0]) : null;
+  }
+
+  async createReferral(r: ReferralRecord): Promise<boolean> {
+    const rows = await this.sql`
+      insert into user_referrals (user_id, partner_id, clicked_at, attributed_until, converted_at)
+      values (${r.userId}, ${r.partnerId}, ${new Date(r.clickedAt)}, ${new Date(r.attributedUntil)},
+              ${r.convertedAt == null ? null : new Date(r.convertedAt)})
+      on conflict (user_id) do nothing
+      returning user_id
+    `;
+    return rows.length > 0;
+  }
+
+  async updateReferral(r: ReferralRecord): Promise<void> {
+    await this.sql`
+      update user_referrals set attributed_until = ${new Date(r.attributedUntil)},
+        converted_at = ${r.convertedAt == null ? null : new Date(r.convertedAt)}
+      where user_id = ${r.userId}
+    `;
+  }
+
+  private earningFromRow(r: Record<string, unknown>): EarningRecord {
+    return {
+      id: Number(r['id']),
+      partnerId: Number(r['partner_id']),
+      userId: Number(r['user_id']),
+      paymentId: r['payment_id'] as string,
+      monthsRewarded: Number(r['months_rewarded']),
+      monthPrice: Number(r['month_price']),
+      rewardPercent: Number(r['reward_percent']),
+      amount: Number(r['amount']),
+      status: r['status'] as EarningStatus,
+      createdAt: ts(r['created_at']),
+      availableAt: ts(r['available_at']),
+      paidAt: tsOrNull(r['paid_at']),
+      payoutId: r['payout_id'] == null ? null : Number(r['payout_id']),
+    };
+  }
+
+  async createEarning(e: Omit<EarningRecord, 'id'>): Promise<EarningRecord> {
+    const rows = await this.sql`
+      insert into partner_earnings (partner_id, user_id, payment_id, months_rewarded, month_price, reward_percent,
+                                    amount, status, created_at, available_at)
+      values (${e.partnerId}, ${e.userId}, ${e.paymentId}, ${e.monthsRewarded}, ${e.monthPrice}, ${e.rewardPercent},
+              ${e.amount}, ${e.status}, ${new Date(e.createdAt)}, ${new Date(e.availableAt)})
+      returning *
+    `;
+    return this.earningFromRow(rows[0]!);
+  }
+
+  async getEarningByPayment(paymentId: string): Promise<EarningRecord | null> {
+    const rows = await this.sql`select * from partner_earnings where payment_id = ${paymentId}`;
+    return rows[0] ? this.earningFromRow(rows[0]) : null;
+  }
+
+  async listEarnings(partnerId: number, status?: EarningStatus): Promise<EarningRecord[]> {
+    const rows =
+      status === undefined
+        ? await this.sql`select * from partner_earnings where partner_id = ${partnerId} order by created_at`
+        : await this
+            .sql`select * from partner_earnings where partner_id = ${partnerId} and status = ${status} order by created_at`;
+    return rows.map((r) => this.earningFromRow(r));
+  }
+
+  async sumMonthsRewarded(partnerId: number, userId: number): Promise<number> {
+    const rows = await this.sql`
+      select coalesce(sum(months_rewarded), 0)::int as n from partner_earnings
+      where partner_id = ${partnerId} and user_id = ${userId}
+    `;
+    return Number(rows[0]?.['n'] ?? 0);
+  }
+
+  async releaseEarnings(now: number): Promise<number> {
+    const rows = await this.sql`
+      update partner_earnings set status = 'available'
+      where status = 'on_hold' and available_at <= ${new Date(now)}
+      returning id
+    `;
+    return rows.length;
+  }
+
+  async createPayout(partnerId: number, reference: string | null): Promise<PayoutRecord | null> {
+    // Одной транзакцией: сумма доступных → выплата → начисления помечены.
+    const result = await this.sql.begin(async (tx) => {
+      const sum = await tx`
+        select coalesce(sum(amount), 0) as total, count(*)::int as n from partner_earnings
+        where partner_id = ${partnerId} and status = 'available'
+      `;
+      if (Number(sum[0]?.['n'] ?? 0) === 0) return null;
+      const amount = Math.round(Number(sum[0]!['total']) * 100) / 100;
+      const rows = await tx`
+        insert into partner_payouts (partner_id, amount, reference)
+        values (${partnerId}, ${amount}, ${reference}) returning *
+      `;
+      const payout = rows[0]!;
+      await tx`
+        update partner_earnings set status = 'paid', paid_at = now(), payout_id = ${Number(payout['id'])}
+        where partner_id = ${partnerId} and status = 'available'
+      `;
+      const rec: PayoutRecord = {
+        id: Number(payout['id']),
+        partnerId,
+        amount,
+        paidAt: ts(payout['paid_at']),
+        reference: (payout['reference'] as string | null) ?? null,
+      };
+      return rec;
+    });
+    return result as PayoutRecord | null;
+  }
+
+  async listPayouts(partnerId: number): Promise<PayoutRecord[]> {
+    const rows = await this
+      .sql`select * from partner_payouts where partner_id = ${partnerId} order by paid_at`;
+    return rows.map((r) => ({
+      id: Number(r['id']),
+      partnerId: Number(r['partner_id']),
+      amount: Number(r['amount']),
+      paidAt: ts(r['paid_at']),
+      reference: (r['reference'] as string | null) ?? null,
+    }));
+  }
+
+  async partnerStats(partnerId: number): Promise<PartnerStats> {
+    const since = new Date(Date.now() - 30 * 86_400_000);
+    const [refs, sums] = await Promise.all([
+      this.sql`
+        select count(*)::int as clicks,
+               count(u.trial_used_at)::int as trials,
+               count(r.converted_at)::int as paid_users,
+               (count(*) filter (where r.clicked_at >= ${since}))::int as clicks_30d,
+               (count(*) filter (where r.converted_at >= ${since}))::int as paid_users_30d
+        from user_referrals r left join users u on u.id = r.user_id
+        where r.partner_id = ${partnerId}
+      `,
+      this.sql`
+        select status, coalesce(sum(amount), 0) as total from partner_earnings
+        where partner_id = ${partnerId} group by status
+      `,
+    ]);
+    const r = refs[0] ?? {};
+    const by = new Map(
+      sums.map((s) => [String(s['status']), Math.round(Number(s['total']) * 100) / 100]),
+    );
+    return {
+      clicks: Number(r['clicks'] ?? 0),
+      trials: Number(r['trials'] ?? 0),
+      paidUsers: Number(r['paid_users'] ?? 0),
+      onHold: by.get('on_hold') ?? 0,
+      available: by.get('available') ?? 0,
+      paid: by.get('paid') ?? 0,
+      clicks30d: Number(r['clicks_30d'] ?? 0),
+      paidUsers30d: Number(r['paid_users_30d'] ?? 0),
+    };
   }
 
   async listVerifiedPairs(): Promise<VerifiedPairRecord[]> {

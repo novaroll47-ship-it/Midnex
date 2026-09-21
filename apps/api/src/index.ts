@@ -37,6 +37,7 @@ import {
 import { AuthError, DEV_USER, verifyInitData, type TelegramUser } from './auth.js';
 import { AlertEngine } from './alerts.js';
 import { Billing, planTitle, toPaymentInfo } from './billing.js';
+import { Partners } from './partners.js';
 import { CryptoPay } from './cryptopay.js';
 import { NotificationService } from './notifications.js';
 import { startBot, type BotHandle } from './bot.js';
@@ -84,16 +85,6 @@ const TRADING_ENABLED = process.env.TRADING_ENABLED === '1';
 const ADMIN_TELEGRAM_ID = Number(process.env.ADMIN_TELEGRAM_ID) || null;
 /** Курс звёзд Telegram к доллару для инвойсов. */
 const STARS_PER_USD = Number(process.env.STARS_PER_USD) || 50;
-/** Кошельки для USDT: USDT_WALLETS="TRC20:Txxx,TON:UQxxx". */
-const USDT_WALLETS = (process.env.USDT_WALLETS ?? '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean)
-  .map((s) => {
-    const i = s.indexOf(':');
-    return { network: s.slice(0, i).trim(), address: s.slice(i + 1).trim() };
-  })
-  .filter((w) => w.network && w.address);
 /** Сколько строк скринера видно без подписки. */
 const FREE_PREVIEW_ROWS = 3;
 
@@ -139,14 +130,23 @@ const cryptoPay = CRYPTOPAY_TOKEN
   ? new CryptoPay(CRYPTOPAY_TOKEN, process.env.CRYPTOPAY_TESTNET === '1', app.log)
   : null;
 
+// Партнёрская программа: закрепление по ссылке, начисления при оплате,
+// удержание → доступно к выплате раз в час.
+const partners = new Partners({ repo, log: app.log });
+setInterval(() => {
+  void partners.release().catch((err: unknown) => {
+    app.log.warn({ err: String(err) }, 'партнёрка: снятие удержания не удалось');
+  });
+}, 60 * 60 * 1000);
+
 const billing = new Billing({
   repo,
   log: app.log,
   botToken: BOT_TOKEN || undefined,
   adminId: ADMIN_TELEGRAM_ID,
   starsPerUsd: STARS_PER_USD,
-  wallets: USDT_WALLETS,
   trading: TRADING_ENABLED,
+  partners,
   cryptoPay,
   publicUrl: process.env.PUBLIC_URL,
 });
@@ -367,6 +367,20 @@ app.addHook('preHandler', async (req: FastifyRequest, reply: FastifyReply) => {
   }
 
   req.tgUser = user;
+
+  // Прямая ссылка на приложение с партнёрским кодом: закрепляем до того, как
+  // state.forUser заведёт пользователя — иначе он уже «зарегистрирован».
+  const partnerCode = Partners.codeFromStart(user.startParam);
+  if (partnerCode) {
+    try {
+      const isNew = !(await repo.getUser(user.id));
+      const r = await partners.attribute(user.id, partnerCode, isNew);
+      req.log.info({ user: user.id, code: partnerCode, result: r }, 'партнёрка: переход по ссылке');
+    } catch (err) {
+      req.log.warn({ err: String(err) }, 'партнёрка: закрепление не удалось');
+    }
+  }
+
   req.state = await state.forUser(user.id, {
     username: user.username,
     firstName: user.firstName,
@@ -982,12 +996,12 @@ app.get('/api/billing', async (req) => {
   return {
     botUsername: await resolveBotUsername(),
     subscription: await billing.info(userId),
-    pending: await billing.pendingFor(userId),
     purchasable: purchasablePlans(TRADING_ENABLED),
     starsPerUsd: STARS_PER_USD,
-    wallets: billing.wallets.map((w) => w.network),
     starsAvailable: Boolean(BOT_TOKEN),
     cryptoBotAvailable: billing.cryptoBotAvailable,
+    // Подарок за переход по партнёрской ссылке — к первой оплате.
+    bonusDays: await partners.bonusDaysFor(userId),
   };
 });
 
@@ -1026,45 +1040,6 @@ app.get('/api/billing/payment/:id', async (req, reply) => {
   const p = await repo.getPayment(id);
   if (!p || p.userId !== req.state!.userId) return reply.code(404).send({ error: 'not found' });
   return { payment: toPaymentInfo(p), subscription: await billing.info(p.userId) };
-});
-
-app.post('/api/billing/crypto', async (req, reply) => {
-  const body = req.body as { plan?: string; months?: number; network?: string };
-  const r = await billing.createCryptoRequest(
-    req.state!.userId,
-    String(body?.plan ?? ''),
-    Number(body?.months),
-    String(body?.network ?? ''),
-  );
-  if ('error' in r) return reply.code(400).send({ error: r.error });
-  return { payment: toPaymentInfo(r.payment), address: r.wallet.address };
-});
-
-app.post('/api/billing/crypto/:id/tx', async (req, reply) => {
-  const { id } = req.params as { id: string };
-  const body = req.body as { txHash?: string };
-  const hash = String(body?.txHash ?? '').trim();
-  if (hash.length < 10) return reply.code(400).send({ error: 'tx hash required' });
-  const p = await billing.submitTxHash(req.state!.userId, id, hash);
-  if (!p) return reply.code(404).send({ error: 'not found' });
-
-  // Админ узнаёт о заявке сразу — подтверждать удобнее по горячим следам.
-  const u = req.tgUser!;
-  const who = u.username ? `@${u.username}` : `${u.firstName} (id ${u.id})`;
-  if (bot) {
-    void bot.notifyPayment(
-      `💵 Заявка #${p.id}\n${who} · ${p.plan} · ${p.months} мес.\n${p.amount} USDT (${p.network})\nHash: ${p.txHash}`,
-      p.id,
-    );
-  }
-  return { payment: toPaymentInfo(p) };
-});
-
-app.post('/api/billing/crypto/:id/cancel', async (req, reply) => {
-  const { id } = req.params as { id: string };
-  const ok = await billing.cancel(req.state!.userId, id);
-  if (!ok) return reply.code(404).send({ error: 'not found' });
-  return { ok: true };
 });
 
 // ---------------------------------------------------------------- алерты
@@ -1509,6 +1484,7 @@ if (BOT_TOKEN && process.env.BOT_DISABLED !== '1') {
     log: app.log,
     billing,
     repo,
+    partners,
     togglePaper,
     isPaper: (userId) => state.paperUsers.has(userId),
   });

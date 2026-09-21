@@ -35,8 +35,8 @@ export function discountPct(plan: PlanId, months: BillingMonths): number {
   return Math.round((1 - PRICING[plan][months] / monthly) * 100);
 }
 
-/** stars — Telegram Stars; crypto — перевод USDT с ручным подтверждением; cryptobot — счёт @CryptoBot. */
-export type PaymentMethod = 'stars' | 'crypto' | 'cryptobot';
+/** stars — Telegram Stars; cryptobot — счёт @CryptoBot. (В старых записях встречается 'crypto' — ручной перевод, способ убран.) */
+export type PaymentMethod = 'stars' | 'cryptobot';
 export type PaymentStatus = 'pending' | 'paid' | 'rejected' | 'cancelled';
 
 /** Подписка пользователя, как её видит интерфейс. */
@@ -68,3 +68,11 @@ export interface PaymentInfo {
 
 /** Бесплатная неделя новым пользователям — один раз на аккаунт. */
 export const TRIAL_DAYS = 7;
+
+/** Подарок пользователю, пришедшему по партнёрской ссылке: дни к первой оплаченной подписке. */
+export const REFERRAL_BONUS_DAYS = 7;
+
+/** Цена одного месяца в выбранном сроке — база для партнёрского вознаграждения. */
+export function monthPrice(plan: PlanId, months: BillingMonths): number {
+  return PRICING[plan][months] / months;
+}

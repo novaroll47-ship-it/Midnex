@@ -232,14 +232,13 @@ export interface AlertRule {
 export interface BillingResponse {
   botUsername: string | null;
   subscription: SubscriptionInfo;
-  pending: PaymentInfo | null;
   purchasable: PlanId[];
   starsPerUsd: number;
-  /** Сети, на которые принимается USDT. */
-  wallets: string[];
   starsAvailable: boolean;
   /** Оплата через @CryptoBot настроена на сервере. */
   cryptoBotAvailable: boolean;
+  /** Подарочные дни к первой оплате (переход по партнёрской ссылке); 0 — нет. */
+  bonusDays: number;
 }
 
 export type ExchangeKeyStatus = 'unverified' | 'ok' | 'invalid' | 'withdrawal_enabled';
@@ -401,15 +400,6 @@ export const api = {
     }),
   paymentStatus: (id: string) =>
     get<{ payment: PaymentInfo; subscription: SubscriptionInfo }>(`/api/billing/payment/${id}`),
-  cryptoRequest: (plan: PlanId, months: BillingMonths, network: string) =>
-    request<{ payment: PaymentInfo; address: string }>('POST', '/api/billing/crypto', {
-      plan,
-      months,
-      network,
-    }),
-  cryptoSubmit: (id: string, txHash: string) =>
-    request<{ payment: PaymentInfo }>('POST', `/api/billing/crypto/${id}/tx`, { txHash }),
-  cryptoCancel: (id: string) => request<{ ok: true }>('POST', `/api/billing/crypto/${id}/cancel`),
 
   sessions: () => get<{ sessions: SessionInfo[] }>('/api/sessions'),
   logoutOthers: () => request<{ removed: number }>('POST', '/api/sessions/logout-others'),
