@@ -219,14 +219,14 @@ export function ScreenerScreen({
     const query = search.trim().toLowerCase();
 
     // Фильтры и поиск — независимые выборки. Без запроса список показывает
-    // только то, что проходит фильтры. С запросом ищем по всему набору: нужная
-    // монета должна находиться, даже если сейчас не проходит порог — такие
-    // строки помечаются.
+    // только то, что проходит фильтры, плюс отмеченные монеты: они торгуются
+    // ботом и должны быть на виду, даже если спред сейчас ниже порога (такие
+    // строки помечаются «вне фильтра»). С запросом ищем по всему набору.
     const filtered = query
       ? rows.filter(
           (r) => r.base.toLowerCase().includes(query) || r.name.toLowerCase().includes(query),
         )
-      : rows.filter(passes);
+      : rows.filter((r) => passes(r) || selected.has(r.base));
 
     const bySort = (a: SpreadRow, b: SpreadRow) => {
       switch (extra.sort) {
@@ -490,7 +490,7 @@ export function ScreenerScreen({
               key={row.symbol}
               row={row}
               first={i === 0}
-              dimmed={search.trim() !== '' && !passes(row)}
+              dimmed={!passes(row)}
               checked={selected.has(row.base)}
               disabled={!selected.has(row.base) && limitReached}
               onToggle={() => toggle(row.base)}
@@ -501,7 +501,7 @@ export function ScreenerScreen({
               key={row.symbol}
               row={row}
               first={i === 0}
-              dimmed={search.trim() !== '' && !passes(row)}
+              dimmed={!passes(row)}
               checked={selected.has(row.base)}
               disabled={!selected.has(row.base) && limitReached}
               onToggle={() => toggle(row.base)}
