@@ -130,6 +130,22 @@ export class Feed {
   }
 
   private readonly quotedSymbols = new Set<string>();
+  /** Не дёргать watchTickers чаще (мс); задержка котировки не больше этого. */
+  private static readonly POLL_MS = 250;
+  /** Последний виденный объект тикера по символу: ccxt создаёт новый на каждое обновление. */
+  private readonly seenTicker = new Map<string, Ticker>();
+
+  /** Тикеры, которые ccxt обновил с прошлого раза (по идентичности объекта). */
+  private changedTickers(all: Record<string, Ticker>): Record<string, Ticker> {
+    const out: Record<string, Ticker> = {};
+    for (const symbol in all) {
+      const t = all[symbol]!;
+      if (this.seenTicker.get(symbol) === t) continue;
+      this.seenTicker.set(symbol, t);
+      out[symbol] = t;
+    }
+    return out;
+  }
 
   private ingest(tickers: Record<string, Ticker>, receivedAt: number): void {
     let touched = 0;
@@ -216,9 +232,15 @@ export class Feed {
         const symbols = this.wantsSymbolList ? this.opts.markets.map((m) => m.symbol) : undefined;
         while (this.running) {
           const t0 = Date.now();
-          const tickers = await client.watchTickers(symbols);
+          // watchTickers(symbols) у ccxt дорогой: на каждый вызов он заново
+          // строит фьючерсы и разбирает список из сотен символов — а
+          // резолвится на каждое сообщение биржи. Поэтому вызываем его не
+          // чаще POLL_MS, а котировки между вызовами ccxt всё равно кладёт
+          // в client.tickers — забираем оттуда всё, что обновилось.
+          await client.watchTickers(symbols);
           const now = Date.now();
-          this.ingest(tickers, now);
+          this.ingest(this.changedTickers(client.tickers as Record<string, Ticker>), now);
+          await new Promise((r) => setTimeout(r, Feed.POLL_MS));
           this.state.latencyMs = now - t0;
           this.state.status = 'live';
           this.state.lastError = null;

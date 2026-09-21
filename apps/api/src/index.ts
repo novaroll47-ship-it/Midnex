@@ -47,6 +47,7 @@ import type { VenueMarket } from '@cs/market';
 import { ListingsMonitor } from './listings.js';
 import { PairsService } from './pairs.js';
 import { ExternalTickers } from './pairs-external.js';
+import { scheduleCpuProfile } from './diag.js';
 import { HistoryCollector } from './history/collector.js';
 import { VictoriaMetrics } from './history/victoria.js';
 import { FUNDING_PERIODS, FundingHistory, type FundingPeriod } from './history/funding.js';
@@ -255,6 +256,8 @@ state.onNewUser = async (user) => {
 // История пишется только с живого рынка: мок-данные истории не заслуживают.
 const history = new SqliteHistoryStore(HISTORY_DB_PATH);
 const victoria = new VictoriaMetrics(VICTORIA_URL, VICTORIA_WRITE_PAIRS, app.log);
+// CPU_PROFILE="60,30" — снять профиль в .tools (см. diag.ts).
+scheduleCpuProfile(process.env.CPU_PROFILE, join(here, '../../../.tools'), app.log);
 const collector = new HistoryCollector({
   victoria,
   store: history,

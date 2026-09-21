@@ -4,8 +4,10 @@
  * Раз в секунду сборщик отдаёт сюда спред лучшей пары по каждой монете
  * (`midnex_spread_best{base,exA,exB}`) и, если включено, спред по каждой
  * сверенной паре бирж (`midnex_spread_pair{base,exA,exB}`). Точки копятся
- * и раз в секунду улетают одним сжатым POST в Metrics Ingestion API
+ * и раз в секунду улетают одним POST в Metrics Ingestion API
  * (`/api/v1/import/prometheus`, формат Prometheus с меткой времени в мс).
+ * Без сжатия: VM на той же машине, а gzipSync мегабайта в секунду съедал
+ * четверть процессорного времени процесса.
  * Чтение — `/api/v1/export`: сырые точки за интервал, без интерполяции.
  *
  * Хранение и retention — на стороне VictoriaMetrics (`-retentionPeriod=7d`,
@@ -13,7 +15,6 @@
  * отбрасываются: история спредов в SQLite от этого не зависит, а график
  * «1с» просто покажет пропуск.
  */
-import { gzipSync } from 'node:zlib';
 import type { FastifyBaseLogger } from 'fastify';
 import type { ExchangeId, SpreadRow } from '@cs/shared';
 
@@ -80,22 +81,32 @@ export class VictoriaMetrics {
     rows: SpreadRow[],
     pairs: { base: string; exA: ExchangeId; exB: ExchangeId; spreadPct: number }[],
   ): void {
-    const ts = Math.floor(now / 1000) * 1000;
+    const ts = ` ${Math.floor(now / 1000) * 1000}`;
     const lines: string[] = [];
     for (const r of rows) {
       if (r.stale || r.suspect) continue;
-      lines.push(
-        `midnex_spread_best{base="${r.base}",exA="${r.longExchange}",exB="${r.shortExchange}"} ${r.spreadPct} ${ts}`,
-      );
+      lines.push(this.label('midnex_spread_best', r.base, r.longExchange, r.shortExchange) + r.spreadPct + ts);
     }
     if (this.writePairs) {
       for (const p of pairs) {
-        lines.push(`midnex_spread_pair{base="${p.base}",exA="${p.exA}",exB="${p.exB}"} ${p.spreadPct} ${ts}`);
+        lines.push(this.label('midnex_spread_pair', p.base, p.exA, p.exB) + p.spreadPct + ts);
       }
     }
     if (lines.length === 0) return;
     this.queue.push(lines);
     if (this.queue.length > MAX_QUEUE_BATCHES) this.queue.shift();
+  }
+
+  /** Строки меток одни и те же каждую секунду — собираем один раз. */
+  private readonly labels = new Map<string, string>();
+  private label(metric: string, base: string, exA: string, exB: string): string {
+    const key = `${metric}|${base}|${exA}|${exB}`;
+    let s = this.labels.get(key);
+    if (!s) {
+      s = `${metric}{base="${base}",exA="${exA}",exB="${exB}"} `;
+      this.labels.set(key, s);
+    }
+    return s;
   }
 
   private async flush(): Promise<void> {
@@ -104,10 +115,10 @@ export class VictoriaMetrics {
     const batches = this.queue;
     this.queue = [];
     try {
-      const body = gzipSync(batches.map((b) => b.join('\n')).join('\n') + '\n');
+      const body = batches.map((b) => b.join('\n')).join('\n') + '\n';
       const res = await fetch(`${this.url}/api/v1/import/prometheus`, {
         method: 'POST',
-        headers: { 'Content-Encoding': 'gzip', 'Content-Type': 'text/plain' },
+        headers: { 'Content-Type': 'text/plain' },
         body,
         signal: AbortSignal.timeout(10_000),
       });
