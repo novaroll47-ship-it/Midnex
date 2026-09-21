@@ -1000,8 +1000,12 @@ app.get('/api/billing', async (req) => {
     starsPerUsd: STARS_PER_USD,
     starsAvailable: Boolean(BOT_TOKEN),
     cryptoBotAvailable: billing.cryptoBotAvailable,
-    // Подарок за переход по партнёрской ссылке — к первой оплате.
-    bonusDays: await partners.bonusDaysFor(userId),
+    // Подарок за переход по партнёрской ссылке — к первой оплате. Пока
+    // миграция партнёрки не применена, экран подписки не должен падать.
+    bonusDays: await partners.bonusDaysFor(userId).catch((err: unknown) => {
+      req.log.warn({ err: String(err) }, 'партнёрка: бонус не посчитан');
+      return 0;
+    }),
   };
 });
 
