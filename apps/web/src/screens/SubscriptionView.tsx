@@ -20,6 +20,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { InfoRow, RadioRow, Section } from '../components/Form';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Sheet } from '../components/Sheet';
 import { AlertIcon, CheckIcon, ClockIcon } from '../icons';
 import { api, type BillingResponse } from '../lib/api';
@@ -82,17 +83,11 @@ export function SubscriptionView({ settings }: { settings: SettingsController })
       </Section>
 
       {billing.pending && (
-        <section className="card notice">
-          <ClockIcon className="notice__icon" />
-          <span>
-            {t('sub.pendingNote', {
-              id: billing.pending.id,
-              amount: billing.pending.amount,
-              network: billing.pending.network ?? '',
-            })}
-            {!billing.pending.txHash && ` ${t('sub.pendingNoHash')}`}
-          </span>
-        </section>
+        <PendingCard
+          payment={billing.pending}
+          onChanged={() => void refreshAll()}
+          onNotice={(kind, text) => setNotice({ kind, text })}
+        />
       )}
 
       {notice && (
@@ -460,6 +455,120 @@ function StarsSheet({
 }
 
 // ------------------------------------------------------------- USDT
+
+/**
+ * Незакрытая заявка на ручной перевод USDT: что с ней делать — вставить хэш
+ * перевода (если ещё не прислан) или отменить. Без этих кнопок заявка висела
+ * бы до решения администратора.
+ */
+function PendingCard({
+  payment,
+  onChanged,
+  onNotice,
+}: {
+  payment: BillingResponse['pending'] & object;
+  onChanged: () => void;
+  onNotice: (kind: 'ok' | 'warn', text: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [hashOpen, setHashOpen] = useState(false);
+  const [hash, setHash] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+
+  async function cancel() {
+    setBusy(true);
+    try {
+      await api.cryptoCancel(payment.id);
+      haptic('success');
+      onNotice('ok', t('sub.pendingCancelled'));
+      onChanged();
+    } catch (err) {
+      haptic('error');
+      onNotice('warn', err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+      setConfirmCancel(false);
+    }
+  }
+
+  async function submitHash() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.cryptoSubmit(payment.id, hash.trim());
+      haptic('success');
+      setHashOpen(false);
+      onNotice('ok', t('sub.hashSaved'));
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const isManual = payment.method === 'crypto';
+  return (
+    <section className="card notice notice--stack">
+      <div className="notice__row">
+        <ClockIcon className="notice__icon" />
+        <span>
+          {t('sub.pendingNote', {
+            id: payment.id,
+            amount: payment.amount,
+            network: payment.network ?? '',
+          })}
+          {isManual && !payment.txHash && ` ${t('sub.pendingNoHash')}`}
+        </span>
+      </div>
+      <div className="notice__actions">
+        {isManual && !payment.txHash && (
+          <Button variant="secondary" size="sm" disabled={busy} onClick={() => setHashOpen(true)}>
+            {t('sub.enterHash')}
+          </Button>
+        )}
+        <Button variant="secondary" size="sm" disabled={busy} onClick={() => setConfirmCancel(true)}>
+          {t('sub.cancelRequest')}
+        </Button>
+      </div>
+
+      {confirmCancel && (
+        <ConfirmDialog
+          title={t('sub.cancelRequest')}
+          message={t('sub.cancelRequestConfirm', { id: payment.id })}
+          confirmLabel={t('sub.cancelRequest')}
+          danger
+          busy={busy}
+          onConfirm={() => void cancel()}
+          onCancel={() => setConfirmCancel(false)}
+        />
+      )}
+
+      {hashOpen && (
+        <Sheet
+          title={t('sub.enterHash')}
+          description={t('sub.enterHashHint', { network: payment.network ?? '' })}
+          onClose={() => !busy && setHashOpen(false)}
+          footer={
+            <Button disabled={busy || hash.trim().length < 10} onClick={() => void submitHash()}>
+              {busy ? t('app.working') : t('sub.iPaid')}
+            </Button>
+          }
+        >
+          <Input
+            value={hash}
+            onChange={(e) => setHash(e.target.value)}
+            placeholder={t('sub.hashPlaceholder')}
+            autoFocus
+          />
+          {error && <section className="card notice notice--warn">{error}</section>}
+        </Sheet>
+      )}
+    </section>
+  );
+}
 
 function CryptoSheet({
   plan,

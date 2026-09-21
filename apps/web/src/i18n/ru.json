@@ -527,7 +527,14 @@
     "cryptoBotReopen": "Открыть счёт ещё раз",
     "cryptoBotPending": "Оплата пока не подтверждена. Если вы оплатили — доступ появится через пару минут.",
     "cryptoBotOpenLink": "Открыть счёт в @CryptoBot",
-    "payStarsTitle": "Звёзды Telegram"
+    "payStarsTitle": "Звёзды Telegram",
+    "enterHash": "Указать хэш",
+    "enterHashHint": "Вставьте хэш (TxID) перевода в сети {{network}} — по нему администратор подтвердит оплату.",
+    "hashPlaceholder": "Хэш перевода",
+    "hashSaved": "Хэш сохранён — заявка ушла на проверку.",
+    "cancelRequest": "Отменить заявку",
+    "cancelRequestConfirm": "Заявка #{{id}} будет закрыта. Если вы уже отправили перевод — не отменяйте, а укажите хэш.",
+    "pendingCancelled": "Заявка отменена."
   },
   "bots": {
     "spreadName": "Бот «Спред»",

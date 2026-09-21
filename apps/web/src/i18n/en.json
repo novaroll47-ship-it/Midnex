@@ -525,7 +525,14 @@
     "cryptoBotReopen": "Open the invoice again",
     "cryptoBotPending": "Payment not confirmed yet. If you paid, access appears within a couple of minutes.",
     "cryptoBotOpenLink": "Open the invoice in @CryptoBot",
-    "payStarsTitle": "Telegram Stars"
+    "payStarsTitle": "Telegram Stars",
+    "enterHash": "Enter tx hash",
+    "enterHashHint": "Paste the transfer hash (TxID) on {{network}} — the admin confirms the payment by it.",
+    "hashPlaceholder": "Transfer hash",
+    "hashSaved": "Hash saved — the request is under review.",
+    "cancelRequest": "Cancel request",
+    "cancelRequestConfirm": "Request #{{id}} will be closed. If you already sent the transfer, don't cancel — enter the hash instead.",
+    "pendingCancelled": "Request cancelled."
   },
   "bots": {
     "spreadName": "Spread bot",
