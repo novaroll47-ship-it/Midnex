@@ -139,12 +139,32 @@ export class ExchangeWorkerHost {
     return proxy;
   }
 
+  /**
+   * Биржи не одинаковы по весу: Bybit держит ~600 подписок на тикеры и в
+   * потоке весит втрое больше остальных; BingX и OKX — вдвое. Раскладываем
+   * так, чтобы сумма весов по потокам была ровной, а не по числу бирж.
+   */
+  private static readonly WEIGHT: Partial<Record<ExchangeId, number>> = {
+    bybit: 3,
+    bingx: 2,
+    okx: 2,
+  };
+
+  private slotWeight(s: WorkerSlot): number {
+    let w = 0;
+    for (const ex of s.exchanges) w += ExchangeWorkerHost.WEIGHT[ex] ?? 1;
+    return w;
+  }
+
   private pickSlot(): WorkerSlot {
     while (this.slots.length < this.size) {
       this.slots.push(new WorkerSlot(this.file, this, this.slots.length));
     }
     let best = this.slots[0]!;
-    for (const s of this.slots) if (s.alive && s.exchanges.size < best.exchanges.size) best = s;
+    for (const s of this.slots) {
+      if (!s.alive) continue;
+      if (!best.alive || this.slotWeight(s) < this.slotWeight(best)) best = s;
+    }
     if (!best.alive) {
       // Заменяем мёртвый поток новым.
       const fresh = new WorkerSlot(this.file, this, best.index);

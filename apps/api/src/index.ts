@@ -339,13 +339,20 @@ await app.register(cors, {
 // друга. Сжатый JSON в десять раз меньше.
 await app.register(compress, { global: true, threshold: 2048 });
 
-// Лимит на адрес: обычный клиент делает 2–3 запроса в секунду (скринер,
+// Лимит запросов: обычный клиент делает 2–3 запроса в секунду (скринер,
 // монета, стаканы), так что 600 в минуту не мешают никому живому, а скрипт,
-// молотящий API, упирается в 429. /api/health — без лимита, его дёргает watchdog.
+// молотящий API, упирается в 429. Ключ — Telegram ID из initData (за одним
+// мобильным NAT сидят десятки пользователей, по адресу их нельзя считать
+// вместе), без подписи — адрес. /api/health — без лимита, его дёргает watchdog.
 await app.register(rateLimit, {
   max: Number(process.env.RATE_LIMIT_PER_MIN) || 600,
   timeWindow: '1 minute',
   allowList: (req) => req.url.startsWith('/api/health'),
+  keyGenerator: (req) => {
+    const init = req.headers['x-telegram-init-data'];
+    const id = typeof init === 'string' ? /user=%7B%22id%22%3A(\d+)/.exec(init)?.[1] : undefined;
+    return id ? `u:${id}` : req.ip;
+  },
 });
 
 // Базовые защитные заголовки для ответов API; для статики их ставит Caddy.
