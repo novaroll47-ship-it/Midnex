@@ -610,7 +610,7 @@ export function startBot(opts: BotOptions): BotHandle {
       );
       await send(userId, `Тебе открыт доступ: ${planTitle(plan)} до ${fmtDate(sub.expiresAt)}.`);
     } else if (action === 'revoke') {
-      await repo.revokeSubscription(userId);
+      await billing.revoke(userId);
       await send(chatId, `Доступ ${who} отозван.`, kb(BACK));
     } else if (action === 'sub') {
       const info = await billing.info(userId);

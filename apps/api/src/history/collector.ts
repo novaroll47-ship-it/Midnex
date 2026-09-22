@@ -3,9 +3,9 @@
  * хранилище.
  *
  * Что пишется:
- * - сырые точки (тики) — по парам, где спред выше порога HISTORY_TICK_MIN_SPREAD:
- *   именно эти моменты интересны для анализа, а писать все 900 пар каждую
- *   секунду бессмысленно и дорого;
+ * - посекундные точки — в VictoriaMetrics (таймфрейм «1с», retention 7 дней);
+ *   в SQLite сырые тики больше не пишутся — таблица spread_ticks весила
+ *   полгигабайта и никем не читалась;
  * - минутные свечи — по всем живым парам: копятся в памяти и сбрасываются
  *   по закрытию минуты, так запись идёт одной транзакцией раз в минуту;
  * - раз в час — свёртка 1m → 5m/1h, раз в сутки — retention.
@@ -18,7 +18,7 @@ import type { ExchangeId, SpreadRow } from '@cs/shared';
 
 import type { MarketSource } from '../market.js';
 import type { VictoriaMetrics } from './victoria.js';
-import type { GapReason, HistoryStore, PairTimeframe, SpreadCandle, SpreadTick } from './store.js';
+import type { GapReason, HistoryStore, PairTimeframe, SpreadCandle } from './store.js';
 
 export interface CollectorOptions {
   store: HistoryStore;
@@ -27,9 +27,7 @@ export interface CollectorOptions {
   /** Посекундный спред — в VictoriaMetrics (таймфрейм «1с»). */
   victoria: VictoriaMetrics;
   /** Порог спреда для записи сырых точек, %. */
-  tickMinSpreadPct: number;
   /** Сколько дней хранить сырые точки. */
-  rawDays: number;
   /** Сколько дней хранить минутные свечи (5m/1h — бессрочно). */
   minuteDays: number;
 }
@@ -61,7 +59,7 @@ export class HistoryCollector {
     });
     this.timer = setInterval(() => this.tick(), 1000);
     this.o.log.info(
-      `история: сборщик запущен (тики от ${this.o.tickMinSpreadPct}%, сырые ${this.o.rawDays} дн., 1m ${this.o.minuteDays} дн.)`,
+      `история: сборщик запущен (1m ${this.o.minuteDays} дн., посекундно — VictoriaMetrics)`,
     );
   }
 
@@ -120,24 +118,10 @@ export class HistoryCollector {
       this.currentMinute = minute;
 
       const rows = this.o.market.snapshot(0).rows;
-      const ticks: SpreadTick[] = [];
       for (const r of rows) {
         if (r.stale || r.suspect) continue;
         this.accumulate(r, minute);
-        if (r.spreadPct >= this.o.tickMinSpreadPct) {
-          ticks.push({
-            ts: now,
-            base: r.base,
-            exA: r.longExchange,
-            exB: r.shortExchange,
-            priceA: r.longPrice,
-            priceB: r.shortPrice,
-            spreadPct: r.spreadPct,
-            source: 'live',
-          });
-        }
       }
-      this.o.store.writeTicks(ticks);
       const pairSpreads = this.o.market.engine?.pairSpreads() ?? [];
       this.accumulatePairs(now, pairSpreads);
       this.o.victoria.write(now, rows, pairSpreads);
@@ -160,7 +144,7 @@ export class HistoryCollector {
       const day = Math.floor(now / 86_400_000);
       if (day !== this.lastRetentionDay) {
         this.lastRetentionDay = day;
-        this.o.store.retention(this.o.rawDays, this.o.minuteDays);
+        this.o.store.retention(this.o.minuteDays);
       }
     } catch (err) {
       this.o.log.warn({ err: String(err) }, 'история: сбой записи');
@@ -210,9 +194,15 @@ export class HistoryCollector {
    * поэтому таймфреймы крупнее, чем у свечей «лучшая пара монеты», а
    * накопление — в памяти с записью раз в 15 минут / раз в час.
    */
-  private pairBuckets: Record<PairTimeframe, Map<string, SpreadCandle>> = { '15m': new Map(), '1h': new Map() };
+  private pairBuckets: Record<PairTimeframe, Map<string, SpreadCandle>> = {
+    '15m': new Map(),
+    '1h': new Map(),
+  };
   private pairBucketStart: Record<PairTimeframe, number> = { '15m': 0, '1h': 0 };
-  private static readonly PAIR_TF_MS: Record<PairTimeframe, number> = { '15m': 900_000, '1h': 3_600_000 };
+  private static readonly PAIR_TF_MS: Record<PairTimeframe, number> = {
+    '15m': 900_000,
+    '1h': 3_600_000,
+  };
 
   private accumulatePairs(
     now: number,
@@ -276,7 +266,12 @@ export class HistoryCollector {
   }
 
   /** Незакрытая свеча пары — чтобы график не отставал. */
-  currentPair(base: string, exA: ExchangeId, exB: ExchangeId, tf: PairTimeframe): SpreadCandle | null {
+  currentPair(
+    base: string,
+    exA: ExchangeId,
+    exB: ExchangeId,
+    tf: PairTimeframe,
+  ): SpreadCandle | null {
     const c = this.pairBuckets[tf].get(`${base}|${exA}|${exB}`);
     return c ? { ...c } : null;
   }

@@ -107,7 +107,7 @@ export interface HistoryStore {
   /** Свернуть 1m в старшие таймфреймы за интервал (идемпотентно). */
   rollup(from: number, to: number): void;
   /** Удалить сырые точки старше rawDays и 1m-свечи старше minuteDays. */
-  retention(rawDays: number, minuteDays: number): void;
+  retention(minuteDays: number): void;
   writeFundingRates(rows: FundingRateRow[]): void;
   latestFundingTs(exchange: ExchangeId, symbol: string): number | null;
   queryFundingRates(

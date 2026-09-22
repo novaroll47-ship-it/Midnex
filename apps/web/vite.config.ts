@@ -20,5 +20,20 @@ export default defineConfig({
       '/api': { target: `http://localhost:${API_PORT}`, changeOrigin: true },
     },
   },
-  build: { outDir: 'dist', sourcemap: true },
+  build: {
+    outDir: 'dist',
+    // Карты кода наружу не отдаём: это исходники приложения. Для отладки
+    // сборки — VITE_SOURCEMAP=1.
+    sourcemap: process.env.VITE_SOURCEMAP === '1',
+    rollupOptions: {
+      output: {
+        // Библиотеки меняются реже кода приложения — отдельный чанк живёт
+        // в кеше браузера между выкладками.
+        manualChunks: {
+          react: ['react', 'react-dom'],
+          ui: ['radix-ui', 'vaul', 'lucide-react', 'i18next', 'react-i18next'],
+        },
+      },
+    },
+  },
 });

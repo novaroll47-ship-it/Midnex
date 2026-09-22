@@ -13,7 +13,7 @@ import {
   type PlanId,
   type SessionInfo,
 } from '@cs/shared';
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { KeyIcon } from '../icons';
@@ -29,7 +29,10 @@ import { currentThemeMode, setThemeMode, type ThemeMode } from '../lib/theme';
 import type { SettingsController } from '../lib/useSettings';
 import { ApiKeysView } from './ApiKeysView';
 import { BotFundingView, BotSpreadView } from './BotViews';
-import { PairsAdminView } from './PairsAdminView';
+// Сверка пар — только администратору; остальным этот код не нужен.
+const PairsAdminView = lazy(() =>
+  import('./PairsAdminView').then((m) => ({ default: m.PairsAdminView })),
+);
 import { SubscriptionView } from './SubscriptionView';
 
 export type SettingsView =
@@ -112,7 +115,11 @@ export function SettingsDetail({
     case 'botFunding':
       return <BotFundingView settings={settings} />;
     case 'pairs':
-      return <PairsAdminView />;
+      return (
+        <Suspense fallback={<div className="empty">…</div>}>
+          <PairsAdminView />
+        </Suspense>
+      );
   }
 }
 
@@ -199,7 +206,11 @@ export function OpportunitiesView({
         ))}
       </Section>
       {needKey && (
-        <button type="button" className="card notice notice--warn" onClick={() => onOpen?.('apikeys')}>
+        <button
+          type="button"
+          className="card notice notice--warn"
+          onClick={() => onOpen?.('apikeys')}
+        >
           <KeyIcon className="notice__icon" />
           <span>{t('sd.needKeyNotice', { exchange: needKey })}</span>
         </button>

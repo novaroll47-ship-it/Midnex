@@ -17,7 +17,7 @@ import {
   type ExchangeId,
   type VenueQuote,
 } from '@cs/shared';
-import { useCallback, useState } from 'react';
+import { Suspense, lazy, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { CoinIcon } from '../components/CoinIcon';
@@ -25,7 +25,10 @@ import { ExchangeLogo } from '../components/ExchangeLogo';
 import { FundingHistory } from '../components/FundingHistory';
 import { BotStar } from '../components/BotPicker';
 import { LiquidityBlock } from '../components/LiquidityBlock';
-import { SpreadChart } from '../components/SpreadChart';
+// График тянет lightweight-charts — грузим его только когда открыли монету.
+const SpreadChart = lazy(() =>
+  import('../components/SpreadChart').then((m) => ({ default: m.SpreadChart })),
+);
 import { InfoRow, Section } from '../components/Form';
 import { ArrowDownIcon, ArrowUpIcon, BellIcon, ClockIcon } from '../icons';
 import { api } from '../lib/api';
@@ -82,12 +85,14 @@ export function CoinDetailScreen({
         <BotStar base={data.base} />
       </div>
 
-      <SpreadChart
-        base={data.base}
-        pairs={data.pairs ?? []}
-        currentPair={{ exA: data.best.longExchange, exB: data.best.shortExchange }}
-        onPairChange={setChartPair}
-      />
+      <Suspense fallback={<div className="chart chart--loading" />}>
+        <SpreadChart
+          base={data.base}
+          pairs={data.pairs ?? []}
+          currentPair={{ exA: data.best.longExchange, exB: data.best.shortExchange }}
+          onPairChange={setChartPair}
+        />
+      </Suspense>
 
       <LiquidityBlock
         base={data.base}

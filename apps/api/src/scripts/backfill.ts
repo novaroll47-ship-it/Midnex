@@ -34,7 +34,8 @@ dotenv.config({ path: join(here, '../../../../.env') });
 const args = new Map<string, string>();
 for (let i = 2; i < process.argv.length; i++) {
   const a = process.argv[i]!;
-  if (a.startsWith('--')) args.set(a.slice(2), process.argv[i + 1]?.startsWith('--') ? '1' : (process.argv[++i] ?? '1'));
+  if (a.startsWith('--'))
+    args.set(a.slice(2), process.argv[i + 1]?.startsWith('--') ? '1' : (process.argv[++i] ?? '1'));
 }
 const TF = (args.get('tf') ?? '1h') as Timeframe;
 const DAYS = Number(args.get('days') ?? 180);
@@ -61,7 +62,8 @@ const log = {
   child: () => log,
 } as unknown as import('fastify').FastifyBaseLogger;
 
-const historyPath = process.env.HISTORY_DB_PATH?.trim() || join(here, '../../../../.data', 'history.sqlite');
+const historyPath =
+  process.env.HISTORY_DB_PATH?.trim() || join(here, '../../../../.data', 'history.sqlite');
 const store = new SqliteHistoryStore(historyPath);
 const progress = new DatabaseSync(historyPath);
 progress.exec('pragma busy_timeout = 5000');
@@ -92,7 +94,9 @@ function clientFor(id: ExchangeId): Exchange {
 
 const now = Date.now();
 const from = Math.floor((now - DAYS * 86_400_000) / TF_MS[TF]) * TF_MS[TF];
-log.info(`backfill ${TF} за ${DAYS} дн.: монет ${bases.length}, ног ${legsAll.length}, файл ${historyPath}`);
+log.info(
+  `backfill ${TF} за ${DAYS} дн.: монет ${bases.length}, ног ${legsAll.length}, файл ${historyPath}`,
+);
 
 /** Закрытия одной ноги по таймстемпам, постранично. */
 async function closes(id: ExchangeId, symbol: string, since: number): Promise<Map<number, number>> {
@@ -129,9 +133,9 @@ async function closes(id: ExchangeId, symbol: string, since: number): Promise<Ma
 let done = 0;
 for (const base of bases) {
   const legs = byBase.get(base)!;
-  const prev = progress.prepare('select done_until from backfill_progress where base = ? and tf = ?').get(base, TF) as
-    | { done_until: number }
-    | undefined;
+  const prev = progress
+    .prepare('select done_until from backfill_progress where base = ? and tf = ?')
+    .get(base, TF) as { done_until: number } | undefined;
   if (prev && !FORCE && prev.done_until >= now - TF_MS[TF] * 2) {
     done++;
     continue;
@@ -151,7 +155,9 @@ for (const base of bases) {
     }),
   );
   if (series.length < 2) {
-    progress.prepare('insert or replace into backfill_progress values (?, ?, ?, ?)').run(base, TF, now, now);
+    progress
+      .prepare('insert or replace into backfill_progress values (?, ?, ?, ?)')
+      .run(base, TF, now, now);
     done++;
     continue;
   }
@@ -172,12 +178,27 @@ for (const base of bases) {
     if (!lo || !hi || lo.exchange === hi.exchange) continue;
     const spread = ((hi.price - lo.price) / lo.price) * 100;
     // Реконструкция даёт одну точку на свечу — OHLC совпадают.
-    candles.push({ ts, base, exA: lo.exchange, exB: hi.exchange, open: spread, high: spread, low: spread, close: spread, samples: 1, source: 'reconstructed' });
+    candles.push({
+      ts,
+      base,
+      exA: lo.exchange,
+      exB: hi.exchange,
+      open: spread,
+      high: spread,
+      low: spread,
+      close: spread,
+      samples: 1,
+      source: 'reconstructed',
+    });
   }
   store.writeCandles(TF, candles);
-  progress.prepare('insert or replace into backfill_progress values (?, ?, ?, ?)').run(base, TF, now, now);
+  progress
+    .prepare('insert or replace into backfill_progress values (?, ?, ?, ?)')
+    .run(base, TF, now, now);
   done++;
-  log.info(`${base}: ног ${series.length}, свечей ${candles.length}, ${Math.round((Date.now() - t0) / 1000)} с — ${done}/${bases.length}`);
+  log.info(
+    `${base}: ног ${series.length}, свечей ${candles.length}, ${Math.round((Date.now() - t0) / 1000)} с — ${done}/${bases.length}`,
+  );
 }
 
 log.info('backfill завершён');

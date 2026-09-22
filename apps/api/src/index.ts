@@ -10,9 +10,11 @@ import { existsSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
 
 import compress from '@fastify/compress';
 import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import dotenv from 'dotenv';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
@@ -91,11 +93,12 @@ const FREE_PREVIEW_ROWS = 3;
 /** История спредов: файл SQLite рядом с процессом (см. history/). */
 const HISTORY_DB_PATH =
   process.env.HISTORY_DB_PATH?.trim() || join(here, '../../../.data', 'history.sqlite');
-const HISTORY_RAW_DAYS = Number(process.env.HISTORY_RAW_DAYS) || 7;
 const HISTORY_MINUTE_DAYS = Number(process.env.HISTORY_MINUTE_DAYS) || 30;
-const HISTORY_TICK_MIN_SPREAD = Number(process.env.HISTORY_TICK_MIN_SPREAD) || 0.5;
 /** VictoriaMetrics для посекундного спреда (таймфрейм «1с»); retention — на её стороне. */
-const VICTORIA_URL = (process.env.VICTORIA_URL?.trim() || 'http://127.0.0.1:8428').replace(/\/+$/, '');
+const VICTORIA_URL = (process.env.VICTORIA_URL?.trim() || 'http://127.0.0.1:8428').replace(
+  /\/+$/,
+  '',
+);
 /** Писать ли посекундно каждую сверенную пару бирж (≈14 тыс. серий), а не только лучшую по монете. */
 const VICTORIA_WRITE_PAIRS = process.env.VICTORIA_WRITE_PAIRS !== '0';
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
@@ -106,7 +109,27 @@ if (DEV_FAKE_USER && IS_PROD) {
   throw new Error('DEV_FAKE_USER=1 недопустим при NODE_ENV=production — это обход авторизации');
 }
 
-const app = Fastify({ logger: { level: process.env.LOG_LEVEL?.trim() || 'info' } });
+// В проде каждый запрос не логируем: сотня клиентов с опросом раз в секунду —
+// это сотни строк в секунду ради ничего. Ошибки и медленные ответы — ниже, хуком.
+// trustProxy: перед приложением всегда прокси (Caddy или туннель), реальный
+// адрес клиента — в X-Forwarded-For; без этого лимиты считались бы на прокси.
+const app = Fastify({
+  logger: { level: process.env.LOG_LEVEL?.trim() || 'info' },
+  disableRequestLogging: IS_PROD,
+  trustProxy: process.env.TRUST_PROXY !== '0',
+});
+if (IS_PROD) {
+  const SLOW_MS = 2000;
+  app.addHook('onResponse', async (req, reply) => {
+    const ms = reply.elapsedTime;
+    if (reply.statusCode >= 500 || ms > SLOW_MS) {
+      req.log.warn(
+        { method: req.method, url: req.url, status: reply.statusCode, ms: Math.round(ms) },
+        reply.statusCode >= 500 ? 'запрос завершился ошибкой' : 'медленный запрос',
+      );
+    }
+  });
+}
 
 // Шифрование ключей бирж. Без него приём ключей отключён: хранить их
 // открытым текстом нельзя.
@@ -133,11 +156,14 @@ const cryptoPay = CRYPTOPAY_TOKEN
 // Партнёрская программа: закрепление по ссылке, начисления при оплате,
 // удержание → доступно к выплате раз в час.
 const partners = new Partners({ repo, log: app.log });
-setInterval(() => {
-  void partners.release().catch((err: unknown) => {
-    app.log.warn({ err: String(err) }, 'партнёрка: снятие удержания не удалось');
-  });
-}, 60 * 60 * 1000);
+setInterval(
+  () => {
+    void partners.release().catch((err: unknown) => {
+      app.log.warn({ err: String(err) }, 'партнёрка: снятие удержания не удалось');
+    });
+  },
+  60 * 60 * 1000,
+);
 
 const billing = new Billing({
   repo,
@@ -269,8 +295,6 @@ const collector = new HistoryCollector({
   store: history,
   market,
   log: app.log,
-  tickMinSpreadPct: HISTORY_TICK_MIN_SPREAD,
-  rawDays: HISTORY_RAW_DAYS,
   minuteDays: HISTORY_MINUTE_DAYS,
 });
 victoria.start();
@@ -310,10 +334,31 @@ await app.register(cors, {
 // друга. Сжатый JSON в десять раз меньше.
 await app.register(compress, { global: true, threshold: 2048 });
 
+// Лимит на адрес: обычный клиент делает 2–3 запроса в секунду (скринер,
+// монета, стаканы), так что 600 в минуту не мешают никому живому, а скрипт,
+// молотящий API, упирается в 429. /api/health — без лимита, его дёргает watchdog.
+await app.register(rateLimit, {
+  max: Number(process.env.RATE_LIMIT_PER_MIN) || 600,
+  timeWindow: '1 minute',
+  allowList: (req) => req.url.startsWith('/api/health'),
+});
+
+// Базовые защитные заголовки для ответов API; для статики их ставит Caddy.
+app.addHook('onSend', async (req, reply) => {
+  if (req.url.startsWith('/api/')) {
+    reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header('Cache-Control', reply.getHeader('Cache-Control') ?? 'no-store');
+  }
+});
+
 // ---------------------------------------------------------------- авторизация
 
 /** Сессию отмечаем не чаще раза в минуту на пользователя — иначе запись на каждый опрос. */
 const sessionTouched = new Map<string, number>();
+setInterval(() => {
+  const cutoff = Date.now() - 3_600_000;
+  for (const [k, at] of sessionTouched) if (at < cutoff) sessionTouched.delete(k);
+}, 600_000).unref();
 
 // JSON разбираем сами, сохраняя сырое тело: вебхуку CryptoBot нужна подпись
 // именно по байтам, а не по пересобранному объекту.
@@ -426,7 +471,11 @@ loopDelay.enable();
 setInterval(() => loopDelay.reset(), 60_000).unref();
 function eventLoopLag() {
   const ms = (n: number) => Math.round(n / 1e6);
-  return { p50: ms(loopDelay.percentile(50)), p99: ms(loopDelay.percentile(99)), max: ms(loopDelay.max) };
+  return {
+    p50: ms(loopDelay.percentile(50)),
+    p99: ms(loopDelay.percentile(99)),
+    max: ms(loopDelay.max),
+  };
 }
 
 function memoryMb() {
@@ -444,7 +493,31 @@ app.get('/api/me', async (req) => ({ user: req.tgUser, plan: req.state!.plan }))
 
 // ---------------------------------------------------------------- скринер
 
-app.get('/api/screener', async (req) => {
+/**
+ * Снимок скринера одинаков для всех клиентов с одинаковыми фильтрами, а
+ * сериализация и gzip 300 КБ на каждый запрос — это миллисекунды CPU на
+ * главном потоке за каждого клиента каждую секунду. Готовое сжатое тело
+ * живёт SCREENER_CACHE_MS и отдаётся всем, кто спросит.
+ */
+const SCREENER_CACHE_MS = 500;
+const SCREENER_CACHE_MAX = 64;
+const screenerCache = new Map<string, { at: number; json: string; gz: Buffer }>();
+function screenerBody(key: string, build: () => unknown): { json: string; gz: Buffer } {
+  const now = Date.now();
+  const hit = screenerCache.get(key);
+  if (hit && now - hit.at < SCREENER_CACHE_MS) return hit;
+  const json = JSON.stringify(build());
+  const entry = { at: now, json, gz: gzipSync(json, { level: 4 }) };
+  screenerCache.delete(key);
+  screenerCache.set(key, entry);
+  if (screenerCache.size > SCREENER_CACHE_MAX) {
+    const oldest = screenerCache.keys().next().value;
+    if (oldest !== undefined) screenerCache.delete(oldest);
+  }
+  return entry;
+}
+
+app.get('/api/screener', async (req, reply) => {
   const q = req.query as { minSpread?: string; venues?: string };
   const min = q.minSpread !== undefined ? Number(q.minSpread) : undefined;
   const { bot } = req.state!.settings;
@@ -457,10 +530,8 @@ app.get('/api/screener', async (req) => {
     .map((v) => v.trim())
     .filter((v): v is ExchangeId => valid.has(v));
 
-  const snapshot = market.snapshot(
-    min !== undefined && Number.isFinite(min) ? min : bot.minSpreadPct,
-    venues.length ? venues : undefined,
-  );
+  const minPct = min !== undefined && Number.isFinite(min) ? min : bot.minSpreadPct;
+  const snapshot = market.snapshot(minPct, venues.length ? venues : undefined);
 
   // Без подписки — только верхушка списка: видно, что есть, но не всё.
   if (!(await billing.hasAccess(req.state!.userId))) {
@@ -473,7 +544,17 @@ app.get('/api/screener', async (req) => {
       botRunning: bot.running,
     };
   }
-  return { ...snapshot, refreshMs: bot.refreshMs, botRunning: bot.running };
+  const key = `${minPct}|${venues.join(',')}|${bot.refreshMs}|${bot.running ? 1 : 0}`;
+  const body = screenerBody(key, () => ({
+    ...snapshot,
+    refreshMs: bot.refreshMs,
+    botRunning: bot.running,
+  }));
+  reply.header('Content-Type', 'application/json; charset=utf-8').header('Vary', 'Accept-Encoding');
+  if (/\bgzip\b/.test(String(req.headers['accept-encoding'] ?? ''))) {
+    return reply.header('Content-Encoding', 'gzip').send(body.gz);
+  }
+  return reply.send(body.json);
 });
 
 app.get('/api/coin/:base', async (req, reply) => {
@@ -505,7 +586,8 @@ app.get('/api/coin/:base/liquidity', async (req, reply) => {
   const { base } = req.params as { base: string };
   const q = req.query as { volume?: string; exA?: string; exB?: string; venues?: string };
   const engine = market.engine;
-  if (!engine || market.mode !== 'live') return reply.code(503).send({ error: 'books unavailable' });
+  if (!engine || market.mode !== 'live')
+    return reply.code(503).send({ error: 'books unavailable' });
   const valid = new Set(EXCHANGES.map((e) => e.id as string));
   const venues = (q.venues ?? '')
     .split(',')
@@ -517,7 +599,12 @@ app.get('/api/coin/:base/liquidity', async (req, reply) => {
       : undefined;
   const volume = Number(q.volume) || req.state!.settings.ui.volumeUsdt || 1000;
   engine.watchDeep(base.toUpperCase());
-  const detail = engine.liquidityDetail(base, volume, pair, venues.length >= 2 ? venues : undefined);
+  const detail = engine.liquidityDetail(
+    base,
+    volume,
+    pair,
+    venues.length >= 2 ? venues : undefined,
+  );
   if (!detail) return reply.code(404).send({ error: 'no books yet' });
   return detail;
 });
@@ -697,7 +784,17 @@ app.get('/api/history/:base', async (req, reply) => {
         : tf === '5m' || tf === '15m'
           ? 2 * 86_400_000
           : 30 * 86_400_000;
-  const from = Number(q.from) || to - spanDefault;
+  // Интервал ограничен: посекундные точки за неделю — сотни тысяч строк из
+  // VictoriaMetrics по одному запросу. График грузит историю страницами.
+  const spanMax =
+    tf === '1s'
+      ? 6 * HOUR
+      : tf === '1m'
+        ? 7 * 86_400_000
+        : tf === '5m' || tf === '15m'
+          ? 60 * 86_400_000
+          : 2 * 366 * 86_400_000;
+  const from = Math.max(Number(q.from) || to - spanDefault, to - spanMax);
 
   let pair: { exA: ExchangeId; exB: ExchangeId } | undefined;
   if (q.exA && q.exB) {
@@ -719,7 +816,8 @@ app.get('/api/history/:base', async (req, reply) => {
     // Последние семь дней — из посекундных точек VictoriaMetrics (полные
     // свечи, ничего не теряется при перезапусках), старше — из SQLite.
     const { exA, exB } = pair;
-    const srcTf: '1m' | '15m' | '1h' = tf === '1d' || tf === '1h' ? '1h' : tf === '15m' ? '15m' : '1m';
+    const srcTf: '1m' | '15m' | '1h' =
+      tf === '1d' || tf === '1h' ? '1h' : tf === '15m' ? '15m' : '1m';
     const srcMs = CHART_TF_MS[srcTf];
     const vmFrom = Math.max(from, Date.now() - 7 * 86_400_000);
     const vm = vmFrom < to ? await victoria.queryCandles(canonical, pair, srcMs, vmFrom, to) : [];
@@ -815,7 +913,10 @@ app.get('/api/watchlist', async (req) => watchlistPayload(req.state!.watchlist))
 app.patch('/api/watchlist/:base', async (req, reply) => {
   const base = (req.params as { base: string }).base.toUpperCase();
   const body = req.body as { bots?: unknown };
-  if (!Array.isArray(body?.bots) || !body.bots.every((b) => (BOT_IDS as readonly string[]).includes(String(b)))) {
+  if (
+    !Array.isArray(body?.bots) ||
+    !body.bots.every((b) => (BOT_IDS as readonly string[]).includes(String(b)))
+  ) {
     return reply.code(400).send({ error: 'bots[] required' });
   }
   const bots = [...new Set(body.bots as BotId[])];
@@ -951,12 +1052,14 @@ app.patch('/api/settings/ui', async (req, reply) => {
   const body = req.body as { view?: unknown; volumeUsdt?: unknown };
   const next = { ...s.settings.ui };
   if (body?.view !== undefined) {
-    if (body.view !== 'list' && body.view !== 'cards') return reply.code(400).send({ error: 'bad view' });
+    if (body.view !== 'list' && body.view !== 'cards')
+      return reply.code(400).send({ error: 'bad view' });
     next.view = body.view;
   }
   if (body?.volumeUsdt !== undefined) {
     const v = Number(body.volumeUsdt);
-    if (!Number.isFinite(v) || v < 10 || v > 10_000_000) return reply.code(400).send({ error: 'bad volume' });
+    if (!Number.isFinite(v) || v < 10 || v > 10_000_000)
+      return reply.code(400).send({ error: 'bad volume' });
     next.volumeUsdt = Math.round(v);
   }
   s.settings.ui = next;
@@ -1441,10 +1544,26 @@ app.post('/api/sessions/logout-others', async (req) => {
 // никаких CORS и никакого отдельного статик-хостинга.
 const webDist = join(here, '../../web/dist');
 if (existsSync(webDist)) {
-  await app.register(fastifyStatic, { root: webDist });
+  // Файлы в /assets/ имеют хэш в имени — их можно кешировать навсегда;
+  // index.html — нет, иначе после выкладки клиент держит старую версию.
+  // .gz/.br рядом с файлами готовит сборка фронта (apps/web/scripts/precompress.mjs).
+  await app.register(fastifyStatic, {
+    root: webDist,
+    preCompressed: true,
+    cacheControl: false,
+    setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache'),
+  });
+  await app.register(fastifyStatic, {
+    root: join(webDist, 'assets'),
+    prefix: '/assets/',
+    preCompressed: true,
+    maxAge: '1y',
+    immutable: true,
+    decorateReply: false,
+  });
   app.setNotFoundHandler(async (req, reply) => {
     if (req.url.startsWith('/api/')) return reply.code(404).send({ error: 'not found' });
-    return reply.sendFile('index.html');
+    return reply.header('Cache-Control', 'no-cache').sendFile('index.html');
   });
 }
 
@@ -1471,6 +1590,26 @@ app.addHook('onClose', async () => {
 process.on('unhandledRejection', (err) => {
   app.log.error({ err: String(err).slice(0, 300) }, 'необработанный отказ промиса');
 });
+
+// Docker и systemd останавливают процесс сигналом: закрываемся штатно —
+// незакрытые свечи уходят в SQLite, соединения с биржами и базой закрываются.
+// Если за 10 секунд не успели — выходим силой, чтобы не висеть.
+let shuttingDown = false;
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.on(signal, () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    app.log.info(`${signal}: останавливаюсь`);
+    setTimeout(() => process.exit(1), 10_000).unref();
+    app
+      .close()
+      .then(() => process.exit(0))
+      .catch((err: unknown) => {
+        app.log.error({ err: String(err) }, 'остановка с ошибкой');
+        process.exit(1);
+      });
+  });
+}
 
 await app.listen({ port: PORT, host: '0.0.0.0' });
 app.log.info(

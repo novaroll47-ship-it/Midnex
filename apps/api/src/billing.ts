@@ -66,8 +66,31 @@ function paymentId(): string {
   return randomBytes(3).toString('hex');
 }
 
+/** Подписка в памяти столько мс — иначе каждый опрос скринера ходил бы в базу. */
+const SUB_CACHE_MS = 60_000;
+
 export class Billing {
+  private readonly subCache = new Map<number, { sub: SubscriptionRecord | null; at: number }>();
+
   constructor(private readonly o: BillingOptions) {}
+
+  /** Подписка изменилась (оплата, выдача, отзыв) — следующий запрос перечитает базу. */
+  invalidate(userId: number): void {
+    this.subCache.delete(userId);
+  }
+
+  private async subscription(userId: number): Promise<SubscriptionRecord | null> {
+    const hit = this.subCache.get(userId);
+    const now = Date.now();
+    if (hit && now - hit.at < SUB_CACHE_MS) return hit.sub;
+    const sub = await this.o.repo.getSubscription(userId);
+    this.subCache.set(userId, { sub, at: now });
+    // Кеш не должен расти вечно: раз в тысячу записей выкидываем протухшие.
+    if (this.subCache.size > 1000) {
+      for (const [id, v] of this.subCache) if (now - v.at >= SUB_CACHE_MS) this.subCache.delete(id);
+    }
+    return sub;
+  }
 
   get adminId(): number | null {
     return this.o.adminId;
@@ -101,7 +124,7 @@ export class Billing {
   }
 
   async info(userId: number): Promise<SubscriptionInfo> {
-    return this.toInfo(await this.o.repo.getSubscription(userId), userId);
+    return this.toInfo(await this.subscription(userId), userId);
   }
 
   async hasAccess(userId: number): Promise<boolean> {
@@ -332,6 +355,7 @@ export class Billing {
       daysFor(p.months) + bonusDays,
       source,
     );
+    this.invalidate(p.userId);
     this.o.log.info(
       { user: p.userId, plan: p.plan, months: p.months, source, bonusDays },
       'оплата: доступ выдан',
@@ -378,15 +402,22 @@ export class Billing {
     if (existing) return null;
     await this.o.repo.markTrialUsed(userId);
     const sub = await this.o.repo.extendSubscription(userId, 'screener', TRIAL_DAYS, 'trial');
+    this.invalidate(userId);
     this.o.log.info({ user: userId }, 'подписка: выдана пробная неделя');
     return sub;
   }
 
   /** Ручное продление админом (тест, подарок, компенсация). */
   async grant(userId: number, days: number, plan: PlanId): Promise<SubscriptionRecord> {
-    return this.o.repo.extendSubscription(userId, plan, days, 'manual');
+    const sub = await this.o.repo.extendSubscription(userId, plan, days, 'manual');
+    this.invalidate(userId);
+    return sub;
   }
 
+  async revoke(userId: number): Promise<void> {
+    await this.o.repo.revokeSubscription(userId);
+    this.invalidate(userId);
+  }
 }
 
 export function toPaymentInfo(p: PaymentRecord): PaymentInfo {

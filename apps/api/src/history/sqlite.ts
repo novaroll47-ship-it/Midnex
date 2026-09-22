@@ -236,9 +236,11 @@ export class SqliteHistoryStore implements HistoryStore {
     }
   }
 
-  retention(rawDays: number, minuteDays: number): void {
+  retention(minuteDays: number): void {
     const now = Date.now();
-    this.db.prepare('delete from spread_ticks where ts < ?').run(now - rawDays * 86_400_000);
+    // Сырые тики теперь живут в VictoriaMetrics; что осталось в SQLite от
+    // прежних версий — вычищаем (таблица остаётся, место вернёт `history:vacuum`).
+    this.db.prepare('delete from spread_ticks').run();
     this.db
       .prepare('delete from spread_candles_1m where ts < ?')
       .run(now - minuteDays * 86_400_000);
@@ -247,6 +249,13 @@ export class SqliteHistoryStore implements HistoryStore {
         .prepare(`delete from ${PAIR_TABLE[tf]} where ts < ?`)
         .run(now - PAIR_RETENTION_DAYS[tf] * 86_400_000);
     }
+    // После больших удалений WAL разрастается — сворачиваем его в основной файл.
+    this.db.exec('pragma wal_checkpoint(TRUNCATE)');
+  }
+
+  /** Вернуть место на диске после удалений — долго, вызывать вручную (scripts/history-vacuum). */
+  vacuum(): void {
+    this.db.exec('vacuum');
   }
 
   writePairCandles(tf: PairTimeframe, rows: SpreadCandle[]): void {
