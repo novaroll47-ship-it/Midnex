@@ -1,5 +1,8 @@
 # MIDNEX
 
+> Развёртывание на сервере — [deploy/README.md](deploy/README.md).
+> Аудит перед выходом на VPS (сентябрь 2026) — [docs/AUDIT_2026-09.md](docs/AUDIT_2026-09.md).
+
 Telegram Mini App для спред-арбитража на перпетуал-фьючерсах между 8 биржами.
 Техзадание — [docs/TZ_CryptoSpread_Screener.md](docs/TZ_CryptoSpread_Screener.md),
 утверждённые макеты — `docs/mockup-*.png`.
