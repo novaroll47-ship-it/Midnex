@@ -289,7 +289,12 @@ const victoria = new VictoriaMetrics(
   process.env.VICTORIA_WRITE !== '0',
 );
 // CPU_PROFILE="60,30" — снять профиль в .tools (см. diag.ts).
-scheduleCpuProfile(process.env.CPU_PROFILE, join(here, '../../../.tools'), app.log);
+// В контейнере писать можно только в /data (рядом с базой истории).
+scheduleCpuProfile(
+  process.env.CPU_PROFILE,
+  process.env.HISTORY_DB_PATH ? dirname(HISTORY_DB_PATH) : join(here, '../../../.tools'),
+  app.log,
+);
 const collector = new HistoryCollector({
   victoria,
   store: history,
@@ -461,6 +466,7 @@ app.get('/api/health', async () => ({
   memoryMb: memoryMb(),
   eventLoopMs: eventLoopLag(),
   books: market.engine?.booksStats() ?? null,
+  workers: market.engine?.workerStats() ?? null,
 }));
 
 // Задержка event loop за последнюю минуту: сколько миллисекунд таймеры

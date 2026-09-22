@@ -4,8 +4,9 @@
 #
 #   bash deploy/update.sh
 #
-# Забирает свежий код из git, пересобирает образ и перезапускает контейнер.
-# Простой на время пересборки — несколько секунд.
+# Забирает код из git, собирает образ (старый контейнер работает всё это
+# время), снимает копию SQLite, применяет миграции, перезапускает приложение
+# и проверяет /api/health. Простой — секунды на перезапуск контейнера.
 
 set -euo pipefail
 
@@ -15,14 +16,31 @@ cd "$REPO_ROOT"
 echo "==> Обновляю код"
 git pull --ff-only
 
-echo "==> Пересобираю и перезапускаю"
 cd deploy
-docker compose up -d --build
+
+echo "==> Собираю образ"
+docker compose build app
+
+echo "==> Копия истории (SQLite)"
+docker compose exec -T app node apps/api/dist/scripts/history-maintenance.js backup || echo "    приложение не запущено — копию пропускаю"
+
+echo "==> Миграции"
+docker compose run --rm --no-deps app node apps/api/dist/scripts/migrate.js
+
+echo "==> Перезапускаю"
+docker compose up -d
 
 echo "==> Убираю старые образы"
 docker image prune -f >/dev/null
 
 DOMAIN="$(grep -E '^DOMAIN=' .env | cut -d= -f2-)"
-echo
-echo "Проверка:"
-curl -fsS "https://$DOMAIN/api/health" && echo
+echo "==> Жду приложение"
+for i in $(seq 1 30); do
+	if curl -fsS --max-time 5 "https://$DOMAIN/api/health" >/tmp/midnex-health.json 2>/dev/null; then
+		echo "    ок: $(head -c 160 /tmp/midnex-health.json)"
+		exit 0
+	fi
+	sleep 3
+done
+echo "    приложение не ответило за 90 с — смотри: docker compose logs --tail=100 app" >&2
+exit 1

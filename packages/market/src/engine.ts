@@ -377,7 +377,8 @@ export class MarketEngine {
       for (const m of markets) {
         const q = this.quotes.get(m.base)?.get(`${exchange}:${m.symbol}`);
         // Замершая котировка для сверки хуже отсутствующей: она рождает фантомные аномалии.
-        if (q && now - q.receivedAt <= this.opts.staleMs) out.set(`${exchange}:${m.symbol}`, q.last * m.multiplier);
+        if (q && now - q.receivedAt <= this.opts.staleMs)
+          out.set(`${exchange}:${m.symbol}`, q.last * m.multiplier);
       }
     }
     return out;
@@ -442,7 +443,9 @@ export class MarketEngine {
     // Направление пары — по стакану: считаем оба и берём то, где спред по
     // лучшим ценам больше (тикеры и стакан могут расходиться).
     const gross = (buy: typeof ba, sell: typeof bb) =>
-      buy.asks[0] && sell.bids[0] ? ((sell.bids[0][0] - buy.asks[0][0]) / buy.asks[0][0]) * 100 : -Infinity;
+      buy.asks[0] && sell.bids[0]
+        ? ((sell.bids[0][0] - buy.asks[0][0]) / buy.asks[0][0]) * 100
+        : -Infinity;
     let long = a;
     let short = b;
     let lb = ba;
@@ -490,10 +493,18 @@ export class MarketEngine {
       topGrossPct: r4(topGross),
       topNetPct: r4(topGross - yours.feesPct + fundingPct),
       yours: q(yours),
-      recommended: { ...q(rec), liquidityCapped: rec.liquidityCapped, thresholdCapped: rec.thresholdCapped },
+      recommended: {
+        ...q(rec),
+        liquidityCapped: rec.liquidityCapped,
+        thresholdCapped: rec.thresholdCapped,
+      },
       availableUsdt: r2(all.volumeUsdt),
       availableLimitingLeg: all.limitingLeg,
-      curve: rec.curve.map((c) => ({ volumeUsdt: c.volumeUsdt, profitUsdt: r2(c.profitUsdt), netPct: r4(c.netPct) })),
+      curve: rec.curve.map((c) => ({
+        volumeUsdt: c.volumeUsdt,
+        profitUsdt: r2(c.profitUsdt),
+        netPct: r4(c.netPct),
+      })),
       minNetPct,
       updatedAt: now,
     };
@@ -502,6 +513,11 @@ export class MarketEngine {
   /** Сколько стаканов опрашивается — для статуса. */
   booksStats() {
     return { ...this.books.stats(), rows: { ...this.liqReasons } };
+  }
+
+  /** Worker-потоки: биржи и память каждого. */
+  workerStats() {
+    return this.host.stats();
   }
 
   /** Почему у строки нет рекомендации — счётчики за последний снимок (диагностика). */
@@ -576,7 +592,9 @@ export class MarketEngine {
       ready: this.ready,
       startedAt: this.startedAt,
       universeSize: this.universe.byBase.size,
-      feeds: [...this.feeds.values()].map((f) => ({ ...(f.feedState ?? emptyFeedState(f.exchange)) })),
+      feeds: [...this.feeds.values()].map((f) => ({
+        ...(f.feedState ?? emptyFeedState(f.exchange)),
+      })),
       fundingUnsupported: [...(this.funding?.unsupported ?? [])],
     };
   }
@@ -599,7 +617,8 @@ export class MarketEngine {
       if (!quote) continue;
       // Поток поделил цену на множитель из тикера; сверка могла задать свой.
       const k = (market.tickerMultiplier ?? market.multiplier) / market.multiplier;
-      if (k !== 1) quote = { ...quote, bid: quote.bid * k, ask: quote.ask * k, last: quote.last * k };
+      if (k !== 1)
+        quote = { ...quote, bid: quote.bid * k, ask: quote.ask * k, last: quote.last * k };
       out.push({ market, quote, fresh: now - quote.receivedAt <= this.opts.staleMs });
     }
     return out;
@@ -824,7 +843,12 @@ export class MarketEngine {
       seen.add(r.base);
       const cur = this.held.get(r.base);
       const above = !r.stale && !r.suspect && r.spreadPct >= MarketEngine.HELD_PCT;
-      const still = cur && cur.since > 0 && !r.stale && !r.suspect && r.spreadPct >= MarketEngine.HELD_RELEASE_PCT;
+      const still =
+        cur &&
+        cur.since > 0 &&
+        !r.stale &&
+        !r.suspect &&
+        r.spreadPct >= MarketEngine.HELD_RELEASE_PCT;
       if (cur && cur.day !== day) {
         cur.cycles = 0;
         cur.day = day;
@@ -866,8 +890,7 @@ export class MarketEngine {
     if (!filter) {
       this.trackHeld(rows, now);
       this.updateHot(rows, now);
-    }
-    else {
+    } else {
       for (const r of rows) {
         const h = this.held.get(r.base);
         r.heldSinceAt = h && h.since > 0 ? h.since : null;
@@ -910,7 +933,8 @@ export class MarketEngine {
           const ab = ((b.quote.bid - a.quote.ask) / a.quote.ask) * 100;
           const ba = ((a.quote.bid - b.quote.ask) / b.quote.ask) * 100;
           const spreadPct = Math.max(ab, ba);
-          if (!Number.isFinite(spreadPct) || Math.abs(spreadPct) > MAX_PLAUSIBLE_SPREAD_PCT) continue;
+          if (!Number.isFinite(spreadPct) || Math.abs(spreadPct) > MAX_PLAUSIBLE_SPREAD_PCT)
+            continue;
           const [exA, exB] = key.split('|') as [ExchangeId, ExchangeId];
           out.push({ base, exA, exB, spreadPct: Math.round(spreadPct * 10_000) / 10_000 });
         }

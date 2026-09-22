@@ -29,7 +29,13 @@ export interface MarketLite {
 export type QuoteTuple = [string, number, number, number, number];
 
 export type ToWorker =
-  | { type: 'create'; exchange: ExchangeId; ccxtId: string; config: Record<string, unknown>; restOnly: boolean }
+  | {
+      type: 'create';
+      exchange: ExchangeId;
+      ccxtId: string;
+      config: Record<string, unknown>;
+      restOnly: boolean;
+    }
   | { type: 'rpc'; id: number; exchange: ExchangeId; method: string; args: unknown[] }
   | { type: 'startFeed'; exchange: ExchangeId; markets: VenueMarket[]; pollMs: number }
   | { type: 'stopFeed'; exchange: ExchangeId }
@@ -41,7 +47,9 @@ export type FromWorker =
   | { type: 'quotes'; exchange: ExchangeId; items: QuoteTuple[] }
   | { type: 'feedState'; exchange: ExchangeId; state: FeedState }
   | { type: 'gap'; exchange: ExchangeId; reason: GapReason | null }
-  | { type: 'log'; level: 'info' | 'warn'; msg: string };
+  | { type: 'log'; level: 'info' | 'warn'; msg: string }
+  /** Память изолята worker'а — раз в несколько секунд, для /api/health. */
+  | { type: 'stats'; heapUsedMb: number; heapTotalMb: number };
 
 /** Что возвращает RPC loadMarkets. */
 export interface MarketsPayload {

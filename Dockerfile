@@ -1,5 +1,6 @@
 # Продакшн-образ: один Node-процесс отдаёт и API, и собранный фронт.
 # Отдельный статик-хостинг не нужен — одно происхождение, никакого CORS.
+# ccxt живёт в worker-потоках того же процесса (MARKET_WORKERS).
 
 # ---------- сборка ----------
 FROM node:24-alpine AS build
@@ -17,6 +18,7 @@ RUN npm ci
 COPY tsconfig.base.json ./
 COPY packages packages
 COPY apps apps
+# Сборка фронта заодно кладёт рядом .br/.gz — сервер отдаёт их как есть.
 RUN npm run build
 
 # ---------- рантайм ----------
@@ -35,12 +37,19 @@ RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=build /app/apps/api/dist apps/api/dist
 COPY --from=build /app/apps/web/dist apps/web/dist
+# SQL-миграции применяет dist/scripts/migrate.js (deploy/update.sh).
+COPY apps/api/migrations apps/api/migrations
+
+# История спредов (SQLite) и кеш внешних тикеров — на томе /data.
+RUN mkdir -p /data && chown node:node /data
+VOLUME /data
+ENV HISTORY_DB_PATH=/data/history.sqlite
 
 # Не root: если процесс скомпрометируют, он не хозяин контейнера.
 USER node
 
 EXPOSE 8787
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||8787)+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 CMD ["node", "apps/api/dist/index.js"]

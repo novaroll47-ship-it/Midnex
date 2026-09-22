@@ -28,7 +28,12 @@ export interface ExchangeClient {
     symbol: string,
     limit?: number,
   ): Promise<{ asks: [number, number][]; bids: [number, number][]; timestamp?: number }>;
-  fetchOHLCV(symbol: string, timeframe: string, since?: number, limit?: number): Promise<number[][]>;
+  fetchOHLCV(
+    symbol: string,
+    timeframe: string,
+    since?: number,
+    limit?: number,
+  ): Promise<number[][]>;
   fetchFundingRates(
     symbols?: string[],
   ): Promise<Record<string, { fundingRate?: number; fundingTimestamp?: number }>>;
@@ -47,11 +52,23 @@ export interface ProxyHandlers {
 }
 
 const RPC_TIMEOUT_MS = 120_000;
+/** Потолок кучи worker'а: живых данных двух бирж ~100–150 МБ, остальное — мусор между сборками. */
+const WORKER_HEAP_MB = Number(process.env.MARKET_WORKER_HEAP_MB) || 384;
+
+export interface WorkerStats {
+  index: number;
+  exchanges: ExchangeId[];
+  alive: boolean;
+  heapUsedMb: number;
+  heapTotalMb: number;
+}
 
 class WorkerSlot {
   readonly worker: Worker;
   readonly exchanges = new Set<ExchangeId>();
   alive = true;
+  heapUsedMb = 0;
+  heapTotalMb = 0;
 
   constructor(
     file: URL | string,
@@ -62,7 +79,7 @@ class WorkerSlot {
     this.worker = new Worker(file, {
       // Исходники (.ts) — только в dev через tsx; в сборке — dist/exchange-worker.js.
       ...(isTs ? { execArgv: ['--import', 'tsx'] } : {}),
-      resourceLimits: { maxOldGenerationSizeMb: 512 },
+      resourceLimits: { maxOldGenerationSizeMb: WORKER_HEAP_MB },
     });
     this.worker.on('message', (msg: FromWorker) => this.host.onMessage(this, msg));
     this.worker.on('error', (err) => this.host.onWorkerDown(this, `ошибка: ${err.message}`));
@@ -80,7 +97,12 @@ export class ExchangeWorkerHost {
   private readonly proxies = new Map<ExchangeId, ExchangeProxy>();
   private readonly pending = new Map<
     number,
-    { resolve: (v: unknown) => void; reject: (e: Error) => void; slot: WorkerSlot; timer: ReturnType<typeof setTimeout> }
+    {
+      resolve: (v: unknown) => void;
+      reject: (e: Error) => void;
+      slot: WorkerSlot;
+      timer: ReturnType<typeof setTimeout>;
+    }
   >();
   private nextId = 1;
   private stopped = false;
@@ -186,9 +208,24 @@ export class ExchangeWorkerHost {
         if (msg.level === 'warn') this.log.warn(msg.msg);
         else this.log.info(msg.msg);
         return;
+      case 'stats':
+        slot.heapUsedMb = msg.heapUsedMb;
+        slot.heapTotalMb = msg.heapTotalMb;
+        return;
       default:
         void slot;
     }
+  }
+
+  /** Память и биржи по потокам — для /api/health и подбора MARKET_WORKERS. */
+  stats(): WorkerStats[] {
+    return this.slots.map((s) => ({
+      index: s.index,
+      exchanges: [...s.exchanges],
+      alive: s.alive,
+      heapUsedMb: s.heapUsedMb,
+      heapTotalMb: s.heapTotalMb,
+    }));
   }
 
   onWorkerDown(slot: WorkerSlot, why: string): void {
@@ -202,7 +239,9 @@ export class ExchangeWorkerHost {
       }
     }
     if (this.stopped) return;
-    this.log.warn(`worker #${slot.index} ${why} — биржи ${[...slot.exchanges].join(', ')} будут переподключены`);
+    this.log.warn(
+      `worker #${slot.index} ${why} — биржи ${[...slot.exchanges].join(', ')} будут переподключены`,
+    );
     for (const ex of [...slot.exchanges]) {
       this.release(ex);
       this.onExchangeLost(ex, why);
@@ -239,7 +278,9 @@ export class ExchangeProxy implements ExchangeClient {
   }
 
   fetchOHLCV(symbol: string, timeframe: string, since?: number, limit?: number) {
-    return this.host.rpc(this.exchange, 'fetchOHLCV', [symbol, timeframe, since, limit]) as Promise<number[][]>;
+    return this.host.rpc(this.exchange, 'fetchOHLCV', [symbol, timeframe, since, limit]) as Promise<
+      number[][]
+    >;
   }
 
   fetchFundingRates(symbols?: string[]) {
@@ -249,9 +290,11 @@ export class ExchangeProxy implements ExchangeClient {
   }
 
   fetchFundingRateHistory(symbol: string, since?: number, limit?: number) {
-    return this.host.rpc(this.exchange, 'fetchFundingRateHistory', [symbol, since, limit]) as ReturnType<
-      ExchangeClient['fetchFundingRateHistory']
-    >;
+    return this.host.rpc(this.exchange, 'fetchFundingRateHistory', [
+      symbol,
+      since,
+      limit,
+    ]) as ReturnType<ExchangeClient['fetchFundingRateHistory']>;
   }
 
   startFeed(markets: VenueMarket[], pollMs: number): void {

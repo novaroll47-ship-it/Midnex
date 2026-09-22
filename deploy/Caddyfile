@@ -1,9 +1,22 @@
 # Caddy сам выпускает сертификат для {$DOMAIN} и перенаправляет http -> https.
 {$DOMAIN} {
-	encode gzip zstd
+	# Приложение само отдаёт предсжатую статику и gzip-ответы API; Caddy
+	# дожимает остальное (иконки, мелкие ответы).
+	encode zstd gzip
+
+	header {
+		# Mini App открывается внутри Telegram: web.telegram.org встраивает
+		# его в iframe, поэтому X-Frame-Options ставить нельзя — только
+		# frame-ancestors с доменами Telegram.
+		Content-Security-Policy "frame-ancestors 'self' https://web.telegram.org https://*.telegram.org https://t.me https://*.t.me"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
 
 	reverse_proxy app:8787 {
-		# Fastify пишет их в логи и использует для CORS-проверок.
+		# Fastify (trustProxy) читает клиентский адрес отсюда — для лимитов и логов.
 		header_up X-Real-IP {remote_host}
 	}
 

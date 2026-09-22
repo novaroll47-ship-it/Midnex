@@ -1,10 +1,12 @@
-# Два контейнера: приложение и Caddy перед ним.
+# Три контейнера: приложение, VictoriaMetrics и Caddy перед ними.
 #
-# Caddy сам получает и продлевает сертификат Let's Encrypt — поэтому HTTPS
-# работает без покупки домена и без ручной возни с certbot. Telegram открывает
-# Mini App только по HTTPS, так что это не украшение, а обязательное звено.
+# Caddy сам получает и продлевает сертификат Let's Encrypt — HTTPS без
+# ручной возни с certbot. Telegram открывает Mini App только по HTTPS.
+# VictoriaMetrics хранит посекундный спред (таймфрейм «1с», 7 дней) и
+# наружу не смотрит — до неё достаёт только приложение по внутренней сети.
 #
-# restart: unless-stopped — сервис поднимается сам после перезагрузки сервера.
+# restart: unless-stopped — всё поднимается само после перезагрузки сервера.
+# Секреты и адрес — в deploy/.env (создаёт setup.sh, см. .env.example рядом).
 
 services:
   app:
@@ -19,16 +21,53 @@ services:
       PORT: '8787'
       # Обход авторизации допустим только локально. На сервере — жёстко выкл.
       DEV_FAKE_USER: '0'
-      # Предел кучи: живых данных ~500 МБ, остальное — мусор между сборками.
-      # Меньший предел заставляет V8 убирать чаще и держит процесс в ~1 ГБ.
-      NODE_OPTIONS: --max-old-space-size=1024
-      # По этому адресу бот показывает кнопку «Открыть MIDNEX» и держит
-      # кнопку меню в чате. Без него бот не знает, куда вести пользователя.
+      # Главный поток: куча ~100 МБ живых данных; worker'ы ограничены отдельно
+      # (MARKET_WORKER_HEAP_MB). Итого процесс держится в ~1.5 ГБ при 4 потоках.
+      NODE_OPTIONS: --max-old-space-size=768
       PUBLIC_URL: https://${DOMAIN}
+      WEB_ORIGIN: https://${DOMAIN}
+      HISTORY_DB_PATH: /data/history.sqlite
+      VICTORIA_URL: http://victoria:8428
+      # Клиентский адрес приходит от Caddy в X-Forwarded-For.
+      TRUST_PROXY: '1'
+    volumes:
+      - app_data:/data
     # Порт наружу не публикуем: до приложения можно достучаться только
     # через Caddy, то есть только по HTTPS.
     expose:
       - '8787'
+    depends_on:
+      victoria:
+        condition: service_started
+    # Логи контейнера не должны съесть диск: 5 файлов по 20 МБ.
+    logging:
+      driver: json-file
+      options:
+        max-size: '20m'
+        max-file: '5'
+    # Предел памяти на случай утечки: контейнер перезапустится, а не
+    # утащит в своп весь сервер. Для MARKET_WORKERS=2 хватит 2g.
+    mem_limit: 3g
+
+  victoria:
+    image: victoriametrics/victoria-metrics:v1.152.0
+    restart: unless-stopped
+    command:
+      - -storageDataPath=/victoria-metrics-data
+      - -retentionPeriod=7d
+      - -httpListenAddr=:8428
+      # Памяти на посекундные точки по ~15 тыс. серий хватает с запасом.
+      - -memory.allowedBytes=512MB
+    volumes:
+      - vm_data:/victoria-metrics-data
+    expose:
+      - '8428'
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+    mem_limit: 768m
 
   caddy:
     image: caddy:2-alpine
@@ -36,6 +75,7 @@ services:
     ports:
       - '80:80'
       - '443:443'
+      - '443:443/udp'
     environment:
       DOMAIN: ${DOMAIN:?в deploy/.env не задан DOMAIN}
     volumes:
@@ -44,8 +84,17 @@ services:
       - caddy_config:/config
     depends_on:
       - app
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
 
 volumes:
+  # История спредов и кеш тикеров — это и есть «данные приложения»;
+  # deploy/backup.sh снимает копию SQLite отсюда.
+  app_data:
+  vm_data:
   # Здесь лежат выданные сертификаты. Том обязателен: без него после каждого
   # перезапуска Caddy заново просит сертификат и упирается в лимиты Let's Encrypt.
   caddy_data:
